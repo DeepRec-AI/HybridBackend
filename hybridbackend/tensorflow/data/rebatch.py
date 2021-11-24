@@ -13,19 +13,33 @@
 # limitations under the License.
 # =============================================================================
 
-r'''Input pipelines.
+r'''Rebatching related utilities.
 '''
 
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from hybridbackend.tensorflow.data.adapter import make_one_shot_iterator
-from hybridbackend.tensorflow.data.adapter import make_initializable_iterator
 from hybridbackend.tensorflow.data.dataframe import DataFrame
-from hybridbackend.tensorflow.data.dataframe import to_sparse
-from hybridbackend.tensorflow.data.dataframe import unbatch_and_to_sparse
-from hybridbackend.tensorflow.data.parquet_dataset import ParquetDataset
-from hybridbackend.tensorflow.data.parquet_dataset import read_parquet
-from hybridbackend.tensorflow.data.rebatch_dataset import RebatchDataset
-from hybridbackend.tensorflow.data.rebatch_dataset import rebatch
+
+
+def input_fields(input_dataset, fields=None):
+  r'''Fetch and validate fields from input dataset.
+  '''
+  if fields is None:
+    ds = input_dataset
+    while ds:
+      if hasattr(ds, 'fields'):
+        fields = ds.fields
+        break
+      if not hasattr(ds, '_input_dataset'):
+        break
+      ds = ds._input_dataset  # pylint: disable=protected-access
+  if not fields:
+    raise ValueError('`fields` must be specified')
+  if not isinstance(fields, (tuple, list)):
+    raise ValueError('`fields` must be a list of `hb.data.DataFrame.Field`.')
+  for f in fields:
+    if not isinstance(f, DataFrame.Field):
+      raise ValueError('{} must be `hb.data.DataFrame.Field`.'.format(f))
+  return fields
