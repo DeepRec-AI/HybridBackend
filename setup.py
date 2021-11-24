@@ -30,6 +30,22 @@ from hybridbackend import __author__
 PACKAGES = find_packages(exclude=['cpp', 'tests', 'examples'])
 PACKAGE_DATA = {'': ['*.so', '*.so.*']}
 
+try:
+  from wheel.bdist_wheel import bdist_wheel as _bdist_wheel
+
+  class bdist_wheel(_bdist_wheel):
+    def finalize_options(self):
+      _bdist_wheel.finalize_options(self)
+      self.root_is_pure = False
+
+    def get_tag(self):
+      python, abi, plat = _bdist_wheel.get_tag(self)
+      plat = 'manylinux1_x86_64'
+      return python, abi, plat
+except ImportError:
+  bdist_wheel = None
+
+
 class BinaryDistribution(Distribution):
   r'''This class is needed in order to create OS specific wheels.
   '''
@@ -44,10 +60,16 @@ setup(
     include_package_data=True,
     package_data=PACKAGE_DATA,
     install_requires=[],
+    cmdclass={'bdist_wheel': bdist_wheel},
     distclass=BinaryDistribution,
     zip_safe=False,
     author=__author__,
     description='Efficient training of deep recommenders on cloud.',
+    long_description=(
+        "HybridBackend is a training framework for deep recommenders which "
+        "bridges gap between evolving cloud infrastructure and complex "
+        "training process."),
+    long_description_content_type='text/markdown',
     url="https://github.com/alibaba/HybridBackend",
     project_urls={
         'Bug Tracker': 'https://github.com/alibaba/HybridBackend/issues',

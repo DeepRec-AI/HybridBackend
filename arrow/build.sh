@@ -2,6 +2,11 @@
 
 set -eo pipefail
 
+if [[ ! -d $CACHE_DIR ]]; then
+  CACHE_DIR=arrow/cache
+fi
+CACHE_DIR=$(readlink -f $CACHE_DIR)
+
 while read line; do
   vname=$(echo "$line" | awk '{print $1}')
   url=$(echo "$line" | awk '{print $2}')
@@ -9,7 +14,6 @@ while read line; do
   if [[ -f $CACHE_DIR/$path ]]; then
     echo "export $vname=$CACHE_DIR/$path"
     eval "export $vname=$CACHE_DIR/$path"
-    continue
   fi
 done < arrow/thirdparty.list
 
