@@ -1,0 +1,12 @@
+image: registry.cn-shanghai.aliyuncs.com/pai-dlc/hybridbackend:developer-deeprec-py3.6-cuda11.4
+port: 20000
+gpu:
+  ports: [20001, 20002]
+  expr: "\"20001,20002\""
+io:
+  numThreads: "\"8\""
+  mallocConf: "\"background_thread:true,metadata_thp:auto\""
+  s3AddressingStyle: "\"virtual\""
+caps: ["SYS_ADMIN", "SYS_PTRACE"]
+tag: default
+

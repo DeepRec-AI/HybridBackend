@@ -1,0 +1,68 @@
+#!/bin/bash
+# Copyright 2021 Alibaba Group Holding Limited. All Rights Reserved.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+# =============================================================================
+
+nvidia-smi 1>/dev/null 2>/dev/null
+USE_GPU=$?
+
+set -eo pipefail
+
+if [[ -z "$DOCKERRUN" ]]; then
+if [[ $USE_GPU -gt 0 ]]; then
+  DOCKERRUN="docker run"
+else
+if ! command -v nvidia-docker &> /dev/null; then
+  DOCKERRUN="docker run --runtime=nvidia -e NVIDIA_VISIBLE_DEVICES=all"
+else
+  DOCKERRUN="nvidia-docker run"
+fi
+fi
+fi
+
+if [[ -z "$DOCKER_RUN_ARGS" ]]; then
+  DOCKER_RUN_ARGS=-it
+fi
+
+if [[ -z "$DOCKER_RUN_IMAGE" ]]; then
+  DOCKER_RUN_IMAGE=registry.cn-shanghai.aliyuncs.com/pai-dlc/hybridbackend:developer-tensorflow1.15-py3.6
+fi
+
+DIR=$(pwd)
+USRPSWD="$(id -u):$(id -g)"
+
+sudo docker tag $DOCKER_RUN_IMAGE ${DOCKER_RUN_IMAGE}-bak || true
+sudo docker rm $DOCKER_RUN_IMAGE || true
+sudo docker pull $DOCKER_RUN_IMAGE
+
+set -x
+
+sudo ${DOCKERRUN} \
+  ${DOCKER_RUN_ARGS} \
+  -v $DIR:$DIR \
+  -w $DIR \
+  -e PYTHONPATH=$DIR \
+  -e MALLOC_CONF=background_thread:true,metadata_thp:auto \
+  -e NCCL_DEBUG=INFO \
+  -e NCCL_LAUNCH_MODE=PARALLEL \
+  -e TF_GPU_VMEM=false \
+  --user ${USRPSWD} \
+  --pid=host \
+  --ipc=host \
+  --net=host \
+  --cap-add=SYS_ADMIN \
+  --cap-add=SYS_PTRACE \
+  --rm \
+  ${DOCKER_RUN_IMAGE} \
+  $@

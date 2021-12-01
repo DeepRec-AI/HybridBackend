@@ -1,0 +1,60 @@
+apiVersion: kubeflow.org/v1
+kind: TFJob
+metadata:
+  name: {{ .Release.Name }}
+spec:
+  cleanPodPolicy: All
+  tfReplicaSpecs:
+    Chief:
+      replicas: 1
+      restartPolicy: Never
+      template:
+        spec:
+          hostIPC: true
+          hostPID: true
+          volumes:
+          - name: ccache-volume
+            hostPath:
+              path: /home/ccache/{{ .Values.tag }}
+              type: DirectoryOrCreate
+          containers:
+          - name: tensorflow
+            image: {{ .Values.image }}
+            imagePullPolicy: Always
+            resources:
+              requests:
+                nvidia.com/gpu: {{ $gpuCount := len .Values.gpu.ports }}{{ $gpuCount }}
+              limits:
+                nvidia.com/gpu: {{ $gpuCount := len .Values.gpu.ports }}{{ $gpuCount }}
+            securityContext:
+              capabilities:
+                add:
+                  {{- range .Values.caps }}
+                  - {{ . }}
+                  {{- end }}
+            volumeMounts:
+            - mountPath: /workspace/build/ccache
+              name: ccache-volume
+            args:
+            - bash
+            - -c
+            - tail -f /dev/null
+            workingDir: /workspace
+            env:
+            - name: PYTHONPATH
+              value: "$PYTHONPATH:/workspace"
+            - name: MALLOC_CONF
+              value: {{ .Values.io.mallocConf }}
+            - name: ARROW_NUM_THREADS
+              value: {{ .Values.io.numThreads }}
+            - name: S3_ADDRESSING_STYLE
+              value: {{ .Values.io.s3AddressingStyle }}
+            - name: HYBRIDBACKEND_GPUS
+              value: {{ .Values.gpu.expr }}
+            ports:
+            - containerPort: {{ .Values.port }}
+              name: tfjob-port
+            {{- range $idx, $port := .Values.gpu.ports }}
+            - containerPort: {{ $port }}
+              name: {{ $portName := (printf "gpu-port-%d" $idx) }}{{ $portName }}
+            {{- end }}
