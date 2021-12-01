@@ -1,0 +1,13 @@
+*.pyc
+*.so
+*.so.*
+*.o
+*.d
+*.log
+build/
+dist/
+*.egg-info/
+__pycache__/
+.pylint.d/
+cache/
+outputs/
