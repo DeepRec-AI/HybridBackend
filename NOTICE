@@ -1,0 +1,19 @@
+HybridBackend
+-------------------------------------------------------------------------------
+
+Copyright 2021 Alibaba Group Holding Limited. All Rights Reserved.
+
+This product includes software developed by Alibaba Group Holding Limited.
+
+This product includes software developed by
+The Apache Software Foundation (http://www.apache.org/).
+
+This product includes software from Apache Arrow, which includes the following
+in its NOTICE file:
+
+  Apache Arrow
+  Copyright 2016-2019 The Apache Software Foundation
+  
+  This product includes software developed at
+  The Apache Software Foundation (http://www.apache.org/).
+
