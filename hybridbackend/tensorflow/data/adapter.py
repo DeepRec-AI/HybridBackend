@@ -13,11 +13,27 @@
 # limitations under the License.
 # =============================================================================
 
-r'''HybridBackend for TensorFlow.
+r'''Adapter for different versions of Tensorflow.
 '''
 
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from . import data
+from tensorflow.python.data.ops import dataset_ops
+
+
+def make_one_shot_iterator(ds):
+  r'''Wrapper of make_one_shot_iterator.
+  '''
+  if hasattr(dataset_ops, 'make_one_shot_iterator'):
+    return dataset_ops.make_one_shot_iterator(ds)
+  return ds.make_one_shot_iterator()
+
+
+def make_initializable_iterator(ds):
+  r'''Wrapper of make_initializable_iterator.
+  '''
+  if hasattr(dataset_ops, 'make_initializable_iterator'):
+    return dataset_ops.make_initializable_iterator(ds)
+  return ds.make_initializable_iterator()
