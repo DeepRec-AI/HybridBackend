@@ -31,7 +31,7 @@ jobs:
     - name: Nightly Build
       if: github.event_name != 'push' || ! startsWith(github.ref, 'refs/tags')
       run: |-
-        kubectl exec -it ${PODNAME} -- cibuild/patch_build -cpu -alpha "\"tensorflow>=1.15,<2.0\""
+        kubectl exec -it ${PODNAME} -- cibuild/patch_build -cpu a${{ github.run_id }} "\"tensorflow>=1.15,<2.0\""
     - name: Release Build
       if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags')
       run: |-
@@ -45,6 +45,7 @@ jobs:
     - name: Publish
       uses: pypa/gh-action-pypi-publish@release/v1
       with:
+        skip_existing: true
         user: __token__
         password: ${{ secrets.PYPI_API_TOKEN }}
     - name: Cleanup Environment
