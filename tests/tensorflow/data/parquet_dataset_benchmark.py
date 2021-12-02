@@ -31,15 +31,23 @@ from tensorflow.python.training import monitored_session
 
 from hybridbackend.tensorflow.data import make_one_shot_iterator
 from hybridbackend.tensorflow.data import ParquetDataset
+from hybridbackend.tensorflow.data import rebatch
 from hybridbackend.tensorflow.training import StepStatHook
 
 
 # pylint: disable=missing-docstring
 def benchmark(params):
   with ops.Graph().as_default():
+    if params.initial_batch_size > params.batch_size:
+      raise ValueError('Only enlarging batch size is supported')
     ds = ParquetDataset(
         [params.filename] * params.epochs,
-        batch_size=params.batch_size)
+        batch_size=params.initial_batch_size)
+    if params.batch_size > params.initial_batch_size:
+      ds = ds.apply(
+          rebatch(
+              params.batch_size,
+              num_parallel_scans=params.num_parallel_scans))
     batch = make_one_shot_iterator(ds).get_next()
     count_op = array_ops.shape(list(batch.values())[0])[0]
     train_op = control_flow_ops.group(batch.values())
@@ -56,7 +64,9 @@ if __name__ == '__main__':
   os.environ['ARROW_NUM_THREADS'] = '16'
   logging.set_verbosity(logging.INFO)
   parser = argparse.ArgumentParser()
+  parser.add_argument('--initial-batch-size', type=int, default=200000)
   parser.add_argument('--batch-size', type=int, default=200000)
+  parser.add_argument('--num-parallel-scans', type=int, default=1)
   parser.add_argument('--epochs', type=int, default=1)
   parser.add_argument('filename')
   benchmark(parser.parse_args())

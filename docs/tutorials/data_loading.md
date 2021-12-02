@@ -36,6 +36,7 @@ Text     | `string`
     :special-members: __init__
 .. autofunction:: hybridbackend.tensorflow.data.read_parquet
 .. autofunction:: hybridbackend.tensorflow.data.to_sparse
+.. autofunction:: hybridbackend.tensorflow.data.rebatch
 ```
 
 ## Data Loading Use Cases
@@ -82,6 +83,26 @@ fields = [
     hb.data.DataFrame.Field('A', tf.int64),
     hb.data.DataFrame.Field('C', tf.int64, ragged_rank=1)]
 ds = filenames.apply(hb.data.read_parquet(1024, fields=fields))
+ds = ds.prefetch(4)
+it = tf.data.make_one_shot_iterator(ds)
+batch = it.get_next()
+# {'a': tensora, 'c': tensorc}
+...
+```
+
+### Read and shuffle samples
+
+```python
+import tensorflow as tf
+import hybridbackend.tensorflow as hb
+filenames = tf.data.Dataset.from_generator(func, tf.string, tf.TensorShape([]))
+fields = [
+    hb.data.DataFrame.Field('A', tf.int64),
+    hb.data.DataFrame.Field('C', tf.int64, ragged_rank=1)]
+ds = filenames.apply(hb.data.read_parquet(1024, fields=fields))
+ds = ds.shuffle(2048 // 256)
+ds = ds.apply(hb.data.rebatch(1024, fields=fields))
+ds = ds.apply(hb.data.to_sparse())
 ds = ds.prefetch(4)
 it = tf.data.make_one_shot_iterator(ds)
 batch = it.get_next()
