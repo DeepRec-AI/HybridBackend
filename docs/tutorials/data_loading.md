@@ -110,6 +110,42 @@ batch = it.get_next()
 ...
 ```
 
+### Read from files on S3/OSS/HDFS
+
+```bash
+export S3_ENDPOINT=oss-cn-shanghai-internal.aliyuncs.com
+export AWS_ACCESS_KEY_ID=my_id
+export AWS_SECRET_ACCESS_KEY=my_secret
+export S3_ADDRESSING_STYLE=virtual
+```
+
+```{eval-rst}
+.. note::
+   See https://docs.w3cub.com/tensorflow~guide/deploy/s3.html for more
+   information.
+.. note::
+   Set `S3_ADDRESSING_STYLE` to `virtual` to support OSS.
+.. note::
+   Set `S3_USE_HTTPS` to `0` to use `http` for S3 endpoint.
+```
+
+```python
+import tensorflow as tf
+import hybridbackend.tensorflow as hb
+ds = hb.data.ParquetDataset(
+    ['s3://path/to/f1.parquet',
+     'oss://path/to/f2.parquet',
+     'hdfs://host:port/path/to/f3.parquet'],
+    batch_size=1024,
+    fields=['a', 'c'])
+ds = ds.apply(hb.data.to_sparse())
+ds = ds.prefetch(4)
+it = tf.data.make_one_shot_iterator(ds)
+batch = it.get_next()
+# {'a': tensora, 'c': tensorc}
+...
+```
+
 ## Performance
 
 In benchmark for reading 20k samples from 200 columns of a Parquet file,

@@ -2,6 +2,10 @@
 
 set -eo pipefail
 
+cd arrow/src
+git apply ../s3_enhancements.patch
+cd -
+
 if [[ ! -d $CACHE_DIR ]]; then
   CACHE_DIR=arrow/cache
 fi
