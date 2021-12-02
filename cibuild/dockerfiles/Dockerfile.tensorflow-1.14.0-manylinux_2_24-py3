@@ -1,0 +1,50 @@
+FROM quay.io/pypa/manylinux_2_24_x86_64
+
+ENV PATH=/opt/python/cp36-cp36m/bin:$PATH
+
+RUN apt-get update && \
+    DEBIAN_FRONTEND="noninteractive" \
+    apt-get install -y --allow-unauthenticated \
+    cmake \
+    clang-format-3.9 \
+    libssl-dev \
+    libcurl4-openssl-dev \
+    wget && \
+    apt-get clean && \
+    ln -sf clang-format-3.9 /usr/bin/clang-format
+
+COPY sources.list /etc/apt/sources.list
+RUN rm -rf /etc/apt/sources.list.d/* && \
+    ldconfig && apt-get update
+RUN apt-get update && \
+    DEBIAN_FRONTEND="noninteractive" \
+    apt-get install -y --allow-unauthenticated \
+    gcc-4.9 g++-4.9
+
+RUN pip install \
+    pybind11 \
+    sphinx \
+    sphinx-rtd-theme \
+    myst-parser \
+    pandas \
+    pyarrow \
+    portpicker \
+    six==1.16.0 \
+    cffi==1.14.5 \
+    urllib3==1.26.4 \
+    requests==2.25.1 \
+    isort==4.3.18 \
+    toposort==1.5 \
+    docutils==0.16 \
+    numpy==1.16.6 \
+    pylint==1.9.4
+
+RUN pip install \
+    tensorflow==1.14.0
+
+ENV CXX=/usr/bin/g++-4.9 \
+    HYBRIDBACKEND_WITH_CUDA=OFF \
+    HYBRIDBACKEND_WITH_ARROW_ZEROCOPY=OFF \
+    HYBRIDBACKEND_WITH_ARROW_SIMD_LEVEL=AVX2 \
+    HYBRIDBACKEND_WITH_GRENDEZ=OFF \
+    HYBRIDBACKEND_USE_CXX11_ABI=0

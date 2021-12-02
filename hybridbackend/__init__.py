@@ -23,5 +23,3 @@ from __future__ import print_function
 __version__ = '0.5.0'
 __author__ = 'Alibaba Group Holding Limited'
 __copyright__ = '2021 Alibaba Group Holding Limited'
-
-from hybridbackend.libhybridbackend import buildinfo

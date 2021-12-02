@@ -3,7 +3,7 @@ name: Tests with TensorFlow 1.14 on CPU
 on: workflow_dispatch
 
 env:
-  IMAGE: registry.cn-shanghai.aliyuncs.com/pai-dlc/hybridbackend:developer-tensorflow1.14-py3.6
+  IMAGE: registry.cn-shanghai.aliyuncs.com/pai-dlc/hybridbackend:developer-tensorflow1.14-manylinux_2_24-py3.6
   JOBNAME: hbci-tf114-cpu-${{ github.run_id }}
   PODNAME: hbci-tf114-cpu-${{ github.run_id }}-chief-0
   ARROW_CACHE_URL_PREFIX: ${{ secrets.ARROW_CACHE_URL_PREFIX }}
@@ -31,11 +31,13 @@ jobs:
     - name: Nightly Build
       if: github.event_name != 'push' || ! startsWith(github.ref, 'refs/tags')
       run: |-
-        kubectl exec -it ${PODNAME} -- cibuild/patch_build -cpu-legacy a${{ github.run_id }}
+        kubectl exec -it ${PODNAME} -- sh -c 'make -j32 HYBRIDBACKEND_WHEEL_ALIAS=-cpu-legacy-nightly HYBRIDBACKEND_WHEEL_BUILD=rc${{ github.run_id }}' && \
+        kubectl exec -it ${PODNAME} -- cibuild/repair_dist
     - name: Release Build
       if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags')
       run: |-
-        kubectl exec -it ${PODNAME} -- cibuild/patch_build -cpu-legacy
+        kubectl exec -it ${PODNAME} -- sh -c 'make -j32 HYBRIDBACKEND_WHEEL_ALIAS=-cpu-legacy HYBRIDBACKEND_WHEEL_REQUIRES="tensorflow>=1.14,<1.15"' && \
+        kubectl exec -it ${PODNAME} -- cibuild/repair_dist
     - name: Check
       run: |-
         kubectl exec -it ${PODNAME} -- make cpu_test && \

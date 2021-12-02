@@ -99,7 +99,7 @@ filenames = tf.data.Dataset.from_generator(func, tf.string, tf.TensorShape([]))
 fields = [
     hb.data.DataFrame.Field('A', tf.int64),
     hb.data.DataFrame.Field('C', tf.int64, ragged_rank=1)]
-ds = filenames.apply(hb.data.read_parquet(1024, fields=fields))
+ds = filenames.apply(hb.data.read_parquet(256, fields=fields))
 ds = ds.shuffle(2048 // 256)
 ds = ds.apply(hb.data.rebatch(1024, fields=fields))
 ds = ds.apply(hb.data.to_sparse())

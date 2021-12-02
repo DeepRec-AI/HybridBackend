@@ -20,47 +20,49 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import os
+from setuptools import Extension
 from setuptools import find_packages
 from setuptools import setup
+from setuptools.command.build_ext import build_ext
 from setuptools.dist import Distribution
 
 from hybridbackend import __version__
 from hybridbackend import __author__
 
+NAME = 'hybridbackend{}'.format(os.getenv('WHEEL_ALIAS', ''))
+VERSION = '{}{}'.format(__version__, os.getenv('WHEEL_BUILD', ''))
 PACKAGES = find_packages(exclude=['cpp', 'tests', 'examples'])
 PACKAGE_DATA = {'': ['*.so', '*.so.*']}
-
-try:
-  from wheel.bdist_wheel import bdist_wheel as _bdist_wheel
-
-  class bdist_wheel(_bdist_wheel):  # pylint: disable=invalid-name
-    def finalize_options(self):
-      _bdist_wheel.finalize_options(self)
-      self.root_is_pure = False
-
-    def get_tag(self):
-      python, abi, plat = _bdist_wheel.get_tag(self)
-      plat = 'manylinux1_x86_64'
-      return python, abi, plat
-except ImportError:
-  bdist_wheel = None
+REQUIRES = os.getenv('WHEEL_REQUIRES', '').split(';')
 
 
 class BinaryDistribution(Distribution):
   r'''This class is needed in order to create OS specific wheels.
   '''
-
   def has_ext_modules(self):
     return True
 
+  def is_pure(self):
+    return False
+
+
+class NoExtensionBuilder(build_ext):
+  r'''Build extensions to do nothing.
+  '''
+  def build_extension(self, ext):
+    return
+
+
 setup(
-    name='hybridbackend',
-    version=__version__,
+    name=NAME,
+    version=VERSION,
     packages=PACKAGES,
     include_package_data=True,
     package_data=PACKAGE_DATA,
-    install_requires=[],
-    cmdclass={'bdist_wheel': bdist_wheel},
+    install_requires=REQUIRES,
+    ext_modules=[Extension('', sources=[])],
+    cmdclass={'build_ext': NoExtensionBuilder},
     distclass=BinaryDistribution,
     zip_safe=False,
     author=__author__,
@@ -71,6 +73,7 @@ setup(
         "training process."),
     long_description_content_type='text/markdown',
     url="https://github.com/alibaba/HybridBackend",
+    download_url='https://github.com/alibaba/HybridBackend/tags',
     project_urls={
         'Bug Tracker': 'https://github.com/alibaba/HybridBackend/issues',
         'Documentation': 'https://hybridbackend.readthedocs.io/en/latest/',

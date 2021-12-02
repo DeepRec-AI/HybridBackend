@@ -36,7 +36,6 @@ else
 COMMON_ALL_OBJS := $(COMMON_OBJS)
 endif
 
-COMMON_LIB := hybridbackend/lib$(LIBNAME).so
 $(COMMON_LIB): $(COMMON_ALL_OBJS)
 	mkdir -p $(dir $@)
 	$(CXX) $(CFLAGS) $(COMMON_CFLAGS) -std=c++11 \

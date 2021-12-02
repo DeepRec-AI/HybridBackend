@@ -14,10 +14,24 @@ information.
 
 ## Installation
 
-Install latest CPU version:
+Install latest CPU version for TensorFlow 1.15:
 
 ```bash
-pip install hybridbackend-cpu  # tensorflow/tensorflow:1.15.5-py3
+pip install hybridbackend-cpu
+```
+
+Install latest CPU version for TensorFlow 1.14:
+
+```bash
+pip install hybridbackend-cpu-legacy
+```
+
+Note:
+
+You might need to upgrade pip before above installations:
+
+```bash
+pip install -U pip
 ```
 
 ## Contributing
