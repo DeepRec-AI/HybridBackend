@@ -2,9 +2,7 @@
 
 set -eo pipefail
 
-cd arrow/src
-git apply ../s3_enhancements.patch
-cd -
+cp -rf arrow/patches/cpp arrow/src/cpp
 
 if [[ ! -d $CACHE_DIR ]]; then
   CACHE_DIR=arrow/cache
