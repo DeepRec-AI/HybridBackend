@@ -36,7 +36,7 @@ if [[ -z "$DOCKER_RUN_ARGS" ]]; then
 fi
 
 if [[ -z "$DOCKER_RUN_IMAGE" ]]; then
-  DOCKER_RUN_IMAGE=registry.cn-shanghai.aliyuncs.com/pai-dlc/hybridbackend:developer-tensorflow1.15-py3.6
+  DOCKER_RUN_IMAGE=registry.cn-shanghai.aliyuncs.com/pai-dlc/hybridbackend:developer-tensorflow1.15-manylinux_2_24-py3.6
 fi
 
 DIR=$(pwd)

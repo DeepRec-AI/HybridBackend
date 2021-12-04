@@ -13,6 +13,9 @@ HYBRIDBACKEND_WITH_ARROW_S3 ?= ON
 HYBRIDBACKEND_WITH_ARROW_SIMD_LEVEL ?= AVX512
 HYBRIDBACKEND_WITH_TENSORFLOW ?= ON
 HYBRIDBACKEND_USE_CXX11_ABI ?= 1
+HYBRIDBACKEND_WHEEL_ALIAS ?= ""
+HYBRIDBACKEND_WHEEL_BUILD ?= ""
+HYBRIDBACKEND_WHEEL_REQUIRES ?= ""
 
 CXX ?= gcc
 LOCAL_HOME ?= /usr/local
@@ -23,7 +26,7 @@ CFLAGS := -O3 -g \
 	-D_GLIBCXX_USE_CXX11_ABI=$(HYBRIDBACKEND_USE_CXX11_ABI) \
 	-isystem $(LOCAL_HOME) \
 	-isystem $(PAI_HOME)/include \
-	-Ihybridbackend/include \
+	-I$(LIBNAME)/include \
 	-I.
 
 CXX_CFLAGS := -std=c++11 \
@@ -115,12 +118,13 @@ COMMON_LDFLAGS := $(COMMON_LDFLAGS) \
 	-larrow_bundled_dependencies
 endif
 
--include hybridbackend/cpp/common/Makefile
+COMMON_LIB := $(LIBNAME)/lib$(LIBNAME).so
+-include $(LIBNAME)/cpp/common/Makefile
 CORE_DEPS := $(COMMON_LIB)
 
 ifeq ($(HYBRIDBACKEND_WITH_TENSORFLOW),ON)
-TENSORFLOW_LIB := hybridbackend/tensorflow/lib$(LIBNAME)_tensorflow.so
--include hybridbackend/cpp/tensorflow/Makefile
+TENSORFLOW_LIB := $(LIBNAME)/tensorflow/lib$(LIBNAME)_tensorflow.so
+-include $(LIBNAME)/cpp/tensorflow/Makefile
 CORE_DEPS := $(CORE_DEPS) $(TENSORFLOW_LIB)
 CFLAGS := $(CFLAGS) \
 	-DHYBRIDBACKEND_TENSORFLOW=1
@@ -128,6 +132,9 @@ endif
 
 .PHONY: build
 build: $(CORE_DEPS)
+	WHEEL_ALIAS=$(HYBRIDBACKEND_WHEEL_ALIAS) \
+	WHEEL_BUILD=$(HYBRIDBACKEND_WHEEL_BUILD) \
+	WHEEL_REQUIRES=$(HYBRIDBACKEND_WHEEL_REQUIRES) \
 	python setup.py bdist_wheel
 	@ls dist/*.whl
 
@@ -157,12 +164,11 @@ cpu_test:
 
 .PHONY: doc
 doc:
-	PYTHONPATH=$(shell pwd) \
 	sphinx-build -M html docs/ dist/doc
 
 .PHONY: lint
 lint:
-	tools/lint
+	cibuild/lint
 
 .PHONY: cibuild
 cibuild: lint build doc test

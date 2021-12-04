@@ -16,13 +16,8 @@
 
 set -eo pipefail
 
-PATCH=$1
-shift
-REVISION=$1
-shift
-
-sed -i "s/__version__ = '\(.*\)'/__version__ = '\1${REVISION}'/g" hybridbackend/__init__.py
-sed -i "s/name='\(.*\)'/name='\1${PATCH}'/g" setup.py
-sed -i "s/install_requires=\[\]/install_requires=[$@]/g" setup.py
-make -j$(nproc)
+mkdir -p build/
+mv dist build/dist
+mkdir -p dist/
+cibuild/auditwheel repair build/dist/*.whl -w dist/
 

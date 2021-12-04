@@ -1,44 +1,38 @@
-FROM tensorflow/tensorflow:1.15.5-py3
+FROM quay.io/pypa/manylinux_2_24_x86_64
 
-COPY sources.list /etc/apt/sources.list
-
-RUN rm -rf /etc/apt/sources.list.d/* && \
-    ldconfig
+ENV PATH=/opt/python/cp36-cp36m/bin:$PATH
 
 RUN apt-get update && \
     DEBIAN_FRONTEND="noninteractive" \
-    apt-get install -y \
+    apt-get install -y --allow-unauthenticated \
     cmake \
     clang-format-3.9 \
-    unzip \
     libssl-dev \
     libcurl4-openssl-dev \
-    wget \
-    curl && \
+    wget && \
     apt-get clean && \
     ln -sf clang-format-3.9 /usr/bin/clang-format
 
-COPY pip.conf /etc/pip.conf
-
-RUN pip install -U \
-    setuptools wheel pip
 RUN pip install \
+    pybind11 \
+    sphinx \
+    sphinx-rtd-theme \
+    myst-parser \
+    pandas \
+    pyarrow \
+    portpicker \
     six==1.16.0 \
     cffi==1.14.5 \
     urllib3==1.26.4 \
     requests==2.25.1 \
-    pandas \
-    pybind11 \
-    pyarrow==5.0 \
-    numpy==1.16.6 \
     isort==4.3.18 \
-    sphinx \
-    sphinx-rtd-theme \
-    myst-parser \
-    pylint==1.9.4 \
     toposort==1.5 \
-    portpicker \
-    docutils==0.16
+    docutils==0.16 \
+    numpy==1.16.6 \
+    pylint==1.9.4
+
+RUN pip install \
+    tensorflow==1.15.5
 
 ENV HYBRIDBACKEND_WITH_CUDA=OFF \
     HYBRIDBACKEND_WITH_ARROW_ZEROCOPY=ON \
