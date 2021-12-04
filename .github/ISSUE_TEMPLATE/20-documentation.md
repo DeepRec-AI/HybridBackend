@@ -1,12 +1,12 @@
 ---
-name: Improvements or additions to documentation
-about: Use this template for a documentation/building/installation issue.
+name: Needs help for installation or documentation
+about: Use this template for an installation/documentation issue.
 
 ---
 
 # Summary
 
-# Building/Installation environment
+# Installation environment
 - GPU model and memory:
 - OS Platform:
 - Docker version:

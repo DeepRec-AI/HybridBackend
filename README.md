@@ -1,6 +1,6 @@
 # HybridBackend
 
-![Tensorflow 1.15 CPU CI Build Badge](https://github.com/alibaba/HybridBackend/actions/workflows/.github/workflows/tensorflow1.15-py3.6-cibuild.yaml/badge.svg)
+[![Nightly Build on CPU](https://github.com/alibaba/HybridBackend/actions/workflows/cpu-nightly.yaml/badge.svg)](https://github.com/alibaba/HybridBackend/actions/workflows/cpu-nightly.yaml)
 [![Documentation Status](https://readthedocs.org/projects/hybridbackend/badge/?version=latest)](https://hybridbackend.readthedocs.io/en/latest/?badge=latest)
 
 ## Introduction

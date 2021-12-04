@@ -1,11 +1,11 @@
-name: Tests with TensorFlow 1.14 on CPU
+name: Build on CPU for Tensorflow 1.14
 
 on: workflow_dispatch
 
 env:
   IMAGE: registry.cn-shanghai.aliyuncs.com/pai-dlc/hybridbackend:developer-tensorflow1.14-manylinux_2_24-py3.6
-  JOBNAME: hbci-tf114-cpu-${{ github.run_id }}
-  PODNAME: hbci-tf114-cpu-${{ github.run_id }}-chief-0
+  JOBNAME: hbci-${{ github.run_id }}
+  PODNAME: hbci-${{ github.run_id }}-chief-0
   ARROW_CACHE_URL_PREFIX: ${{ secrets.ARROW_CACHE_URL_PREFIX }}
 
 jobs:
@@ -17,30 +17,26 @@ jobs:
       uses: actions/checkout@v2
       with:
         submodules: 'true'
-    - name: Configure Environment
+    - name: Setup Environment
       uses: aliyun/ack-set-context@v1
       with:
         access-key-id: "${{ secrets.ACCESS_KEY_ID }}"
         access-key-secret: "${{ secrets.ACCESS_KEY_SECRET }}"
         cluster-id: "${{ secrets.ACK_CLUSTER_ID }}"
-    - name: Setup Environment
+    - name: Upload
       run: |-
-        helm install ${JOBNAME} cibuild/ --set image=${IMAGE} --set tag=tensorflow1.14-py3.6 && \
+        helm install ${JOBNAME} cibuild/ --set image=${IMAGE} --set tag=cpu-legacy && \
         cibuild/upload ${PODNAME} ../cibuild && \
         kubectl exec -it ${PODNAME} -- arrow/download.sh ${ARROW_CACHE_URL_PREFIX}
-    - name: Nightly Build
-      if: github.event_name != 'push' || ! startsWith(github.ref, 'refs/tags')
-      run: |-
-        kubectl exec -it ${PODNAME} -- sh -c 'make -j32 HYBRIDBACKEND_WHEEL_ALIAS=-cpu-legacy-nightly HYBRIDBACKEND_WHEEL_BUILD=rc${{ github.run_id }}' && \
-        kubectl exec -it ${PODNAME} -- cibuild/repair_dist
-    - name: Release Build
-      if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags')
+    - name: Build
       run: |-
         kubectl exec -it ${PODNAME} -- sh -c 'make -j32 HYBRIDBACKEND_WHEEL_ALIAS=-cpu-legacy HYBRIDBACKEND_WHEEL_REQUIRES="tensorflow>=1.14,<1.15"' && \
         kubectl exec -it ${PODNAME} -- cibuild/repair_dist
-    - name: Check
+    - name: Test
       run: |-
-        kubectl exec -it ${PODNAME} -- make cpu_test && \
+        kubectl exec -it ${PODNAME} -- make cpu_test
+    - name: Download
+      run: |-
         kubectl exec -it ${PODNAME} -- tar -cf dist.tar dist/ && \
         kubectl cp ${PODNAME}:dist.tar ./dist.tar && \
         tar -xf ./dist.tar
@@ -50,7 +46,7 @@ jobs:
         skip_existing: true
         user: __token__
         password: ${{ secrets.PYPI_API_TOKEN }}
-    - name: Cleanup Emvironment
+    - name: Cleanup Environment
       if: always()
       run: |-
         helm uninstall ${JOBNAME}
