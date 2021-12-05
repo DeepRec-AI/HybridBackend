@@ -1,6 +1,6 @@
-name: Nightly Build on CPU
+name: nightly deploy on cpu
 
-on: [workflow_dispatch, push]
+on: workflow_dispatch
 
 env:
   IMAGE: registry.cn-shanghai.aliyuncs.com/pai-dlc/hybridbackend:developer-tensorflow1.15-manylinux_2_24-py3.6

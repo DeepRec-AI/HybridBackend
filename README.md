@@ -1,6 +1,6 @@
 # HybridBackend
 
-[![Nightly Build on CPU](https://github.com/alibaba/HybridBackend/actions/workflows/cpu-nightly.yaml/badge.svg)](https://github.com/alibaba/HybridBackend/actions/workflows/cpu-nightly.yaml)
+[![cibuild: cpu](https://github.com/alibaba/HybridBackend/actions/workflows/cpu-cibuild.yaml/badge.svg?branch=main&event=push)](https://github.com/alibaba/HybridBackend/actions/workflows/cpu-cibuild.yaml)
 [![Documentation Status](https://readthedocs.org/projects/hybridbackend/badge/?version=latest)](https://hybridbackend.readthedocs.io/en/latest/?badge=latest)
 
 ## Introduction

@@ -1,4 +1,4 @@
-name: Build on CPU
+name: release deploy on cpu
 
 on: workflow_dispatch
 
