@@ -1,4 +1,4 @@
-name: Build on CPU for Tensorflow 1.14
+name: release deploy on tf1.14-cpu
 
 on: workflow_dispatch
 
