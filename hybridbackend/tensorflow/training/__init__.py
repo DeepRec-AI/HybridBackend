@@ -13,13 +13,11 @@
 # limitations under the License.
 # =============================================================================
 
-r'''HybridBackend entry file.
+r'''Support for training models in hybridbackend.
 '''
 
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-__version__ = '0.5.2'
-__author__ = 'Alibaba Group Holding Limited'
-__copyright__ = '2021 Alibaba Group Holding Limited'
+from hybridbackend.tensorflow.training.step_stat_hook import StepStatHook
