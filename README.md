@@ -1,5 +1,7 @@
 # HybridBackend
 
+[![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
+[![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg?style=flat-square)](http://makeapullrequest.com)
 [![cibuild: cpu](https://github.com/alibaba/HybridBackend/actions/workflows/cpu-cibuild.yaml/badge.svg?branch=main&event=push)](https://github.com/alibaba/HybridBackend/actions/workflows/cpu-cibuild.yaml)
 [![Documentation Status](https://readthedocs.org/projects/hybridbackend/badge/?version=latest)](https://hybridbackend.readthedocs.io/en/latest/?badge=latest)
 
@@ -36,25 +38,9 @@ pip install -U pip
 
 ## Contributing
 
-We appreciate all contributions to improve HybridBackend. Please follow below
-steps to contribute:
+We appreciate all contributions to improve HybridBackend. Please see
+[Contributing Guide](CONTRIBUTING.md) for more details.
 
-**1. Clone the repository and checkout a new branch.**
+## License
 
-```bash
-git clone <git_repo_addr>
-git pull -r
-git checkout -b features/my_feature
-```
-
-**2. Commit changes, check code style and test.**
-
-```bash
-git commit
-cibuild/run cibuild/format
-cibuild/run cibuild/lint
-cibuild/run make -j8
-cibuild/run make test
-```
-
-**3. Create pull request for code review.**
+HybridBackend is licensed under the [Apache 2.0 License](LICENSE).

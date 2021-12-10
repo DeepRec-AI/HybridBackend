@@ -2,7 +2,7 @@
 
 set -eo pipefail
 
-cp -rf arrow/patches/cpp arrow/src/cpp
+cp -rf arrow/patches/cpp arrow/src/
 
 if [[ ! -d $CACHE_DIR ]]; then
   CACHE_DIR=arrow/cache
