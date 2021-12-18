@@ -26,6 +26,10 @@ import os
 import tempfile
 
 from tensorflow.python.data.ops.dataset_ops import Dataset
+try:
+  from tensorflow.python.data.ops.dataset_ops import AUTOTUNE
+except ImportError:
+  from tensorflow.python.data.experimental.ops.optimization import AUTOTUNE
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
@@ -120,6 +124,56 @@ class ParquetDatasetTest(test.TestCase):
           DataFrame.Field('A', dtypes.int64),
           DataFrame.Field('C', dtypes.int64)]
       ds = filenames.apply(read_parquet(batch_size, fields=fields))
+      ds = ds.prefetch(4)
+      batch = make_one_shot_iterator(ds).get_next()
+
+    with self.test_session(use_gpu=False, graph=graph) as sess:
+      for _ in range(len(self._df) * num_epochs // batch_size):
+        sess.run(batch)
+      with self.assertRaises(errors.OutOfRangeError):
+        sess.run(batch)
+
+  def test_read_from_generator_parallel(self):
+    num_epochs = 2
+    batch_size = 100
+    with ops.Graph().as_default() as graph:
+      def gen_filenames():
+        for i in range(num_epochs + 1):
+          if i == num_epochs:
+            return  # raise StopIteration
+          yield self._filename
+      filenames = Dataset.from_generator(
+          gen_filenames, dtypes.string, tensor_shape.TensorShape([]))
+      fields = [
+          DataFrame.Field('A', dtypes.int64),
+          DataFrame.Field('C', dtypes.int64)]
+      ds = filenames.apply(
+          read_parquet(batch_size, fields=fields, num_parallel_reads=3))
+      ds = ds.prefetch(4)
+      batch = make_one_shot_iterator(ds).get_next()
+
+    with self.test_session(use_gpu=False, graph=graph) as sess:
+      for _ in range(len(self._df) * num_epochs // batch_size):
+        sess.run(batch)
+      with self.assertRaises(errors.OutOfRangeError):
+        sess.run(batch)
+
+  def test_read_from_generator_parallel_auto(self):
+    num_epochs = 2
+    batch_size = 100
+    with ops.Graph().as_default() as graph:
+      def gen_filenames():
+        for i in range(num_epochs + 1):
+          if i == num_epochs:
+            return  # raise StopIteration
+          yield self._filename
+      filenames = Dataset.from_generator(
+          gen_filenames, dtypes.string, tensor_shape.TensorShape([]))
+      fields = [
+          DataFrame.Field('A', dtypes.int64),
+          DataFrame.Field('C', dtypes.int64)]
+      ds = filenames.apply(
+          read_parquet(batch_size, fields=fields, num_parallel_reads=AUTOTUNE))
       ds = ds.prefetch(4)
       batch = make_one_shot_iterator(ds).get_next()
 

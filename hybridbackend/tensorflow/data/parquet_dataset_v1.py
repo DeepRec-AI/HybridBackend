@@ -23,7 +23,6 @@ from __future__ import division
 from __future__ import print_function
 
 from tensorflow.python.data.ops import dataset_ops
-from tensorflow.python.data.ops import readers
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.util import nest
@@ -186,13 +185,8 @@ class ParquetDatasetV1(dataset_ops.Dataset):
     '''
     if num_parallel_reads is None:
       return filenames.flat_map(dataset_creator)
-    if num_parallel_reads == dataset_ops.AUTOTUNE:
-      return filenames.interleave(
-          dataset_creator, num_parallel_calls=num_parallel_reads)
-    return readers.ParallelInterleaveDataset(
-        filenames, dataset_creator,
-        cycle_length=num_parallel_reads,
+    return filenames.interleave(
+        dataset_creator,
+        cycle_length=num_parallel_reads if num_parallel_reads > 0 else 1,
         block_length=num_sequential_reads,
-        sloppy=True,
-        buffer_output_elements=None,
-        prefetch_input_elements=1)
+        num_parallel_calls=num_parallel_reads)
