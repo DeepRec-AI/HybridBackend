@@ -24,7 +24,7 @@ https://www.sphinx-doc.org/en/master/usage/configuration.html
 project = 'HybridBackend'
 author = 'Alibaba Group Holding Limited'
 copyright = '2021 Alibaba Group Holding Limited'  # pylint: disable=redefined-builtin
-release = '0.1.0'
+release = 'latest'
 
 # -- General configuration ---------------------------------------------------
 
