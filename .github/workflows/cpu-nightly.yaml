@@ -30,7 +30,7 @@ jobs:
         kubectl exec -it ${PODNAME} -- arrow/download.sh ${ARROW_CACHE_URL_PREFIX}
     - name: Build
       run: |-
-        kubectl exec -it ${PODNAME} -- sh -c 'make -j32 HYBRIDBACKEND_WHEEL_ALIAS=-cpu-nightly HYBRIDBACKEND_WHEEL_BUILD=rc${{ github.run_id }}' && \
+        kubectl exec -it ${PODNAME} -- sh -c 'make -j32 HYBRIDBACKEND_WHEEL_ALIAS=-cpu-nightly HYBRIDBACKEND_WHEEL_BUILD=.dev${{ github.run_id }}' && \
         kubectl exec -it ${PODNAME} -- cibuild/repair_dist
     - name: Test
       run: |-
