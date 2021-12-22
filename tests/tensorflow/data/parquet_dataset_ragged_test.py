@@ -53,7 +53,7 @@ class ParquetDatasetRaggedTest(test.TestCase):
                         dtype=np.int64)
                     for _ in range(num_cols)]
                 for _ in range(100)]),
-        columns=['col{}'.format(c) for c in range(num_cols)])
+        columns=[f'col{c}' for c in range(num_cols)])
     self._df.to_parquet(self._filename)
 
   def tearDown(self):  # pylint: disable=invalid-name

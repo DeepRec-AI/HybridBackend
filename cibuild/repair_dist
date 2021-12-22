@@ -19,5 +19,4 @@ set -eo pipefail
 mkdir -p build/
 mv dist build/dist
 mkdir -p dist/
-cibuild/auditwheel repair build/dist/*.whl -w dist/
-
+cibuild/auditwheel repair $@ build/dist/*.whl -w dist/

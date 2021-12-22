@@ -71,7 +71,7 @@ class RebatchDatasetV1(dataset_ops.Dataset):
     self._fields = input_fields(input_dataset, fields)
     self._drop_remainder = drop_remainder
     self._num_parallel_scans = num_parallel_scans
-    super(RebatchDatasetV1, self).__init__()
+    super().__init__()
 
   @property
   def fields(self):

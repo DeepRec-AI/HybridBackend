@@ -88,8 +88,9 @@ class DataFrame(object):  # pylint: disable=useless-object-inheritance
       return self.map(lambda _: tensor_shape.TensorShape([None]))
 
     def __repr__(self):
-      return '{} <dtype={} ragged_rank={} shape={}>'.format(
-          self._name, self._dtype, self._ragged_rank, self._shape)
+      return \
+          f'{self._name} <dtype={self._dtype} ' + \
+          f'ragged_rank={self._ragged_rank} shape={self._shape}>'
 
     def map(self, func):
       if self._ragged_rank == 0:
@@ -137,7 +138,7 @@ class DataFrame(object):  # pylint: disable=useless-object-inheritance
       return features
     if isinstance(features, ops.Tensor):
       return features
-    raise ValueError('{} not supported'.format(features))
+    raise ValueError(f'{features} not supported')
 
   @classmethod
   def unbatch_and_to_sparse(cls, features):
@@ -178,7 +179,7 @@ class DataFrame(object):  # pylint: disable=useless-object-inheritance
       return features
     if isinstance(features, ops.Tensor):
       return array_ops.reshape(features, features.shape[1:])
-    raise ValueError('{} not supported for transformation'.format(features))
+    raise ValueError(f'{features} not supported for transformation')
 
 
 def to_sparse(num_parallel_calls=None):

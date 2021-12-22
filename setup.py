@@ -30,8 +30,8 @@ from setuptools.dist import Distribution
 from hybridbackend import __version__
 from hybridbackend import __author__
 
-NAME = 'hybridbackend{}'.format(os.getenv('WHEEL_ALIAS', ''))
-VERSION = '{}{}'.format(__version__, os.getenv('WHEEL_BUILD', ''))
+NAME = f'hybridbackend{os.getenv("WHEEL_ALIAS", "")}'
+VERSION = f'{__version__}{os.getenv("WHEEL_BUILD", "")}'
 PACKAGES = find_packages(exclude=['cpp', 'tests', 'examples'])
 PACKAGE_DATA = {'': ['*.so', '*.so.*']}
 REQUIRES = os.getenv('WHEEL_REQUIRES', '').split(';')

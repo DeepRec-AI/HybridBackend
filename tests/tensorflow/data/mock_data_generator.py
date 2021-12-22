@@ -39,10 +39,10 @@ def benchmark(params):
     filename = params.filename
   else:
     workspace = tempfile.mkdtemp()
-    filename = os.path.join(workspace, 'benchmark.{}'.format(params.format))
+    filename = os.path.join(workspace, f'benchmark.{params.format}')
 
   logging.info('Mock data starts generating...')
-  columns = ['col%d' % c for c in range(params.cols)]
+  columns = [f'col{c}' for c in range(params.cols)]
   df = pd.DataFrame(
       np.random.randint(
           params.min, params.max,
@@ -68,8 +68,8 @@ def benchmark(params):
       writer.write(example.SerializeToString())
     writer.close()
   else:
-    raise ValueError('Format {} not supported'.format(params.format))
-  logging.info('Mock data written to {} .'.format(filename))
+    raise ValueError(f'Format {params.format} not supported')
+  logging.info(f'Mock data written to {filename} .')
 
 
 if __name__ == '__main__':

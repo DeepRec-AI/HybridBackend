@@ -6,12 +6,12 @@ RUN apt-get update && \
     DEBIAN_FRONTEND="noninteractive" \
     apt-get install -y --allow-unauthenticated \
     cmake \
-    clang-format-3.9 \
+    clang-format-7 \
     libssl-dev \
     libcurl4-openssl-dev \
     wget && \
     apt-get clean && \
-    ln -sf clang-format-3.9 /usr/bin/clang-format
+    ln -sf clang-format-7 /usr/bin/clang-format
 
 RUN pip install \
     pybind11 \
@@ -29,13 +29,17 @@ RUN pip install \
     toposort==1.5 \
     docutils==0.16 \
     numpy==1.16.6 \
-    pylint==1.9.4
+    pylint==2.12.2
 
 RUN pip install \
     tensorflow==1.15.5
 
+COPY patch_manylinux_policy.py /opt/
+RUN python /opt/patch_manylinux_policy.py \
+    /opt/_internal/pipx/venvs/auditwheel/lib/python3.9/site-packages/auditwheel/policy/manylinux-policy.json && \
+    mkdir -p /opt/dist/
+
 ENV HYBRIDBACKEND_WITH_CUDA=OFF \
     HYBRIDBACKEND_WITH_ARROW_ZEROCOPY=ON \
     HYBRIDBACKEND_WITH_ARROW_SIMD_LEVEL=AVX2 \
-    HYBRIDBACKEND_WITH_GRENDEZ=OFF \
     HYBRIDBACKEND_USE_CXX11_ABI=0

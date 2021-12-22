@@ -13,20 +13,20 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <tensorflow/core/framework/common_shape_fns.h>
+#include <tensorflow/core/framework/op.h>
+#include <tensorflow/core/framework/op_def_builder.h>
+#include <tensorflow/core/framework/partial_tensor_shape.h>
+#include <tensorflow/core/framework/shape_inference.h>
+#include <tensorflow/core/framework/tensor.h>
+#include <tensorflow/core/lib/core/blocking_counter.h>
+#include <tensorflow/core/lib/core/threadpool.h>
+#include <tensorflow/core/platform/file_system.h>
+#include <tensorflow/core/public/version.h>
+
 #include <map>
 #include <unordered_set>
 #include <vector>
-
-#include "tensorflow/core/framework/common_shape_fns.h"
-#include "tensorflow/core/framework/op.h"
-#include "tensorflow/core/framework/op_def_builder.h"
-#include "tensorflow/core/framework/partial_tensor_shape.h"
-#include "tensorflow/core/framework/shape_inference.h"
-#include "tensorflow/core/framework/tensor.h"
-#include "tensorflow/core/lib/core/blocking_counter.h"
-#include "tensorflow/core/lib/core/threadpool.h"
-#include "tensorflow/core/platform/file_system.h"
-#include "tensorflow/core/public/version.h"
 
 #include "hybridbackend/cpp/tensorflow/eigen.h"
 #include "hybridbackend/cpp/tensorflow/io/dataset.h"
@@ -238,7 +238,7 @@ void RecalculateSplit(Tensor* split, int32 value) {
     rslice.flat<int32>() += rslice.flat<int32>().constant(value);
   }
 }
-}  // namespace anonymous
+}  // namespace
 
 class RebatchTabularDatasetOp::Dataset::Iterator
     : public DatasetIterator<RebatchTabularDatasetOp::Dataset> {

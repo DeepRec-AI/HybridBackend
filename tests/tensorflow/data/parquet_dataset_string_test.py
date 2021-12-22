@@ -54,7 +54,7 @@ class ParquetDatasetStringTest(test.TestCase):
                         size=(np.random.randint(1, 5),),
                         dtype=np.int64)]
                 for _ in range(100)]),
-        columns=['col{}'.format(c) for c in range(num_cols)])
+        columns=[f'col{c}' for c in range(num_cols)])
     self._df.to_parquet(self._filename)
 
   def tearDown(self):  # pylint: disable=invalid-name

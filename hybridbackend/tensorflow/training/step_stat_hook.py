@@ -66,21 +66,22 @@ class StepStatHook(session_run_hook.SessionRunHook):
       if self.should_print_logs:
         durs = np.array(self._durations)
         cnts = np.array(self._counts)
+        p50 = np.percentile(durs, 50)
+        p10 = np.percentile(durs, 10)
+        p90 = np.percentile(durs, 90)
+        fps = 1. * np.sum(cnts) / np.sum(durs)
         logging.info(
-            'secs/step: {:.5f} ({:.2f}%), '
-            'samples/sec: {:.2f}'.format(
-                np.percentile(durs, 50),
-                1. * np.sum(cnts) / np.sum(durs),
-                100. * np.percentile(durs, 10) / np.percentile(durs, 90)))
+            f'secs/step: {p50:.5f} ({100.*p10/p90:.2f}%), ' + \
+            f'samples/sec: {fps:.2f}')
         self._durations = []
         self._counts = []
     else:
       if self.should_print_logs:
         durs = np.array(self._durations)
-        logging.info(
-            'secs/step: {:.5f} ({:.2f}%)'.format(
-                np.percentile(durs, 50),
-                100. * np.percentile(durs, 10) / np.percentile(durs, 90)))
+        p50 = np.percentile(durs, 50)
+        p10 = np.percentile(durs, 10)
+        p90 = np.percentile(durs, 90)
+        logging.info(f'secs/step: {p50:.5f} ({100.*p10/p90:.2f}%)')
         self._durations = []
     self._iter_count += 1
 
@@ -92,19 +93,20 @@ class StepStatHook(session_run_hook.SessionRunHook):
       durs = np.array(self._durations)
       cnts = np.array(self._counts)
       if self._durations:
+        p50 = np.percentile(durs, 50)
+        p10 = np.percentile(durs, 10)
+        p90 = np.percentile(durs, 90)
+        fps = 1. * np.sum(cnts) / np.sum(durs)
         logging.info(
-            'secs/step: {:.5f} ({:.2f}%), '
-            'samples/sec: {:.2f}'.format(
-                np.percentile(durs, 50),
-                1. * np.sum(cnts) / np.sum(durs),
-                100. * np.percentile(durs, 10) / np.percentile(durs, 90)))
+            f'secs/step: {p50:.5f} ({100.*p10/p90:.2f}%), ' + \
+            f'samples/sec: {fps:.2f}')
       self._durations = []
       self._counts = []
     else:
       durs = np.array(self._durations)
       if self._durations:
-        logging.info(
-            'secs/step: {:.5f} ({:.2f}%)'.format(
-                np.percentile(durs, 50),
-                100. * np.percentile(durs, 10) / np.percentile(durs, 90)))
+        p50 = np.percentile(durs, 50)
+        p10 = np.percentile(durs, 10)
+        p90 = np.percentile(durs, 90)
+        logging.info(f'secs/step: {p50:.5f} ({100.*p10/p90:.2f}%)')
       self._durations = []

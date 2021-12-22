@@ -66,8 +66,7 @@ class _ParquetDatasetV1(dataset_ops.Dataset):
     self._partition_count = partition_count
     self._partition_index = partition_index
     self._drop_remainder = drop_remainder
-
-    super(_ParquetDatasetV1, self).__init__()
+    super().__init__()
 
   def _as_variant_tensor(self):
     return _ops.parquet_tabular_dataset(
@@ -142,7 +141,7 @@ class ParquetDatasetV1(dataset_ops.Dataset):
           drop_remainder=self._drop_remainder)
     self._impl = self._build_dataset(
         _create_dataset, filenames, num_parallel_reads, num_sequential_reads)
-    super(ParquetDatasetV1, self).__init__()
+    super().__init__()
 
   @property
   def fields(self):

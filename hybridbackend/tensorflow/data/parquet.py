@@ -44,11 +44,11 @@ def parquet_fields(filename, fields=None):
   Returns:
     Field definitions.
   '''
-  logging.info('Reading fields from {} ...'.format(filename))
+  logging.info(f'Reading fields from {filename} ...')
   all_field_tuples = _lib.parquet_file_get_fields(filename)  # pylint: disable=c-extension-no-member
   if not all_field_tuples:
     raise ValueError(
-        'No supported fields found in parquet file {}'.format(filename))
+        f'No supported fields found in parquet file {filename}')
   all_fields = {
       f[0]: {'dtype': f[1], 'ragged_rank': f[2]}
       for f in all_field_tuples}
@@ -62,10 +62,10 @@ def parquet_fields(filename, fields=None):
       continue
     if not isinstance(f, string):
       raise ValueError(
-          'Field {} is not a DataFrame.Field or a string'.format(f))
+          f'Field {f} is not a DataFrame.Field or a string')
     if f not in all_fields:
       raise ValueError(
-          'Field {} is not found in the parquet file {}'.format(f, filename))
+          f'Field {f} is not found in the parquet file {filename}')
     new_fields.append(DataFrame.Field(
         f,
         dtype=np.dtype(all_fields[f]['dtype']),
@@ -90,7 +90,7 @@ def parquet_filenames_and_fields(filenames, fields):
   elif isinstance(filenames, (tuple, list)):
     for f in filenames:
       if not isinstance(f, string):
-        raise ValueError('{} in `filenames` must be a string'.format(f))
+        raise ValueError(f'{f} in `filenames` must be a string')
     fields = parquet_fields(filenames[0], fields=fields)
   elif isinstance(filenames, dataset_ops.Dataset):
     if filenames.output_types != dtypes.string:
@@ -106,7 +106,7 @@ def parquet_filenames_and_fields(filenames, fields):
       raise ValueError('`fields` must be a list of `hb.data.DataFrame.Field`.')
     for f in fields:
       if not isinstance(f, DataFrame.Field):
-        raise ValueError('{} must be `hb.data.DataFrame.Field`.'.format(f))
+        raise ValueError(f'{f} must be `hb.data.DataFrame.Field`.')
   elif isinstance(filenames, ops.Tensor):
     if filenames.dtype != dtypes.string:
       raise TypeError(
@@ -117,12 +117,12 @@ def parquet_filenames_and_fields(filenames, fields):
       raise ValueError('`fields` must be a list of `hb.data.DataFrame.Field`.')
     for f in fields:
       if not isinstance(f, DataFrame.Field):
-        raise ValueError('{} must be `hb.data.DataFrame.Field`.'.format(f))
+        raise ValueError(f'{f} must be `hb.data.DataFrame.Field`.')
   else:
     raise ValueError(
-        '`filenames` {} must be a `tf.data.Dataset` of scalar `tf.string` '
-        'elements or can be converted to a `tf.Tensor` of '
-        '`tf.string`.'.format(filenames))
+        f'`filenames` {filenames} must be a `tf.data.Dataset` of scalar '
+        '`tf.string` elements or can be converted to a `tf.Tensor` of '
+        '`tf.string`.')
 
   if not isinstance(filenames, dataset_ops.Dataset):
     filenames = ops.convert_to_tensor(filenames, dtype=dtypes.string)
