@@ -25,7 +25,9 @@ jobs:
         cluster-id: "${{ secrets.ACK_CLUSTER_ID }}"
     - name: Upload
       run: |-
-        helm install ${JOBNAME} cibuild/ --set image=${IMAGE} --set tag=gpu-nightly && \
+        helm install ${JOBNAME} cibuild/ \
+        --set image=${IMAGE} \
+        --set gpus=2 && \
         cibuild/upload ${PODNAME} ../cibuild && \
         kubectl exec -it ${PODNAME} -- arrow/download.sh ${ARROW_CACHE_URL_PREFIX}
     - name: Build
