@@ -33,7 +33,7 @@ jobs:
     - name: Build
       run: |-
         kubectl exec -it ${PODNAME} -- sh -c 'make -j32 HYBRIDBACKEND_WHEEL_ALIAS=-cpu-legacy-nightly HYBRIDBACKEND_WHEEL_BUILD=.dev${{ github.run_id }}' && \
-        kubectl exec -it ${PODNAME} -- auditwheel repair --plat manylinux_2_24_x86_64 dist/*.whl -w /opt/dist/
+        kubectl exec -it ${PODNAME} -- cibuild/repair_dist manylinux_2_24_x86_64 -w /opt/dist/
     - name: Test
       run: |-
         kubectl exec -it ${PODNAME} -- make cpu_test
