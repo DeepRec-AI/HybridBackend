@@ -39,7 +39,7 @@ from hybridbackend.tensorflow.training import StepStatHook
 # pylint: disable=missing-docstring
 def describe():
   return {
-      'col%d' % c: parsing_ops.FixedLenFeature([1], dtypes.int64)
+      f'col{c}': parsing_ops.FixedLenFeature([1], dtypes.int64)
       for c in range(200)}
 
 

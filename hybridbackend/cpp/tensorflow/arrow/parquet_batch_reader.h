@@ -19,6 +19,7 @@ limitations under the License.
 #include <memory>
 #include <vector>
 
+#include <tensorflow/core/framework/op_kernel.h>
 #include "tensorflow/core/framework/types.h"
 
 namespace tensorflow {

@@ -25,19 +25,21 @@ jobs:
         cluster-id: "${{ secrets.ACK_CLUSTER_ID }}"
     - name: Upload
       run: |-
-        helm install ${JOBNAME} cibuild/ --set image=${IMAGE} --set tag=cpu-legacy && \
+        helm install ${JOBNAME} cibuild/ \
+        --set image=${IMAGE} \
+        --set gpus=0 && \
         cibuild/upload ${PODNAME} ../cibuild && \
         kubectl exec -it ${PODNAME} -- arrow/download.sh ${ARROW_CACHE_URL_PREFIX}
     - name: Build
       run: |-
         kubectl exec -it ${PODNAME} -- sh -c 'make -j32 HYBRIDBACKEND_WHEEL_ALIAS=-cpu-legacy-nightly HYBRIDBACKEND_WHEEL_BUILD=.dev${{ github.run_id }}' && \
-        kubectl exec -it ${PODNAME} -- cibuild/repair_dist
+        kubectl exec -it ${PODNAME} -- cibuild/repair_dist manylinux_2_24_x86_64 -w /opt/dist/
     - name: Test
       run: |-
         kubectl exec -it ${PODNAME} -- make cpu_test
     - name: Download
       run: |-
-        kubectl exec -it ${PODNAME} -- tar -cf dist.tar dist/ && \
+        kubectl exec -it ${PODNAME} -- tar -cf dist.tar -C /opt dist/ && \
         kubectl cp ${PODNAME}:dist.tar ./dist.tar && \
         tar -xf ./dist.tar
     - name: Publish

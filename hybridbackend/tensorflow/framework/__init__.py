@@ -13,33 +13,9 @@
 # limitations under the License.
 # =============================================================================
 
-r'''Rebatching related utilities.
+r'''Framework releated functions in hybridbackend.
 '''
 
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
-
-from hybridbackend.tensorflow.data.dataframe import DataFrame
-
-
-def input_fields(input_dataset, fields=None):
-  r'''Fetch and validate fields from input dataset.
-  '''
-  if fields is None:
-    ds = input_dataset
-    while ds:
-      if hasattr(ds, 'fields'):
-        fields = ds.fields
-        break
-      if not hasattr(ds, '_input_dataset'):
-        break
-      ds = ds._input_dataset  # pylint: disable=protected-access
-  if not fields:
-    raise ValueError('`fields` must be specified')
-  if not isinstance(fields, (tuple, list)):
-    raise ValueError('`fields` must be a list of `hb.data.DataFrame.Field`.')
-  for f in fields:
-    if not isinstance(f, DataFrame.Field):
-      raise ValueError(f'{f} must be `hb.data.DataFrame.Field`.')
-  return fields

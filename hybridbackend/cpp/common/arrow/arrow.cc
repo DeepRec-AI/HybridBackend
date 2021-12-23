@@ -13,7 +13,10 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include "hybridbackend/cpp/common/arrow/arrow.h"
+
 #include <unistd.h>
+
 #include <memory>
 #include <numeric>
 #include <sstream>
@@ -23,8 +26,6 @@ limitations under the License.
 #if HYBRIDBACKEND_ARROW
 #include <arrow/array.h>
 #include <arrow/util/thread_pool.h>
-
-#include "hybridbackend/cpp/common/arrow/arrow.h"
 
 namespace hybridbackend {
 
@@ -92,7 +93,7 @@ int SetArrowCpuThreadPoolCapacityFromEnv() {
   return ::arrow::Status::OK();
 }
 
-}  // namespace anonymous
+}  // namespace
 
 int UpdateArrowCpuThreadPoolCapacityFromEnv() {
   static int arrow_threads = SetArrowCpuThreadPoolCapacityFromEnv();

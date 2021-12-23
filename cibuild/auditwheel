@@ -1,6 +1,0 @@
-POLICY_JSON=$(find / -type f -name manylinux-policy.json)
-
-sed -i "s/libresolv.so.2\"/libresolv.so.2\", \"libtensorflow_framework.so.1\", \"libhybridbackend.so\", \"libcrypto-3cc778a5.so.1.1\", \"libssl-6db5df62.so.1.1\"/g" $POLICY_JSON
-
-auditwheel $@
-

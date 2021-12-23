@@ -80,7 +80,7 @@ class RebatchDatasetV2(dataset_ops.DatasetV2):
             {f.name: f.ragged_indices for f in self._fields}),
         drop_remainder=self._drop_remainder,
         num_parallel_scans=self._num_parallel_scans)
-    super(RebatchDatasetV2, self).__init__(self._impl)
+    super().__init__(self._impl)
 
   @property
   def fields(self):

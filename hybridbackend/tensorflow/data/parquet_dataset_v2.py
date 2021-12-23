@@ -136,7 +136,7 @@ class _ParquetDatasetV2(dataset_ops.DatasetSource):  # pylint: disable=abstract-
         partition_count=self._partition_count,
         partition_index=self._partition_index,
         drop_remainder=self._drop_remainder)
-    super(_ParquetDatasetV2, self).__init__(variant_tensor)
+    super().__init__(variant_tensor)
 
   @property
   def element_spec(self):
@@ -191,7 +191,7 @@ class ParquetDatasetV2(dataset_ops.DatasetV2):  # pylint: disable=abstract-metho
         _create_dataset, filenames,
         num_parallel_reads=num_parallel_reads,
         num_sequential_reads=num_sequential_reads)
-    super(ParquetDatasetV2, self).__init__(self._impl._variant_tensor)  # pylint: disable=protected-access
+    super().__init__(self._impl._variant_tensor)  # pylint: disable=protected-access
 
   @property
   def fields(self):

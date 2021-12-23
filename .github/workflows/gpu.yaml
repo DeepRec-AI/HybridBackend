@@ -1,9 +1,9 @@
-name: nightly deploy on cpu
+name: release deploy on gpu
 
 on: workflow_dispatch
 
 env:
-  IMAGE: registry.cn-shanghai.aliyuncs.com/pai-dlc/hybridbackend:developer-tensorflow1.15-manylinux_2_24-py3.6
+  IMAGE: registry.cn-shanghai.aliyuncs.com/pai-dlc/hybridbackend:developer-tensorflow1.15-manylinux_2_27-py3.6-cu114
   JOBNAME: hbci-${{ github.run_id }}
   PODNAME: hbci-${{ github.run_id }}-chief-0
   ARROW_CACHE_URL_PREFIX: ${{ secrets.ARROW_CACHE_URL_PREFIX }}
@@ -27,19 +27,19 @@ jobs:
       run: |-
         helm install ${JOBNAME} cibuild/ \
         --set image=${IMAGE} \
-        --set gpus=0 && \
+        --set gpus=2 && \
         cibuild/upload ${PODNAME} ../cibuild && \
         kubectl exec -it ${PODNAME} -- arrow/download.sh ${ARROW_CACHE_URL_PREFIX}
     - name: Build
       run: |-
-        kubectl exec -it ${PODNAME} -- sh -c 'make -j32 HYBRIDBACKEND_WHEEL_ALIAS=-cpu-nightly HYBRIDBACKEND_WHEEL_BUILD=.dev${{ github.run_id }}' && \
-        kubectl exec -it ${PODNAME} -- cibuild/repair_dist manylinux_2_24_x86_64 -w /opt/dist/
+        kubectl exec -it ${PODNAME} -- sh -c 'make -j32 HYBRIDBACKEND_WHEEL_REQUIRES="tensorflow>=1.15,<2.0"' && \
+        kubectl exec -it ${PODNAME} -- cibuild/repair_dist manylinux_2_27_x86_64 -w /opt/dist/
     - name: Test
       run: |-
-        kubectl exec -it ${PODNAME} -- make lint cpu_test
+        kubectl exec -it ${PODNAME} -- make lint test
     - name: Download
       run: |-
-        kubectl exec -it ${PODNAME} -- tar -cf dist.tar -C /opt dist/ && \
+        kubectl exec -it ${PODNAME} -- tar -cf dist.tar -C /opt dist/  && \
         kubectl cp ${PODNAME}:dist.tar ./dist.tar && \
         tar -xf ./dist.tar
     - name: Publish

@@ -12,29 +12,21 @@ spec:
         spec:
           hostIPC: true
           hostPID: true
-          volumes:
-          - name: ccache-volume
-            hostPath:
-              path: /home/ccache/{{ .Values.tag }}
-              type: DirectoryOrCreate
           containers:
           - name: tensorflow
             image: {{ .Values.image }}
             imagePullPolicy: Always
             resources:
               requests:
-                nvidia.com/gpu: {{ $gpuCount := len .Values.gpu.ports }}{{ $gpuCount }}
+                nvidia.com/gpu: {{ .Values.gpus }}
               limits:
-                nvidia.com/gpu: {{ $gpuCount := len .Values.gpu.ports }}{{ $gpuCount }}
+                nvidia.com/gpu: {{ .Values.gpus }}
             securityContext:
               capabilities:
                 add:
                   {{- range .Values.caps }}
                   - {{ . }}
                   {{- end }}
-            volumeMounts:
-            - mountPath: /workspace/build/ccache
-              name: ccache-volume
             args:
             - bash
             - -c
@@ -44,17 +36,15 @@ spec:
             - name: PYTHONPATH
               value: "$PYTHONPATH:/workspace"
             - name: MALLOC_CONF
-              value: {{ .Values.io.mallocConf }}
+              value: "background_thread:true,metadata_thp:auto"
             - name: ARROW_NUM_THREADS
-              value: {{ .Values.io.numThreads }}
+              value: "8"
             - name: S3_ADDRESSING_STYLE
-              value: {{ .Values.io.s3AddressingStyle }}
-            - name: HYBRIDBACKEND_GPUS
-              value: {{ .Values.gpu.expr }}
+              value: "virtual"
             ports:
             - containerPort: {{ .Values.port }}
               name: tfjob-port
-            {{- range $idx, $port := .Values.gpu.ports }}
-            - containerPort: {{ $port }}
-              name: {{ $portName := (printf "gpu-port-%d" $idx) }}{{ $portName }}
+            {{- range untilStep (int .Values.port) (int (add .Values.port .Values.gpus)) 1}}
+            - containerPort: {{ . }}
+              name: {{ $portName := (printf "gpu-port-%d" .) }}{{ $portName }}
             {{- end }}

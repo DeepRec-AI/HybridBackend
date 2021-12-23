@@ -22,8 +22,7 @@ limitations under the License.
 #if HYBRIDBACKEND_ARROW
 #include <arrow/array.h>
 #include <arrow/util/thread_pool.h>
-
-#include "tensorflow/core/framework/allocation_description.pb.h"
+#include <tensorflow/core/framework/allocation_description.pb.h>
 
 #include "hybridbackend/cpp/tensorflow/arrow/arrow.h"
 #include "hybridbackend/cpp/tensorflow/eigen.h"
@@ -195,7 +194,7 @@ class RaggedTensorBuilder : public ::arrow::ArrayVisitor {
   std::deque<Tensor> ragged_tensor_;
 };
 
-}  // namespace anonymous
+}  // namespace
 
 #define CASE_ARROW_ENUM_SET_DTYPE(PTR, ENUM)                       \
   case ENUM: {                                                     \

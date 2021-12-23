@@ -13,16 +13,17 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include "hybridbackend/cpp/tensorflow/arrow/parquet_batch_reader.h"
+
+#include <absl/strings/match.h>
+
 #include <memory>
 #include <numeric>
 #include <string>
 #include <vector>
 
-#include "absl/strings/match.h"
-
 #include "hybridbackend/cpp/common/arrow/arrow.h"
 #include "hybridbackend/cpp/tensorflow/arrow/arrow.h"
-#include "hybridbackend/cpp/tensorflow/arrow/parquet_batch_reader.h"
 
 namespace tensorflow {
 namespace hybridbackend {

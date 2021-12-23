@@ -14,30 +14,29 @@
 # limitations under the License.
 # =============================================================================
 
-nvidia-smi 1>/dev/null 2>/dev/null
-USE_GPU=$?
-
-set -eo pipefail
-
-if [[ -z "$DOCKERRUN" ]]; then
-if [[ $USE_GPU -gt 0 ]]; then
-  DOCKERRUN="docker run"
-else
-if ! command -v nvidia-docker &> /dev/null; then
-  DOCKERRUN="docker run --runtime=nvidia -e NVIDIA_VISIBLE_DEVICES=all"
-else
-  DOCKERRUN="nvidia-docker run"
-fi
-fi
-fi
-
 if [[ -z "$DOCKER_RUN_ARGS" ]]; then
   DOCKER_RUN_ARGS=-it
 fi
 
 if [[ -z "$DOCKER_RUN_IMAGE" ]]; then
-  DOCKER_RUN_IMAGE=registry.cn-shanghai.aliyuncs.com/pai-dlc/hybridbackend:developer-tensorflow1.15-manylinux_2_24-py3.6
+  DOCKER_RUN_IMAGE=registry.cn-shanghai.aliyuncs.com/pai-dlc/hybridbackend:developer-tensorflow1.15-manylinux_2_27-py3.6-cu114
 fi
+
+nvidia-smi 1>/dev/null 2>/dev/null
+USE_GPU=$?
+
+if [[ $USE_GPU -gt 0 ]]; then
+  DOCKERRUN="docker run"
+else
+  DOCKERRUN="docker run --runtime=nvidia -e NVIDIA_VISIBLE_DEVICES=all"
+  $DOCKERRUN $DOCKER_RUN_IMAGE echo 1>/dev/null 2>/dev/null
+  DOCKER_USE_NVRT=$?
+  if [[ $DOCKER_USE_NVRT -gt 0 ]]; then
+    DOCKERRUN="nvidia-docker run"
+  fi
+fi
+
+set -eo pipefail
 
 DIR=$(pwd)
 USRPSWD="$(id -u):$(id -g)"
