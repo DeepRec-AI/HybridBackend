@@ -38,7 +38,7 @@ spec:
             - name: MALLOC_CONF
               value: "background_thread:true,metadata_thp:auto"
             - name: ARROW_NUM_THREADS
-              value: 8
+              value: "8"
             - name: S3_ADDRESSING_STYLE
               value: "virtual"
             ports:
