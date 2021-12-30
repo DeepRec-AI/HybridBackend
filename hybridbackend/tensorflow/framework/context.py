@@ -149,6 +149,8 @@ class Context(object): # pylint: disable=useless-object-inheritance
       self._num_gpus = 1
     self._input_pipeline_id = 0
     self._update()
+    self._params = {}
+    self._hooks = []
 
   def __str__(self):
     return f'Context {self._task_type}:{self._task_id} ' + \
@@ -280,7 +282,7 @@ class Context(object): # pylint: disable=useless-object-inheritance
       task_id: (Optional.) index of current task. 0 by default.
       cluster_spec: (Optional.) ClusterSpec object.
     '''
-    tf_config = get_tf_config()
+    tf_config = self.get_tf_config()
     if tf_config:
       self._task_type = tf_config.task_type
       self._task_id = tf_config.task_id
@@ -324,7 +326,7 @@ class Context(object): # pylint: disable=useless-object-inheritance
     else:
       self._local_devices = [
           device_util.canonicalize(
-              f'/device:GPU:{f}', default=self._default_device) \
+              f'/device:GPU:{d}', default=self._default_device) \
               for d in xrange(self._num_gpus)]
     if not self._cluster_spec:
       self._devices = list(self._local_devices)
@@ -375,3 +377,40 @@ class Context(object): # pylint: disable=useless-object-inheritance
           device_util.resolve(
               f'/job:worker/task:{t}/device:GPU:{g}') \
               for t in worker_indices for g in xrange(self._num_gpus)]
+
+  def param(self, key, default=None, env=None, parser=None):
+    r'''Get param for key with default value.
+    '''
+    if env is None:
+      return self._params.get(key, default)
+    if parser is None:
+      parser = lambda s: s
+    try:
+      default_value = parser(os.getenv(env, default))
+    except:  # pylint: disable=bare-except
+      default_value = default
+    return self._params.get(key, default_value)
+
+  def update_params(self, **kwargs):
+    r'''Update parameters.
+    '''
+    for k, v in kwargs.items():
+      self._params[k] = v
+
+  def has_param(self, key):
+    r'''Has specific param in the conetxt.
+    '''
+    return key in self._params
+
+  def add_hook(self, hook):
+    r'''Add training hook.
+    '''
+    self._hooks.append(hook)
+
+  @property
+  def hooks(self):
+    r'''Get all training hooks.
+    '''
+    return self._hooks
+
+context = Context.get()

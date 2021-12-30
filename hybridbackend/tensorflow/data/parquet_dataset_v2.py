@@ -22,6 +22,8 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+from six.moves import xrange # pylint: disable=redefined-builtin
+
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.data.ops import readers
 from tensorflow.python.framework import dtypes
@@ -52,7 +54,7 @@ class DataFrameValueSpec(type_spec.BatchableTypeSpec):
     self._specs = [tensor_spec.TensorSpec(field.shape, dtype=field.dtype)]
     self._specs += [
         tensor_spec.TensorSpec(field.shape, dtype=dtypes.int32)
-        for _ in range(field.ragged_rank)]
+        for _ in xrange(field.ragged_rank)]
 
   def _serialize(self):
     return (self._field.dtype, self._field.ragged_rank)
