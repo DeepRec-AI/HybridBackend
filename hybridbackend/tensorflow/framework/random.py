@@ -13,17 +13,25 @@
 # limitations under the License.
 # =============================================================================
 
-r'''HybridBackend for TensorFlow.
+r'''Utilities for servers using hybrid parallelsim.
 '''
 
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from . import data
-from . import training as train
+import numpy as np
+import os
+import random as rn
 
-from hybridbackend.libhybridbackend import buildinfo
-from hybridbackend.tensorflow.framework.context import Context
-from hybridbackend.tensorflow.framework.context import context
-from hybridbackend.tensorflow.framework.random import enable_deterministic
+from tensorflow.python.framework import random_seed
+
+
+def enable_deterministic(seed):
+  r'''Enable deterministic operations.
+  '''
+  rn.seed(seed)
+  np.random.seed(seed)
+  random_seed.set_random_seed(seed)
+  os.environ['PYTHONHASHSEED'] = str(seed)
+  os.environ['TF_CUDNN_DETERMINISTIC'] = '1'

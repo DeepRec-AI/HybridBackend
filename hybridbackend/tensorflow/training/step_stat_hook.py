@@ -23,15 +23,17 @@ from __future__ import print_function
 import numpy as np
 import time
 
+from tensorflow.python.framework import ops
 from tensorflow.python.training import session_run_hook
 from tensorflow.python.platform import tf_logging as logging
 
 class StepStatHook(session_run_hook.SessionRunHook):
   r'''Hook that counts performance statistics for steps.
   '''
-  def __init__(self, every_n_iter=None, count_op=None):
+  def __init__(self, every_n_iter=None, count=None, unit='sample'):
     self._every_n_iter = every_n_iter
-    self._count_op = count_op
+    self._count = count
+    self._unit = unit
 
   @property
   def should_print_logs(self):
@@ -52,8 +54,8 @@ class StepStatHook(session_run_hook.SessionRunHook):
     '''
     _ = run_context
     self._prev_ts = time.time()
-    if self._count_op is not None:
-      return session_run_hook.SessionRunArgs(self._count_op)
+    if self._count is not None and isinstance(self._count, ops.Operation):
+      return session_run_hook.SessionRunArgs(self._count)
     return None
 
   def after_run(self, run_context, run_values):
@@ -61,8 +63,11 @@ class StepStatHook(session_run_hook.SessionRunHook):
     '''
     self._durations.append(time.time() - self._prev_ts)
     _ = run_context
-    if self._count_op is not None:
-      self._counts.append(run_values.results)
+    if self._count is not None:
+      if isinstance(self._count, ops.Operation):
+        self._counts.append(run_values.results)
+      else:
+        self._counts.append(self._count)
       if self.should_print_logs:
         durs = np.array(self._durations)
         cnts = np.array(self._counts)
@@ -72,7 +77,7 @@ class StepStatHook(session_run_hook.SessionRunHook):
         fps = 1. * np.sum(cnts) / np.sum(durs)
         logging.info(
             f'secs/step: {p50:.5f} ({100.*p10/p90:.2f}%), ' + \
-            f'samples/sec: {fps:.2f}')
+            f'{self._unit}s/sec: {fps:.2f}')
         self._durations = []
         self._counts = []
     else:
@@ -89,7 +94,7 @@ class StepStatHook(session_run_hook.SessionRunHook):
     r'''Called at the end of session.
     '''
     _ = session
-    if self._count_op is not None:
+    if self._count is not None:
       durs = np.array(self._durations)
       cnts = np.array(self._counts)
       if self._durations:
@@ -99,7 +104,7 @@ class StepStatHook(session_run_hook.SessionRunHook):
         fps = 1. * np.sum(cnts) / np.sum(durs)
         logging.info(
             f'secs/step: {p50:.5f} ({100.*p10/p90:.2f}%), ' + \
-            f'samples/sec: {fps:.2f}')
+            f'{self._unit}s/sec: {fps:.2f}')
       self._durations = []
       self._counts = []
     else:

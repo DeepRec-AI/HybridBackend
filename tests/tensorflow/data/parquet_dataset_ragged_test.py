@@ -23,13 +23,10 @@ from __future__ import print_function
 import numpy as np
 import pandas as pd
 import os
+from six.moves import xrange # pylint: disable=redefined-builtin
 import tempfile
-
-from tensorflow.python.data.ops import iterator_ops
-from tensorflow.python.framework import dtypes
-from tensorflow.python.framework import ops
-from tensorflow.python.ops import array_ops
-from tensorflow.python.platform import test
+import tensorflow as tf
+import unittest
 
 from hybridbackend.tensorflow.data import DataFrame
 from hybridbackend.tensorflow.data import make_one_shot_iterator
@@ -38,7 +35,7 @@ from hybridbackend.tensorflow.data import to_sparse
 
 
 # pylint: disable=missing-docstring
-class ParquetDatasetRaggedTest(test.TestCase):
+class ParquetDatasetRaggedTest(unittest.TestCase):
   def setUp(self):  # pylint: disable=invalid-name
     self._workspace = tempfile.mkdtemp()
     self._filename = os.path.join(self._workspace, 'ragged_test.parquet')
@@ -51,9 +48,9 @@ class ParquetDatasetRaggedTest(test.TestCase):
                         0, 100,
                         size=(np.random.randint(1, 5),),
                         dtype=np.int64)
-                    for _ in range(num_cols)]
-                for _ in range(100)]),
-        columns=[f'col{c}' for c in range(num_cols)])
+                    for _ in xrange(num_cols)]
+                for _ in xrange(100)]),
+        columns=[f'col{c}' for c in xrange(num_cols)])
     self._df.to_parquet(self._filename)
 
   def tearDown(self):  # pylint: disable=invalid-name
@@ -61,7 +58,7 @@ class ParquetDatasetRaggedTest(test.TestCase):
 
   def test_read(self):
     batch_size = 32
-    with ops.Graph().as_default() as graph:
+    with tf.Graph().as_default() as graph:
       ds = ParquetDataset(
           [self._filename],
           batch_size=batch_size,
@@ -70,8 +67,8 @@ class ParquetDatasetRaggedTest(test.TestCase):
       batch = make_one_shot_iterator(ds).get_next()
 
     c = self._df['col0']
-    with self.test_session(use_gpu=False, graph=graph) as sess:
-      for i in range(3):
+    with tf.Session(graph=graph) as sess:
+      for i in xrange(3):
         result = sess.run(batch)
         start_row = i * batch_size
         end_row = (i+1) * batch_size
@@ -85,11 +82,13 @@ class ParquetDatasetRaggedTest(test.TestCase):
             np.array(expected_values),
             tuple([np.array(expected_splits, dtype=np.int32)]))
         actual = result['col0']
-        self.assertAllClose(actual, expected)
+        np.testing.assert_allclose(actual.values, expected.values)
+        np.testing.assert_equal(
+            actual.nested_row_splits, expected.nested_row_splits)
 
   def test_to_sparse(self):
     batch_size = 32
-    with ops.Graph().as_default() as graph:
+    with tf.Graph().as_default() as graph:
       ds = ParquetDataset(
           [self._filename],
           batch_size=batch_size,
@@ -99,8 +98,8 @@ class ParquetDatasetRaggedTest(test.TestCase):
       batch = DataFrame.to_sparse(batch)
 
     c = self._df['col0']
-    with self.test_session(use_gpu=False, graph=graph) as sess:
-      for i in range(3):
+    with tf.Session(graph=graph) as sess:
+      for i in xrange(3):
         result = sess.run(batch)
         start_row = i * batch_size
         end_row = (i+1) * batch_size
@@ -114,14 +113,14 @@ class ParquetDatasetRaggedTest(test.TestCase):
             np.array(expected_values),
             tuple([np.array(expected_splits, dtype=np.int32)]))
         actual = result['col0']
-        self.assertAllClose(actual.values, expected.values)
-        self.assertAllClose(
+        np.testing.assert_allclose(actual.values, expected.values)
+        np.testing.assert_equal(
             len(set(list(zip(*actual.indices))[0])) + 1,
             len(expected.nested_row_splits[0]))
 
   def test_map_to_sparse(self):
     batch_size = 32
-    with ops.Graph().as_default() as graph:
+    with tf.Graph().as_default() as graph:
       ds = ParquetDataset(
           [self._filename],
           batch_size=batch_size,
@@ -131,8 +130,8 @@ class ParquetDatasetRaggedTest(test.TestCase):
       batch = make_one_shot_iterator(ds).get_next()
 
     c = self._df['col0']
-    with self.test_session(use_gpu=False, graph=graph) as sess:
-      for i in range(3):
+    with tf.Session(graph=graph) as sess:
+      for i in xrange(3):
         result = sess.run(batch)
         start_row = i * batch_size
         end_row = (i+1) * batch_size
@@ -146,14 +145,14 @@ class ParquetDatasetRaggedTest(test.TestCase):
             np.array(expected_values),
             tuple([np.array(expected_splits, dtype=np.int32)]))
         actual = result['col0']
-        self.assertAllClose(actual.values, expected.values)
-        self.assertAllClose(
+        np.testing.assert_allclose(actual.values, expected.values)
+        np.testing.assert_equal(
             len(set(list(zip(*actual.indices))[0])) + 1,
             len(expected.nested_row_splits[0]))
 
   def test_apply_to_sparse(self):
     batch_size = 32
-    with ops.Graph().as_default() as graph:
+    with tf.Graph().as_default() as graph:
       ds = ParquetDataset(
           [self._filename],
           batch_size=batch_size,
@@ -163,8 +162,8 @@ class ParquetDatasetRaggedTest(test.TestCase):
       batch = make_one_shot_iterator(ds).get_next()
 
     c = self._df['col0']
-    with self.test_session(use_gpu=False, graph=graph) as sess:
-      for i in range(3):
+    with tf.Session(graph=graph) as sess:
+      for i in xrange(3):
         result = sess.run(batch)
         start_row = i * batch_size
         end_row = (i+1) * batch_size
@@ -178,14 +177,14 @@ class ParquetDatasetRaggedTest(test.TestCase):
             np.array(expected_values),
             tuple([np.array(expected_splits, dtype=np.int32)]))
         actual = result['col0']
-        self.assertAllEqual(actual.values, expected.values)
-        self.assertAllEqual(
+        np.testing.assert_equal(actual.values, expected.values)
+        np.testing.assert_equal(
             len(set(list(zip(*actual.indices))[0])) + 1,
             len(expected.nested_row_splits[0]))
 
   def test_feedable_iterator(self):
     batch_size = 32
-    with ops.Graph().as_default() as graph:
+    with tf.Graph().as_default() as graph:
       ds = ParquetDataset(
           [self._filename],
           batch_size=batch_size,
@@ -194,8 +193,8 @@ class ParquetDatasetRaggedTest(test.TestCase):
       ds = ds.prefetch(4)
       it = make_one_shot_iterator(ds)
       handle_tensor = it.string_handle()
-      feedable_handle = array_ops.placeholder(dtypes.string, shape=[])
-      feedable_it = iterator_ops.Iterator.from_string_handle(
+      feedable_handle = tf.placeholder(tf.string, shape=[])
+      feedable_it = tf.data.Iterator.from_string_handle(
           feedable_handle,
           it.output_types,
           it.output_shapes,
@@ -203,9 +202,9 @@ class ParquetDatasetRaggedTest(test.TestCase):
       batch = feedable_it.get_next()
 
     c = self._df['col0']
-    with self.test_session(use_gpu=False, graph=graph) as sess:
+    with tf.Session(graph=graph) as sess:
       handle_val = sess.run(handle_tensor)
-      for i in range(3):
+      for i in xrange(3):
         result = sess.run(batch, feed_dict={feedable_handle: handle_val})
         start_row = i * batch_size
         end_row = (i+1) * batch_size
@@ -219,14 +218,14 @@ class ParquetDatasetRaggedTest(test.TestCase):
             np.array(expected_values),
             tuple([np.array(expected_splits, dtype=np.int32)]))
         actual = result['col0']
-        self.assertAllEqual(actual.values, expected.values)
-        self.assertAllEqual(
+        np.testing.assert_equal(actual.values, expected.values)
+        np.testing.assert_equal(
             len(set(list(zip(*actual.indices))[0])) + 1,
             len(expected.nested_row_splits[0]))
 
   def test_read_and_map(self):
     batch_size = 32
-    with ops.Graph().as_default() as graph:
+    with tf.Graph().as_default() as graph:
       ds = ParquetDataset(
           [self._filename],
           batch_size=batch_size,
@@ -238,8 +237,8 @@ class ParquetDatasetRaggedTest(test.TestCase):
       batch = make_one_shot_iterator(ds).get_next()
 
     c = self._df['col0']
-    with self.test_session(use_gpu=False, graph=graph) as sess:
-      for i in range(3):
+    with tf.Session(graph=graph) as sess:
+      for i in xrange(3):
         result = sess.run(batch)
         start_row = i * batch_size
         end_row = (i+1) * batch_size
@@ -253,9 +252,11 @@ class ParquetDatasetRaggedTest(test.TestCase):
             np.array(expected_values),
             tuple([np.array(expected_splits, dtype=np.int32)]))
         actual = result[0]
-        self.assertAllClose(actual, expected)
+        np.testing.assert_allclose(actual.values, expected.values)
+        np.testing.assert_equal(
+            actual.nested_row_splits, expected.nested_row_splits)
 
 
 if __name__ == '__main__':
   os.environ['CUDA_VISIBLE_DEVICES'] = ''
-  test.main()
+  unittest.main()

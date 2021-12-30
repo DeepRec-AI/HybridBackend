@@ -23,18 +23,15 @@ from __future__ import print_function
 import numpy as np
 import pandas as pd
 import os
+from six.moves import xrange # pylint: disable=redefined-builtin
 import tempfile
+import tensorflow as tf
+import unittest
 
-from tensorflow.python.data.ops.dataset_ops import Dataset
 try:
   from tensorflow.python.data.ops.dataset_ops import AUTOTUNE
 except ImportError:
   from tensorflow.python.data.experimental.ops.optimization import AUTOTUNE
-from tensorflow.python.framework import dtypes
-from tensorflow.python.framework import errors
-from tensorflow.python.framework import ops
-from tensorflow.python.framework import tensor_shape
-from tensorflow.python.platform import test
 
 from hybridbackend.tensorflow.data import DataFrame
 from hybridbackend.tensorflow.data import make_one_shot_iterator
@@ -43,7 +40,7 @@ from hybridbackend.tensorflow.data import read_parquet
 
 
 # pylint: disable=missing-docstring
-class ParquetDatasetTest(test.TestCase):
+class ParquetDatasetTest(unittest.TestCase):
   def setUp(self):  # pylint: disable=invalid-name
     self._workspace = tempfile.mkdtemp()
     self._filename = os.path.join(self._workspace, 'test.parquet')
@@ -57,43 +54,43 @@ class ParquetDatasetTest(test.TestCase):
 
   def test_read(self):
     batch_size = 32
-    with ops.Graph().as_default() as graph:
+    with tf.Graph().as_default() as graph:
       ds = ParquetDataset(
           self._filename,
           batch_size=batch_size,
-          fields=[DataFrame.Field('A', dtypes.int64),
-                  DataFrame.Field('C', dtypes.int64)])
+          fields=[DataFrame.Field('A', tf.int64),
+                  DataFrame.Field('C', tf.int64)])
       ds = ds.prefetch(4)
       batch = make_one_shot_iterator(ds).get_next()
 
     a = self._df['A']
     c = self._df['C']
-    with self.test_session(use_gpu=False, graph=graph) as sess:
-      for i in range(3):
+    with tf.Session(graph=graph) as sess:
+      for i in xrange(3):
         result = sess.run(batch)
         start_row = i * batch_size
         end_row = (i+1) * batch_size
-        self.assertAllEqual(result['A'], a[start_row:end_row].to_numpy())
-        self.assertAllEqual(result['C'], c[start_row:end_row].to_numpy())
+        np.testing.assert_equal(result['A'], a[start_row:end_row].to_numpy())
+        np.testing.assert_equal(result['C'], c[start_row:end_row].to_numpy())
 
   def test_schema_auto_detection_read(self):
     batch_size = 32
-    with ops.Graph().as_default() as graph:
+    with tf.Graph().as_default() as graph:
       ds = ParquetDataset([self._filename], batch_size=batch_size)
       ds = ds.prefetch(4)
       batch = make_one_shot_iterator(ds).get_next()
 
     c = self._df['C']
-    with self.test_session(use_gpu=False, graph=graph) as sess:
-      for i in range(3):
+    with tf.Session(graph=graph) as sess:
+      for i in xrange(3):
         result = sess.run(batch)
         start_row = i * batch_size
         end_row = (i+1) * batch_size
-        self.assertAllEqual(result['C'], c[start_row:end_row].to_numpy())
+        np.testing.assert_equal(result['C'], c[start_row:end_row].to_numpy())
 
   def test_dtype_auto_detection_read(self):
     batch_size = 32
-    with ops.Graph().as_default() as graph:
+    with tf.Graph().as_default() as graph:
       ds = ParquetDataset(
           [self._filename],
           batch_size=batch_size,
@@ -102,88 +99,88 @@ class ParquetDatasetTest(test.TestCase):
       batch = make_one_shot_iterator(ds).get_next()
 
     c = self._df['C']
-    with self.test_session(use_gpu=False, graph=graph) as sess:
-      for i in range(3):
+    with tf.Session(graph=graph) as sess:
+      for i in xrange(3):
         result = sess.run(batch)
         start_row = i * batch_size
         end_row = (i+1) * batch_size
-        self.assertAllEqual(result['C'], c[start_row:end_row].to_numpy())
+        np.testing.assert_equal(result['C'], c[start_row:end_row].to_numpy())
 
   def test_read_from_generator(self):
     num_epochs = 2
     batch_size = 100
-    with ops.Graph().as_default() as graph:
+    with tf.Graph().as_default() as graph:
       def gen_filenames():
-        for i in range(num_epochs + 1):
+        for i in xrange(num_epochs + 1):
           if i == num_epochs:
             return  # raise StopIteration
           yield self._filename
-      filenames = Dataset.from_generator(
-          gen_filenames, dtypes.string, tensor_shape.TensorShape([]))
+      filenames = tf.data.Dataset.from_generator(
+          gen_filenames, tf.string, tf.TensorShape([]))
       fields = [
-          DataFrame.Field('A', dtypes.int64),
-          DataFrame.Field('C', dtypes.int64)]
+          DataFrame.Field('A', tf.int64),
+          DataFrame.Field('C', tf.int64)]
       ds = filenames.apply(read_parquet(batch_size, fields=fields))
       ds = ds.prefetch(4)
       batch = make_one_shot_iterator(ds).get_next()
 
-    with self.test_session(use_gpu=False, graph=graph) as sess:
-      for _ in range(len(self._df) * num_epochs // batch_size):
+    with tf.Session(graph=graph) as sess:
+      for _ in xrange(len(self._df) * num_epochs // batch_size):
         sess.run(batch)
-      with self.assertRaises(errors.OutOfRangeError):
+      with self.assertRaises(tf.errors.OutOfRangeError):
         sess.run(batch)
 
   def test_read_from_generator_parallel(self):
     num_epochs = 2
     batch_size = 100
-    with ops.Graph().as_default() as graph:
+    with tf.Graph().as_default() as graph:
       def gen_filenames():
-        for i in range(num_epochs + 1):
+        for i in xrange(num_epochs + 1):
           if i == num_epochs:
             return  # raise StopIteration
           yield self._filename
-      filenames = Dataset.from_generator(
-          gen_filenames, dtypes.string, tensor_shape.TensorShape([]))
+      filenames = tf.data.Dataset.from_generator(
+          gen_filenames, tf.string, tf.TensorShape([]))
       fields = [
-          DataFrame.Field('A', dtypes.int64),
-          DataFrame.Field('C', dtypes.int64)]
+          DataFrame.Field('A', tf.int64),
+          DataFrame.Field('C', tf.int64)]
       ds = filenames.apply(
           read_parquet(batch_size, fields=fields, num_parallel_reads=3))
       ds = ds.prefetch(4)
       batch = make_one_shot_iterator(ds).get_next()
 
-    with self.test_session(use_gpu=False, graph=graph) as sess:
-      for _ in range(len(self._df) * num_epochs // batch_size):
+    with tf.Session(graph=graph) as sess:
+      for _ in xrange(len(self._df) * num_epochs // batch_size):
         sess.run(batch)
-      with self.assertRaises(errors.OutOfRangeError):
+      with self.assertRaises(tf.errors.OutOfRangeError):
         sess.run(batch)
 
   def test_read_from_generator_parallel_auto(self):
     num_epochs = 2
     batch_size = 100
-    with ops.Graph().as_default() as graph:
+    with tf.Graph().as_default() as graph:
       def gen_filenames():
-        for i in range(num_epochs + 1):
+        for i in xrange(num_epochs + 1):
           if i == num_epochs:
             return  # raise StopIteration
           yield self._filename
-      filenames = Dataset.from_generator(
-          gen_filenames, dtypes.string, tensor_shape.TensorShape([]))
+      filenames = tf.data.Dataset.from_generator(
+          gen_filenames, tf.string, tf.TensorShape([]))
       fields = [
-          DataFrame.Field('A', dtypes.int64),
-          DataFrame.Field('C', dtypes.int64)]
+          DataFrame.Field('A', tf.int64),
+          DataFrame.Field('C', tf.int64)]
       ds = filenames.apply(
           read_parquet(batch_size, fields=fields, num_parallel_reads=AUTOTUNE))
       ds = ds.prefetch(4)
       batch = make_one_shot_iterator(ds).get_next()
 
-    with self.test_session(use_gpu=False, graph=graph) as sess:
-      for _ in range(len(self._df) * num_epochs // batch_size):
+    with tf.Session(graph=graph) as sess:
+      for _ in xrange(len(self._df) * num_epochs // batch_size):
         sess.run(batch)
-      with self.assertRaises(errors.OutOfRangeError):
+      with self.assertRaises(tf.errors.OutOfRangeError):
         sess.run(batch)
 
 
 if __name__ == '__main__':
   os.environ['CUDA_VISIBLE_DEVICES'] = ''
-  test.main()
+  unittest.main()

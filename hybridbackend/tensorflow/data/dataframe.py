@@ -25,6 +25,7 @@ from __future__ import print_function
 
 import collections
 import numpy as np
+from six.moves import xrange # pylint: disable=redefined-builtin
 
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
@@ -97,7 +98,7 @@ class DataFrame(object):  # pylint: disable=useless-object-inheritance
         return func(0)
       return DataFrame.Value(
           func(0),
-          tuple(func(i+1) for i in range(self._ragged_rank)))
+          tuple(func(i+1) for i in xrange(self._ragged_rank)))
 
   # pylint: disable=inherit-non-class
   class Value(
