@@ -27,27 +27,13 @@ limitations under the License.
 #include <arrow/array.h>
 #include <arrow/util/thread_pool.h>
 
+#include "hybridbackend/cpp/common/env.h"
+
 namespace hybridbackend {
 
 #if HYBRIDBACKEND_ARROW
 
 namespace {
-
-int EnvGetInt(const std::string& env_var, int default_val) {
-  const char* env_var_val = getenv(env_var.c_str());
-  if (env_var_val == nullptr) {
-    return default_val;
-  }
-
-  std::string env_var_val_str(env_var_val);
-  std::istringstream ss(env_var_val_str);
-  int result;
-  if (!(ss >> result)) {
-    result = default_val;
-  }
-
-  return result;
-}
 
 int SetArrowCpuThreadPoolCapacityFromEnv() {
   int arrow_threads = EnvGetInt("ARROW_NUM_THREADS", 0);

@@ -1,10 +1,11 @@
 # How to contribute
 
 We appreciate all contributions to improve HybridBackend. You can create an
-[issue](https://github.com/alibaba/HybridBackend/issues) or send a 
+[issue](https://github.com/alibaba/HybridBackend/issues) or send a
 [pull request](https://github.com/alibaba/HybridBackend/pulls).
 
-**Working on your first Pull Request?** You can learn how from this *free* series [How to Contribute to an Open Source Project on GitHub](https://kcd.im/pull-request)
+**Working on your first Pull Request?** You can learn how from this *free*
+series [How to Contribute to an Open Source Project on GitHub](https://kcd.im/pull-request)
 
 ## Code style
 
@@ -17,25 +18,18 @@ cibuild/run cibuild/lint
 
 Commit message style should follow below format:
 
-```
+```text
 [Module] Do something great.
 ```
 
 `Module` could be `CI`, `IO` or other well-known abbreviations.
 
-## Package building
+## Building and testing
 
-Build code with default developer docker:
+Test your commit using default developer docker:
 
 ```bash
 cibuild/run make -j8
-```
-
-## Unit tests
-
-Test your commit in local node:
-
-```bash
 cibuild/run make test
 ```
 

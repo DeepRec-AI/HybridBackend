@@ -13,21 +13,29 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef HYBRIDBACKEND_CPP_TENSORFLOW_EIGEN_H_
-#define HYBRIDBACKEND_CPP_TENSORFLOW_EIGEN_H_
+#include "hybridbackend/cpp/common/env.h"
 
-#include <tensorflow/core/framework/tensor.h>
-#include <tensorflow/core/lib/core/errors.h>
-#include <tensorflow/core/public/version.h>
-#include <third_party/eigen3/unsupported/Eigen/CXX11/Tensor>
+#include <unistd.h>
 
-// NOTE: EIGEN_MAX_ALIGN_BYTES is 64 in TF 1.x. See:
-// https://github.com/tensorflow/tensorflow/blob/v1.15.5/third_party/eigen.BUILD#L67
-#if EIGEN_MAX_ALIGN_BYTES == 0
-#define CHECK_EIGEN_ALIGN(...) (true)
-#else
-#define CHECK_EIGEN_ALIGN(...) \
-  (0 == reinterpret_cast<intptr_t>(__VA_ARGS__) % EIGEN_MAX_ALIGN_BYTES)
-#endif
+#include <sstream>
+#include <string>
 
-#endif  // HYBRIDBACKEND_CPP_TENSORFLOW_EIGEN_H_
+namespace hybridbackend {
+
+int EnvGetInt(const std::string& env_var, int default_val) {
+  const char* env_var_val = getenv(env_var.c_str());
+  if (env_var_val == nullptr) {
+    return default_val;
+  }
+
+  std::string env_var_val_str(env_var_val);
+  std::istringstream ss(env_var_val_str);
+  int result;
+  if (!(ss >> result)) {
+    result = default_val;
+  }
+
+  return result;
+}
+
+}  // namespace hybridbackend
