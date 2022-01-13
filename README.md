@@ -52,7 +52,7 @@ For GPU support:
 [PAI DLC](https://www.aliyun.com/activity/bigdata/pai-dlc) docker images are
 prefered to use.
 
-## Build From Source on Linux/MacOS
+## Build from source on Linux/MacOS
 
 - Fetch source from git and sync submodules.
 
@@ -84,7 +84,7 @@ export HYBRIDBACKEND_USE_CXX11_ABI=0
 cibuild/run make -j8
 ```
 
-## Build From Source on MacOS w/o docker
+## Build from source on MacOS w/o docker
 
 - Fetch source from git and sync submodules.
 
