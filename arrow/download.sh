@@ -45,7 +45,7 @@ download(){
 }
 export -f download
 
-awk '{print $2}' arrow/thirdparty.list | xargs -P$(nproc) -I{} bash -c "download $CACHE_DIR {}"
+awk '{print $2}' arrow/thirdparty.list | xargs -P8 -I{} bash -c "download $CACHE_DIR {}"
 
 if [[ ! -f arrow/src/cpp/CMakeLists.txt ]]; then
   wget -nv -O $CACHE_DIR/src.tar $ARROW_CACHE_URL_PREFIX/src.tar 2>/dev/null || true

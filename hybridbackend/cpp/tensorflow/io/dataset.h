@@ -21,17 +21,17 @@ limitations under the License.
 
 #if HYBRIDBACKEND_TENSORFLOW
 
-#include "tensorflow/core/framework/dataset.h"
-#include "tensorflow/core/lib/io/buffered_inputstream.h"
-#include "tensorflow/core/lib/io/inputbuffer.h"
-#include "tensorflow/core/lib/io/random_inputstream.h"
-#include "tensorflow/core/public/version.h"
+#include <tensorflow/core/framework/dataset.h>
+#include <tensorflow/core/lib/io/buffered_inputstream.h>
+#include <tensorflow/core/lib/io/inputbuffer.h>
+#include <tensorflow/core/lib/io/random_inputstream.h>
+#include <tensorflow/core/public/version.h>
 
 #if (TF_MAJOR_VERSION * 1000L + TF_MINOR_VERSION) < 1015L
 #define PARSE_SCALAR ParseScalarArgument
 #define PARSE_VECTOR ParseVectorArgument
 #else
-#include "tensorflow/core/framework/dataset.h"
+#include <tensorflow/core/framework/dataset.h>
 #define PARSE_SCALAR ::tensorflow::data::ParseScalarArgument
 #define PARSE_VECTOR ::tensorflow::data::ParseVectorArgument
 #endif

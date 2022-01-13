@@ -334,7 +334,7 @@ class RebatchTabularDatasetOp::Dataset::Iterator
       cur += (rank + 1);
     }
     // Recalculate splits.
-    auto recalc_splits = [this, &output_tensors](int64 rank, int64 cur) {
+    auto recalc_splits = [&output_tensors](int64 rank, int64 cur) {
       for (size_t i = 1; i < rank + 1; ++i) {
         auto s = output_tensors->at(cur + i);
         const int32* sdata =
@@ -351,7 +351,7 @@ class RebatchTabularDatasetOp::Dataset::Iterator
           cur += (rank + 1);
           continue;
         }
-        thread_pool_->Schedule([this, &recalc_splits, &counter, rank, cur]() {
+        thread_pool_->Schedule([&recalc_splits, &counter, rank, cur]() {
           recalc_splits(rank, cur);
           counter.DecrementCount();
         });
@@ -519,7 +519,7 @@ class RebatchTabularDatasetOp::Dataset::Iterator
       cur = 0;
       for (size_t fid = 0; fid < field_ranks_.size(); ++fid) {
         const int64 rank = field_ranks_[fid];
-        thread_pool_->Schedule([this, &flush_queue, &counter, rank, cur]() {
+        thread_pool_->Schedule([&flush_queue, &counter, rank, cur]() {
           flush_queue(rank, cur);
           counter.DecrementCount();
         });

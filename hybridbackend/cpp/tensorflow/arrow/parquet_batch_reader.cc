@@ -86,9 +86,9 @@ class ParquetBatchReader::Impl {
       const auto& expected_ragged_rank = field_ragged_ranks_[i];
       DataType actual_dtype;
       int32 actual_ragged_rank = 0;
-      MakeDataTypeAndRaggedRankFromArrowDataType(
+      TF_RETURN_IF_ERROR(MakeDataTypeAndRaggedRankFromArrowDataType(
           schema->field(column_index)->type(), &actual_dtype,
-          &actual_ragged_rank);
+          &actual_ragged_rank));
       if (TF_PREDICT_FALSE(actual_dtype != expected_dtype)) {
         return errors::InvalidArgument(
             "Field ", cname, " in ", filename_, " has unexpected data type ",

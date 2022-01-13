@@ -13,25 +13,34 @@
 # limitations under the License.
 # =============================================================================
 
-r'''Radom related utilities.
+r'''Classes and functions for options.
 '''
 
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import numpy as np
-import os
-import random as rn
 
-from tensorflow.python.framework import random_seed
-
-
-def enable_deterministic(seed):
-  r'''Enable deterministic operations.
+class Options(object): # pylint: disable=useless-object-inheritance
+  r'''Options for configuration.
   '''
-  rn.seed(seed)
-  np.random.seed(seed)
-  random_seed.set_random_seed(seed)
-  os.environ['PYTHONHASHSEED'] = str(seed)
-  os.environ['TF_CUDNN_DETERMINISTIC'] = '1'
+  def __init__(self, **kwargs):
+    self.__items__ = dict(kwargs)
+
+  def __getattr__(self, attr):
+    if attr not in self.__items__:
+      raise AttributeError(attr)
+    return self.__items__[attr]
+
+  def __str__(self):
+    return str(self.__items__)
+
+  def get(self, key, default_value):
+    return self.__items__.get(key, default_value)
+
+  def update(self, key, value):
+    self.__items__[key] = value
+
+  @property
+  def items(self):
+    return dict(self.__items__)

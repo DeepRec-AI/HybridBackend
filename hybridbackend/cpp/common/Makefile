@@ -1,7 +1,7 @@
 COMMON_SRC := hybridbackend/cpp/common/
 
 COMMON_CFLAGS := \
-	$(shell python -m pybind11 --includes)
+	$(shell $(PYTHON) -m pybind11 --includes)
 
 COMMON_CC_SOURCES := $(shell \
 	find $(COMMON_SRC) -type f \
@@ -21,6 +21,13 @@ COMMON_CU_SOURCES := $(shell \
 	-exec realpath {} --relative-to . \;)
 
 COMMON_CU_OBJS := $(COMMON_CU_SOURCES:.cc=.o)
+ifeq ($(OS),Darwin)
+$(COMMON_CU_OBJS): %.o:%.cc
+	mkdir -p $(dir $@)
+	$(NVCC) $(NVCC_CFLAGS) \
+		-o $@ -c $< $(CFLAGS) $(COMMON_CFLAGS) -x cu \
+		-Xcompiler -fPIC
+else
 $(COMMON_CU_OBJS): %.o:%.cc
 	mkdir -p $(dir $@)
 	@$(NVCC) -M $< $(CFLAGS) $(COMMON_CFLAGS) -x cu \
@@ -31,13 +38,22 @@ $(COMMON_CU_OBJS): %.o:%.cc
 	$(NVCC) $(NVCC_CFLAGS) \
 		-o $@ -c $< $(CFLAGS) $(COMMON_CFLAGS) -x cu \
 		-Xcompiler -fPIC
+endif
 COMMON_ALL_OBJS := $(COMMON_OBJS) $(COMMON_CU_OBJS)
 else
 COMMON_ALL_OBJS := $(COMMON_OBJS)
 endif
 
+ifeq ($(OS),Darwin)
 $(COMMON_LIB): $(COMMON_ALL_OBJS)
 	mkdir -p $(dir $@)
 	$(CXX) $(CFLAGS) $(COMMON_CFLAGS) -std=c++11 \
-	-o $@ $^ $(LDFLAGS) $(COMMON_LDFLAGS) \
-	-lssl -lcrypto -lcurl -fpic
+	-install_name @rpath/lib$(LIBNAME).so \
+	-framework CoreFoundation \
+	-o $@ $^ $(LDFLAGS) $(COMMON_LDFLAGS)
+else
+$(COMMON_LIB): $(COMMON_ALL_OBJS)
+	mkdir -p $(dir $@)
+	$(CXX) $(CFLAGS) $(COMMON_CFLAGS) -std=c++11 \
+	-o $@ $^ $(LDFLAGS) $(COMMON_LDFLAGS)
+endif

@@ -1,4 +1,6 @@
 LIBNAME := hybridbackend
+OS ?= $(shell uname -s)
+PROCESSOR_ARCHITECTURE ?= $(shell uname -p)
 
 HYBRIDBACKEND_WITH_BUILDINFO ?= ON
 HYBRIDBACKEND_WITH_CUDA ?= ON
@@ -9,22 +11,20 @@ HYBRIDBACKEND_WITH_ARROW ?= ON
 HYBRIDBACKEND_WITH_ARROW_ZEROCOPY ?= ON
 HYBRIDBACKEND_WITH_ARROW_HDFS ?= ON
 HYBRIDBACKEND_WITH_ARROW_S3 ?= ON
-HYBRIDBACKEND_WITH_ARROW_SIMD_LEVEL ?= AVX512
+HYBRIDBACKEND_WITH_ARROW_SIMD_LEVEL ?= AVX2
 HYBRIDBACKEND_WITH_TENSORFLOW ?= ON
-HYBRIDBACKEND_USE_CXX11_ABI ?= 1
+HYBRIDBACKEND_USE_CXX11_ABI ?= 0
 HYBRIDBACKEND_WHEEL_ALIAS ?= ""
 HYBRIDBACKEND_WHEEL_BUILD ?= ""
 HYBRIDBACKEND_WHEEL_REQUIRES ?= ""
 
 CXX ?= gcc
-LOCAL_HOME ?= /usr/local
-PAI_HOME ?= /home/pai
+PYTHON ?= python
+SSL_HOME ?= /usr/local
 
 CFLAGS := -O3 -g \
 	-DNDEBUG \
 	-D_GLIBCXX_USE_CXX11_ABI=$(HYBRIDBACKEND_USE_CXX11_ABI) \
-	-isystem $(LOCAL_HOME) \
-	-isystem $(PAI_HOME)/include \
 	-I$(LIBNAME)/include \
 	-I.
 
@@ -37,12 +37,23 @@ CXX_CFLAGS := -std=c++11 \
 	-Wformat-security
 
 LDFLAGS := -shared \
-	-znoexecstack \
-	-zrelro \
-	-znow \
-	-fstack-protector
+	-fstack-protector \
+	-fpic \
+	-L/usr/local \
+	-L$(SSL_HOME)/lib \
+	-lssl \
+	-lcrypto
 
-COMMON_LDFLAGS := -L$(PAI_HOME)/lib
+ifeq ($(OS),Darwin)
+OSX_TARGET ?= 11.0
+PYTHON_HOME ?= /usr/local
+PYTHON_IMPL ?=
+PYTHON_IMPL_FLAG ?=
+CFLAGS := $(CFLAGS) \
+  -isystem $(PYTHON_HOME)/include/$(PYTHON_IMPL)$(PYTHON_IMPL_FLAG) 
+LDFLAGS := $(LDFLAGS) \
+  -L$(PYTHON_HOME)/lib -l$(PYTHON_IMPL)
+endif
 
 ifeq ($(HYBRIDBACKEND_WITH_BUILDINFO),ON)
 HYBRIDBACKEND_BUILD_COMMIT := $(shell git rev-parse HEAD 2>/dev/null)
@@ -53,7 +64,7 @@ endif
 
 ifeq ($(HYBRIDBACKEND_WITH_CUDA),ON)
 NVCC ?= nvcc
-CUDA_HOME ?= $(LOCAL_HOME)/cuda
+CUDA_HOME ?= /usr/local/cuda
 CFLAGS := $(CFLAGS) \
 	-isystem $(CUDA_HOME)/include
 NVCC_CFLAGS := --std=c++11 \
@@ -70,7 +81,7 @@ CFLAGS := $(CFLAGS) \
 	-DHYBRIDBACKEND_CUB=1
 endif
 ifeq ($(HYBRIDBACKEND_WITH_NCCL),ON)
-NCCL_HOME ?= $(PAI_HOME)
+NCCL_HOME ?= /usr/local
 CFLAGS := $(CFLAGS) \
 	-DHYBRIDBACKEND_NCCL=1 \
 	-isystem $(NCCL_HOME)/include
@@ -81,12 +92,14 @@ LDFLAGS := $(LDFLAGS) \
 endif
 endif
 
+ifneq ($(OS),Darwin)
 D_FILES := $(shell \
     find \( -path ./arrow -o -path ./build -o -path ./dist \) \
 	-prune -false -o -type f -name '*.d' \
 	-exec realpath {} --relative-to . \;)
 
 -include $(D_FILES)
+endif
 
 THIRDPARTY_DEPS :=
 ifeq ($(HYBRIDBACKEND_WITH_ARROW),ON)
@@ -104,14 +117,37 @@ endif
 ifeq ($(HYBRIDBACKEND_WITH_ARROW_S3),ON)
 CFLAGS := $(CFLAGS) -DHYBRIDBACKEND_ARROW_S3=1
 endif
-COMMON_LDFLAGS := $(COMMON_LDFLAGS) \
-        -L$(ARROW_DISTDIR)/lib \
+ifeq ($(OS),Darwin)
+RE2_HOME ?= /usr/local
+THRIFT_HOME ?= /usr/local
+UTF8PROC_HOME ?= /usr/local
+SNAPPY_HOME ?= /usr/local
+ZSTD_HOME ?= /usr/local
+ZLIB_HOME ?= /usr/local
+
+COMMON_LDFLAGS := \
+	-L$(ARROW_DISTDIR)/lib \
+	-larrow \
+	-larrow_dataset \
+	-lparquet \
+	-lcurl \
+	-L$(RE2_HOME)/lib -lre2 \
+	-L$(THRIFT_HOME)/lib -lthrift \
+	-L$(UTF8PROC_HOME)/lib -lutf8proc \
+	-L$(SNAPPY_HOME)/lib -lsnappy \
+	-L$(ZSTD_HOME)/lib -lzstd \
+	-L$(ZLIB_HOME)/lib -lz
+else
+COMMON_LDFLAGS := \
+	-L$(ARROW_DISTDIR)/lib \
 	-Wl,--whole-archive \
 	-larrow \
 	-larrow_dataset \
 	-lparquet \
 	-Wl,--no-whole-archive \
-	-larrow_bundled_dependencies
+	-larrow_bundled_dependencies \
+	-lcurl
+endif
 endif
 
 COMMON_LIB := $(LIBNAME)/lib$(LIBNAME).so
@@ -131,7 +167,7 @@ build: $(CORE_DEPS)
 	WHEEL_ALIAS="$(HYBRIDBACKEND_WHEEL_ALIAS)" \
 	WHEEL_BUILD="$(HYBRIDBACKEND_WHEEL_BUILD)" \
 	WHEEL_REQUIRES="$(HYBRIDBACKEND_WHEEL_REQUIRES)" \
-	python setup.py bdist_wheel
+	$(PYTHON) setup.py bdist_wheel
 	@ls dist/*.whl
 
 TESTS := $(shell \
@@ -142,7 +178,7 @@ TESTS := $(shell \
 test:
 	for t in $(TESTS); do \
 		echo -e "\033[1;33m[TEST] $$t \033[0m" ; \
-		python $$t || exit 1; \
+		$(PYTHON) $$t || exit 1; \
 		echo ; \
 	done
 
@@ -154,7 +190,7 @@ CPU_TESTS := $(shell \
 cpu_test:
 	for t in $(CPU_TESTS); do \
 		echo -e "\033[1;33m[TEST] $$t \033[0m" ; \
-		python $$t || exit 1; \
+		$(PYTHON) $$t || exit 1; \
 		echo ; \
 	done
 

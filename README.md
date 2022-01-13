@@ -14,32 +14,142 @@ information.
 
 ![bridging](images/bridging_the_gap.png)
 
-## Installation
+## Requirements
 
-Install latest CPU version for TensorFlow 1.15:
+For Linux/MacOS installation:
+
+- Ubuntu 18.04 or later (64-bit)
+- Python 3.6 or later
+- Pip 19.0 or later
+- TensorFlow 1.15 or TensorFlow 1.14
+- For GPU support, CUDA SDK 11.3 or later is required
+- [Docker is the future](https://docs.docker.com/engine/install/)
+
+For docker-phobes using MacOS:
+
+- MacOS 11.0 or later (x86 64-bit)
+- Python 3.7 or later
+- Pip 19.0 or later
+- Tebnsorflow 1.15 or TensorFlow 1.14
+- Other libraries installed by [brew](https://brew.sh/)
+
+## Install
+
+For TensorFlow 1.15 CPU version:
 
 ```bash
 pip install hybridbackend-cpu
 ```
 
-Install latest CPU version for TensorFlow 1.14:
+For TensorFlow 1.14 CPU version:
 
 ```bash
 pip install hybridbackend-cpu-legacy
 ```
 
-Note:
+For GPU support:
 
-You might need to upgrade pip before above installations:
+[PAI DLC](https://www.aliyun.com/activity/bigdata/pai-dlc) docker images are
+prefered to use.
+
+## Build From Source on Linux/MacOS
+
+- Fetch source from git and sync submodules.
 
 ```bash
-pip install -U pip
+git submodule sync
+git submodule update --init
+```
+
+- Step into developer docker.
+
+```bash
+cibuild/run
+```
+
+- Configure.
+
+```bash
+# Only build CPU releated functions.
+export HYBRIDBACKEND_WITH_CUDA=OFF
+# For TensorFlow 1.14, zero-copy is not supported.
+export HYBRIDBACKEND_WITH_ARROW_ZEROCOPY=OFF
+# Must be consistent with installed TensorFlow.
+export HYBRIDBACKEND_USE_CXX11_ABI=0
+```
+
+- Build.
+
+```bash
+cibuild/run make -j8
+```
+
+## Build From Source on MacOS w/o docker
+
+- Fetch source from git and sync submodules.
+
+```bash
+git submodule sync
+git submodule update --init
+```
+
+- Install TensorFlow and other requirements.
+
+```bash
+brew install wget python@3.7 openssl@1.1 utf8proc zstd snappy re2 thrift zlib
+brew uninstall grpc abseil || true
+export PATH="/usr/local/opt/python@3.7/bin:$PATH"
+export LDFLAGS="-L/usr/local/opt/python@3.7/lib"
+export PKG_CONFIG_PATH="/usr/local/opt/python@3.7/lib/pkgconfig"
+
+pip3.7 install -i https://mirrors.aliyun.com/pypi/simple/ \
+    tensorflow==1.14 \
+    "pybind11[global]"
+```
+
+- Configure.
+
+```bash
+# Only build CPU releated functions.
+export HYBRIDBACKEND_WITH_CUDA=OFF
+# For TensorFlow 1.14, zero-copy is not supported.
+export HYBRIDBACKEND_WITH_ARROW_ZEROCOPY=OFF
+# Must be consistent with installed TensorFlow.
+export HYBRIDBACKEND_USE_CXX11_ABI=0
+export PYTHON=python3.7
+export PYTHON_HOME=/usr/local/opt/python@3.7/Frameworks/Python.framework/Versions/Current
+export PYTHON_IMPL=python3.7
+export PYTHON_IMPL_FLAG=m
+export SSL_HOME=/usr/local/opt/openssl@1.1
+export RE2_HOME=/usr/local/opt/re2
+export THRIFT_HOME=/usr/local/opt/thrift
+export UTF8PROC_HOME=/usr/local/opt/utf8proc
+export SNAPPY_HOME=/usr/local/opt/snappy
+export ZSTD_HOME=/usr/local/opt/zstd
+export ZLIB_HOME=/usr/local/opt/zlib
+```
+
+- Build.
+
+```bash
+cibuild/run make -j8
 ```
 
 ## Contributing
 
 We appreciate all contributions to improve HybridBackend. Please see
 [Contributing Guide](CONTRIBUTING.md) for more details.
+
+## Community
+
+If you are intrested in adoption of HybridBackend in your organization, you can
+add your organization name to our [list of adopters](ADOPTERS.md) by submitting
+a pull request. We will discuss new feature requirements with you in advance.
+
+Further more, if you would like to share your experiences with others, you are
+welcome to contact us in DingTalk:
+
+<img src="images/hbcommunity.png" alt="community" width="200"/>
 
 ## License
 

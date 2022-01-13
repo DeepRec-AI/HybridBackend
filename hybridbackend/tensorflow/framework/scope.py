@@ -13,25 +13,40 @@
 # limitations under the License.
 # =============================================================================
 
-r'''Radom related utilities.
+r'''Context manager to use HybridBackend globally.
 '''
 
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import numpy as np
-import os
-import random as rn
+import contextlib
 
-from tensorflow.python.framework import random_seed
+from hybridbackend.tensorflow.framework.context import Context
 
 
-def enable_deterministic(seed):
-  r'''Enable deterministic operations.
+@contextlib.contextmanager
+def scope(**kwargs):
+  r'''Update params in conext.
   '''
-  rn.seed(seed)
-  np.random.seed(seed)
-  random_seed.set_random_seed(seed)
-  os.environ['PYTHONHASHSEED'] = str(seed)
-  os.environ['TF_CUDNN_DETERMINISTIC'] = '1'
+  try:
+    ctx = Context.get()
+    prev_kwargs = {k: ctx[k] for k in kwargs if ctx.has_param(k)}
+    ctx.update_params(**kwargs)
+    yield ctx
+  finally:
+    ctx.update_params(**prev_kwargs)
+    del prev_kwargs
+
+
+def function(**params):
+  r'''Decorator to set params in a function.
+  '''
+  def decorated(fn):
+    def wrapped_fn(*args, **kwargs):
+      r'''Wrapped function.
+      '''
+      with scope(**params):
+        return fn(*args, **kwargs)
+    return wrapped_fn
+  return decorated
