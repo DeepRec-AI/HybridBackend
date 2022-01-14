@@ -13,7 +13,7 @@
 # limitations under the License.
 # =============================================================================
 
-r'''Adapter for different versions of Tensorflow.
+r'''Adapter for different versions of TensorFlow.
 '''
 
 from __future__ import absolute_import

@@ -16,7 +16,7 @@ information.
 
 ## Requirements
 
-For Linux/MacOS installation:
+For Linux/macOS installation:
 
 - Ubuntu 18.04 or later (64-bit)
 - Python 3.6 or later
@@ -25,9 +25,9 @@ For Linux/MacOS installation:
 - For GPU support, CUDA SDK 11.3 or later is required
 - [Docker is the future](https://docs.docker.com/engine/install/)
 
-For docker-phobes using MacOS:
+For docker-phobes using macOS:
 
-- MacOS 11.0 or later (x86 64-bit)
+- macOS 11.0 or later (x86 64-bit)
 - Python 3.7 or later
 - Pip 19.0 or later
 - Tebnsorflow 1.15 or TensorFlow 1.14
@@ -52,7 +52,7 @@ For GPU support:
 [PAI DLC](https://www.aliyun.com/activity/bigdata/pai-dlc) docker images are
 prefered to use.
 
-## Build from source on Linux/MacOS w/ docker
+## Build from source on Linux/macOS w/ docker
 
 - Fetch source from git and sync submodules.
 
@@ -76,7 +76,7 @@ cibuild/run
 export HYBRIDBACKEND_WITH_CUDA=OFF
 # For TensorFlow 1.14, zero-copy is not supported.
 export HYBRIDBACKEND_WITH_ARROW_ZEROCOPY=OFF
-# Use below command to verify C++ ABI of installed Tensorflow.
+# Use below command to verify C++ ABI of installed TensorFlow.
 python -c 'import tensorflow as tf; print(tf.sysconfig.get_compile_flags())'
 # Must be consistent with installed TensorFlow.
 export HYBRIDBACKEND_USE_CXX11_ABI=0
@@ -108,7 +108,7 @@ See [Dockerfiles](cibuild/dockerfiles/).
 export HYBRIDBACKEND_WITH_CUDA=OFF
 # For TensorFlow 1.15, zero-copy is supported.
 export HYBRIDBACKEND_WITH_ARROW_ZEROCOPY=ON
-# Use below command to verify C++ ABI of installed Tensorflow.
+# Use below command to verify C++ ABI of installed TensorFlow.
 python -c 'import tensorflow as tf; print(tf.sysconfig.get_compile_flags())'
 # Must be consistent with installed TensorFlow.
 export HYBRIDBACKEND_USE_CXX11_ABI=0
@@ -120,7 +120,7 @@ export HYBRIDBACKEND_USE_CXX11_ABI=0
 make -j8
 ```
 
-## Build from source on MacOS w/o docker
+## Build from source on macOS w/o docker
 
 - Fetch source from git and sync submodules.
 
@@ -150,7 +150,7 @@ pip3.7 install -i https://mirrors.aliyun.com/pypi/simple/ \
 export HYBRIDBACKEND_WITH_CUDA=OFF
 # For TensorFlow 1.14, zero-copy is not supported.
 export HYBRIDBACKEND_WITH_ARROW_ZEROCOPY=OFF
-# Use below command to verify C++ ABI of installed Tensorflow.
+# Use below command to verify C++ ABI of installed TensorFlow.
 python -c 'import tensorflow as tf; print(tf.sysconfig.get_compile_flags())'
 # Must be consistent with installed TensorFlow.
 export HYBRIDBACKEND_USE_CXX11_ABI=0

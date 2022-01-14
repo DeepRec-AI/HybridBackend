@@ -15,7 +15,7 @@
 
 r'''Dataset that reads Parquet files.
 
-This class is compatible with Tensorflow 1.12.
+This class is compatible with TensorFlow 1.12.
 '''
 
 from __future__ import absolute_import

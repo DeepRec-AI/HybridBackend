@@ -45,14 +45,16 @@ LDFLAGS := -shared \
 	-lcrypto
 
 ifeq ($(OS),Darwin)
-OSX_TARGET ?= 11.0
+OSX_TARGET ?= $(shell sw_vers -productVersion)
 PYTHON_HOME ?= /usr/local
 PYTHON_IMPL ?=
 PYTHON_IMPL_FLAG ?=
 CFLAGS := $(CFLAGS) \
-  -isystem $(PYTHON_HOME)/include/$(PYTHON_IMPL)$(PYTHON_IMPL_FLAG) 
+	-isystem $(PYTHON_HOME)/include/$(PYTHON_IMPL)$(PYTHON_IMPL_FLAG) \
+	-mmacosx-version-min=$(OSX_TARGET)
+
 LDFLAGS := $(LDFLAGS) \
-  -L$(PYTHON_HOME)/lib -l$(PYTHON_IMPL)
+	-L$(PYTHON_HOME)/lib -l$(PYTHON_IMPL)
 endif
 
 ifeq ($(HYBRIDBACKEND_WITH_BUILDINFO),ON)
@@ -129,6 +131,7 @@ COMMON_LDFLAGS := \
 	-L$(ARROW_DISTDIR)/lib \
 	-larrow \
 	-larrow_dataset \
+	-larrow_bundled_dependencies \
 	-lparquet \
 	-lcurl \
 	-L$(RE2_HOME)/lib -lre2 \

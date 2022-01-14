@@ -177,8 +177,8 @@ into Parquet files can also reduce storage size at least **3.3x**.
 
 File Format      | Size (MB) | Framework     | #Threads | Step Time (ms)
 ---------------- | --------- | ------------- | -------- | ------------
-CSV              | 11062.61  | Tensorflow    | 1        | 8558.38
-Parquet (SNAPPY) | 3346.10   | Tensorflow IO | 1        | 103056.71
+CSV              | 11062.61  | TensorFlow    | 1        | 8558.38
+Parquet (SNAPPY) | 3346.10   | TensorFlow IO | 1        | 103056.71
 Parquet (SNAPPY) | 3346.10   | HybridBackend | 1        | 397.88
 Parquet (SNAPPY) | 3346.10   | HybridBackend | 20       | 21.67
 
