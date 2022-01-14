@@ -52,7 +52,7 @@ For GPU support:
 [PAI DLC](https://www.aliyun.com/activity/bigdata/pai-dlc) docker images are
 prefered to use.
 
-## Build from source on Linux/MacOS
+## Build from source on Linux/MacOS w/ docker
 
 - Fetch source from git and sync submodules.
 
@@ -64,6 +64,8 @@ git submodule update --init
 - Step into developer docker.
 
 ```bash
+# Environment variable `DOCKER_RUN_IMAGE` can be used to replace
+# developer docker.
 cibuild/run
 ```
 
@@ -74,6 +76,8 @@ cibuild/run
 export HYBRIDBACKEND_WITH_CUDA=OFF
 # For TensorFlow 1.14, zero-copy is not supported.
 export HYBRIDBACKEND_WITH_ARROW_ZEROCOPY=OFF
+# Use below command to verify C++ ABI of installed Tensorflow.
+python -c 'import tensorflow as tf; print(tf.sysconfig.get_compile_flags())'
 # Must be consistent with installed TensorFlow.
 export HYBRIDBACKEND_USE_CXX11_ABI=0
 ```
@@ -82,6 +86,38 @@ export HYBRIDBACKEND_USE_CXX11_ABI=0
 
 ```bash
 cibuild/run make -j8
+```
+
+## Build from source on Linux w/o docker
+
+- Fetch source from git and sync submodules.
+
+```bash
+git submodule sync
+git submodule update --init
+```
+
+- Install TensorFlow and other requirements.
+
+See [Dockerfiles](cibuild/dockerfiles/).
+
+- Configure.
+
+```bash
+# Only build CPU releated functions.
+export HYBRIDBACKEND_WITH_CUDA=OFF
+# For TensorFlow 1.15, zero-copy is supported.
+export HYBRIDBACKEND_WITH_ARROW_ZEROCOPY=ON
+# Use below command to verify C++ ABI of installed Tensorflow.
+python -c 'import tensorflow as tf; print(tf.sysconfig.get_compile_flags())'
+# Must be consistent with installed TensorFlow.
+export HYBRIDBACKEND_USE_CXX11_ABI=0
+```
+
+- Build.
+
+```bash
+make -j8
 ```
 
 ## Build from source on MacOS w/o docker
@@ -114,8 +150,12 @@ pip3.7 install -i https://mirrors.aliyun.com/pypi/simple/ \
 export HYBRIDBACKEND_WITH_CUDA=OFF
 # For TensorFlow 1.14, zero-copy is not supported.
 export HYBRIDBACKEND_WITH_ARROW_ZEROCOPY=OFF
+# Use below command to verify C++ ABI of installed Tensorflow.
+python -c 'import tensorflow as tf; print(tf.sysconfig.get_compile_flags())'
 # Must be consistent with installed TensorFlow.
 export HYBRIDBACKEND_USE_CXX11_ABI=0
+
+# Set path of thridparty libraries.
 export PYTHON=python3.7
 export PYTHON_HOME=/usr/local/opt/python@3.7/Frameworks/Python.framework/Versions/Current
 export PYTHON_IMPL=python3.7
@@ -132,7 +172,7 @@ export ZLIB_HOME=/usr/local/opt/zlib
 - Build.
 
 ```bash
-cibuild/run make -j8
+make -j8
 ```
 
 ## Contributing
