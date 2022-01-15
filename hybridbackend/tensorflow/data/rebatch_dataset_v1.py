@@ -15,7 +15,7 @@
 
 r'''Dataset that resizes batches of DataFrame values.
 
-This class is compatible with Tensorflow 1.12.
+This class is compatible with TensorFlow 1.12.
 '''
 
 from __future__ import absolute_import

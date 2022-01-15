@@ -38,7 +38,10 @@ namespace {
 int SetArrowCpuThreadPoolCapacityFromEnv() {
   int arrow_threads = EnvGetInt("ARROW_NUM_THREADS", 0);
   if (arrow_threads > 0) {  // Set from environment variable
-    ::arrow::SetCpuThreadPoolCapacity(arrow_threads);
+    auto s = ::arrow::SetCpuThreadPoolCapacity(arrow_threads);
+    if (ARROW_PREDICT_FALSE(!s.ok())) {
+      return 0;
+    }
   }
   return arrow_threads;
 }
