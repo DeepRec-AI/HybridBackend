@@ -147,7 +147,6 @@ class Context(object): # pylint: disable=useless-object-inheritance
       self._num_gpus = len(visible_devices.split(','))
     else:
       self._num_gpus = 1
-    self._input_pipeline_id = 0
     self._update()
     self._params = {}
     self._hooks = []
@@ -235,12 +234,6 @@ class Context(object): # pylint: disable=useless-object-inheritance
     '''
     return self.rank_at(0)
 
-  @property
-  def input_pipeline_id(self):
-    r'''Input pipeline ID.
-    '''
-    return self._input_pipeline_id
-
   def rank_at(self, device_or_tower_id):
     r'''Get global index of device or tower_id.
     '''
@@ -302,9 +295,6 @@ class Context(object): # pylint: disable=useless-object-inheritance
           self._cluster_spec)
       self._is_chief = multi_worker_util.is_chief(
           self._cluster_spec, self._task_type, self._task_id)
-      if hasattr(multi_worker_util, 'id_in_cluster'):
-        self._input_pipeline_id = multi_worker_util.id_in_cluster(
-            self._cluster_spec, self._task_type, self._task_id)
     if num_gpus:
       self._num_gpus = num_gpus
     elif not self._num_gpus:
