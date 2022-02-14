@@ -1,0 +1,6 @@
+FROM {{baseimage}}
+
+RUN mkdir -p /opt/hybridbackend
+COPY dist /opt/hybridbackend
+RUN pip3 install --no-cache-dir --upgrade \
+    /opt/hybridbackend/hybridbackend-*.whl

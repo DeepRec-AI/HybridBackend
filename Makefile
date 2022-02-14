@@ -170,8 +170,8 @@ build: $(CORE_DEPS)
 	WHEEL_ALIAS="$(HYBRIDBACKEND_WHEEL_ALIAS)" \
 	WHEEL_BUILD="$(HYBRIDBACKEND_WHEEL_BUILD)" \
 	WHEEL_REQUIRES="$(HYBRIDBACKEND_WHEEL_REQUIRES)" \
-	$(PYTHON) setup.py bdist_wheel
-	@ls dist/*.whl
+	$(PYTHON) setup.py bdist_wheel -d cibuild/dist
+	@ls cibuild/dist/*.whl
 
 TESTS := $(shell \
 	find tests/ -type f -name "*_test.py" \
@@ -199,7 +199,7 @@ cpu_test:
 
 .PHONY: doc
 doc:
-	sphinx-build -M html docs/ dist/doc
+	sphinx-build -M html docs/ cibuild/dist/doc
 
 .PHONY: lint
 lint:
@@ -210,7 +210,7 @@ cibuild: lint build doc test
 
 .PHONY: clean
 clean:
-	@rm -fr dist/
+	@rm -fr cibuild/dist/
 	@rm -fr build/
 	@rm -fr *.egg-info/
 	@find -name *.o -exec rm -fr {} \;

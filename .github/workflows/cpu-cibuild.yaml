@@ -3,7 +3,7 @@ name: cibuild on cpu
 on: [workflow_dispatch, push]
 
 env:
-  IMAGE: registry.cn-shanghai.aliyuncs.com/pai-dlc/hybridbackend:developer-tensorflow1.15-manylinux_2_24-py3.6
+  IMAGE: registry.cn-shanghai.aliyuncs.com/pai-dlc/hybridbackend:developer-tf1.15-py3.6-manylinux_2_24
   JOBNAME: hbci-${{ github.run_id }}
   PODNAME: hbci-${{ github.run_id }}-chief-0
   ARROW_CACHE_URL_PREFIX: ${{ secrets.ARROW_CACHE_URL_PREFIX }}

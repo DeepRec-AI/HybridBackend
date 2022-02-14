@@ -3,7 +3,7 @@ name: release deploy on tf1.14-cpu
 on: workflow_dispatch
 
 env:
-  IMAGE: registry.cn-shanghai.aliyuncs.com/pai-dlc/hybridbackend:developer-tensorflow1.14-manylinux_2_24-py3.6
+  IMAGE: registry.cn-shanghai.aliyuncs.com/pai-dlc/hybridbackend:developer-tf1.14-py3.6-manylinux_2_24
   JOBNAME: hbci-${{ github.run_id }}
   PODNAME: hbci-${{ github.run_id }}-chief-0
   ARROW_CACHE_URL_PREFIX: ${{ secrets.ARROW_CACHE_URL_PREFIX }}
@@ -39,7 +39,8 @@ jobs:
         kubectl exec -it ${PODNAME} -- make cpu_test
     - name: Download
       run: |-
-        kubectl exec -it ${PODNAME} -- tar -cf dist.tar -C /opt dist/ && \
+        kubectl exec -it ${PODNAME} -- \
+        tar -cf dist.tar -C /opt dist/ && \
         kubectl cp ${PODNAME}:dist.tar ./dist.tar && \
         tar -xf ./dist.tar
     - name: Publish
