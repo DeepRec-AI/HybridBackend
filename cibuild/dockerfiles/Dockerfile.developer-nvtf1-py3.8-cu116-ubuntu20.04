@@ -17,6 +17,7 @@ RUN apt-get update && \
     curl \
     cmake \
     libssl-dev \
+    libzstd-dev \
     libcurl4-openssl-dev \
     && apt-get clean \
     && ln -sf clang-format-7 /usr/bin/clang-format
@@ -39,4 +40,5 @@ RUN pip install -U \
 ENV HYBRIDBACKEND_WITH_CUDA=ON \
     HYBRIDBACKEND_WITH_ARROW_ZEROCOPY=ON \
     HYBRIDBACKEND_WITH_ARROW_SIMD_LEVEL=AVX2 \
-    HYBRIDBACKEND_USE_CXX11_ABI=0
+    HYBRIDBACKEND_USE_CXX11_ABI=0 \
+    COMMON_LDFLAGS_EXT="-lzstd -lz"

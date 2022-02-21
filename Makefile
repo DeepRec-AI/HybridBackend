@@ -21,6 +21,12 @@ HYBRIDBACKEND_WHEEL_REQUIRES ?= ""
 CXX ?= gcc
 PYTHON ?= python
 SSL_HOME ?= /usr/local
+RE2_HOME ?= /usr/local
+THRIFT_HOME ?= /usr/local
+UTF8PROC_HOME ?= /usr/local
+SNAPPY_HOME ?= /usr/local
+ZSTD_HOME ?= /usr/local
+ZLIB_HOME ?= /usr/local
 
 CFLAGS := -O3 -g \
 	-DNDEBUG \
@@ -120,13 +126,13 @@ ifeq ($(HYBRIDBACKEND_WITH_ARROW_S3),ON)
 CFLAGS := $(CFLAGS) -DHYBRIDBACKEND_ARROW_S3=1
 endif
 ifeq ($(OS),Darwin)
-RE2_HOME ?= /usr/local
-THRIFT_HOME ?= /usr/local
-UTF8PROC_HOME ?= /usr/local
-SNAPPY_HOME ?= /usr/local
-ZSTD_HOME ?= /usr/local
-ZLIB_HOME ?= /usr/local
-
+COMMON_LDFLAGS_EXT ?= \
+	-lre2 \
+	-lthrift \
+	-lutf8proc \
+	-lsnappy \
+	-lzstd \
+	-lz
 COMMON_LDFLAGS := \
 	-L$(ARROW_DISTDIR)/lib \
 	-larrow \
@@ -134,22 +140,25 @@ COMMON_LDFLAGS := \
 	-larrow_bundled_dependencies \
 	-lparquet \
 	-lcurl \
-	-L$(RE2_HOME)/lib -lre2 \
-	-L$(THRIFT_HOME)/lib -lthrift \
-	-L$(UTF8PROC_HOME)/lib -lutf8proc \
-	-L$(SNAPPY_HOME)/lib -lsnappy \
-	-L$(ZSTD_HOME)/lib -lzstd \
-	-L$(ZLIB_HOME)/lib -lz
+	-L$(RE2_HOME)/lib \
+	-L$(THRIFT_HOME)/lib \
+	-L$(UTF8PROC_HOME)/lib \
+	-L$(SNAPPY_HOME)/lib \
+	-L$(ZSTD_HOME)/lib \
+	-L$(ZLIB_HOME)/lib \
+	$(COMMON_LDFLAGS_EXT)
 else
+COMMON_LDFLAGS_EXT ?=
 COMMON_LDFLAGS := \
 	-L$(ARROW_DISTDIR)/lib \
 	-Wl,--whole-archive \
 	-larrow \
 	-larrow_dataset \
-	-lparquet \
-	-Wl,--no-whole-archive \
 	-larrow_bundled_dependencies \
-	-lcurl
+	-lparquet \
+	-lcurl \
+	-Wl,--no-whole-archive \
+	$(COMMON_LDFLAGS_EXT)
 endif
 endif
 
