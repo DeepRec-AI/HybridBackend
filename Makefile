@@ -20,13 +20,6 @@ HYBRIDBACKEND_WHEEL_REQUIRES ?= ""
 
 CXX ?= gcc
 PYTHON ?= python
-SSL_HOME ?= /usr/local
-RE2_HOME ?= /usr/local
-THRIFT_HOME ?= /usr/local
-UTF8PROC_HOME ?= /usr/local
-SNAPPY_HOME ?= /usr/local
-ZSTD_HOME ?= /usr/local
-ZLIB_HOME ?= /usr/local
 
 CFLAGS := -O3 -g \
 	-DNDEBUG \
@@ -44,11 +37,7 @@ CXX_CFLAGS := -std=c++11 \
 
 LDFLAGS := -shared \
 	-fstack-protector \
-	-fpic \
-	-L/usr/local \
-	-L$(SSL_HOME)/lib \
-	-lssl \
-	-lcrypto
+	-fpic
 
 ifeq ($(OS),Darwin)
 OSX_TARGET ?= $(shell sw_vers -productVersion)
@@ -125,41 +114,58 @@ endif
 ifeq ($(HYBRIDBACKEND_WITH_ARROW_S3),ON)
 CFLAGS := $(CFLAGS) -DHYBRIDBACKEND_ARROW_S3=1
 endif
-ifeq ($(OS),Darwin)
-COMMON_LDFLAGS_EXT ?= \
-	-lre2 \
-	-lthrift \
-	-lutf8proc \
-	-lsnappy \
-	-lzstd \
-	-lz
 COMMON_LDFLAGS := \
 	-L$(ARROW_DISTDIR)/lib \
 	-larrow \
 	-larrow_dataset \
 	-larrow_bundled_dependencies \
 	-lparquet \
-	-lcurl \
-	-L$(RE2_HOME)/lib \
-	-L$(THRIFT_HOME)/lib \
-	-L$(UTF8PROC_HOME)/lib \
-	-L$(SNAPPY_HOME)/lib \
-	-L$(ZSTD_HOME)/lib \
-	-L$(ZLIB_HOME)/lib \
-	$(COMMON_LDFLAGS_EXT)
-else
-COMMON_LDFLAGS_EXT ?=
+	-lcurl
+ifneq ($(OS),Darwin)
 COMMON_LDFLAGS := \
-	-L$(ARROW_DISTDIR)/lib \
+	-Bsymbolic \
 	-Wl,--whole-archive \
-	-larrow \
-	-larrow_dataset \
-	-larrow_bundled_dependencies \
-	-lparquet \
-	-lcurl \
-	-Wl,--no-whole-archive \
-	$(COMMON_LDFLAGS_EXT)
+	$(COMMON_LDFLAGS) \
+	-Wl,--no-whole-archive
 endif
+
+ifeq ($(HYBRIDBACKEND_WITH_SPARSEHASH),ON)
+CFLAGS := $(CFLAGS) \
+	-DHYBRIDBACKEND_SPARSEHASH=1 \
+	-isystem sparsehash/src
+LDFLAGS := $(LDFLAGS) \
+	-lpthread
+endif
+
+RE2_HOME ?=
+ifneq ($(strip $(RE2_HOME)),)
+COMMON_LDFLAGS := $(COMMON_LDFLAGS) -L$(RE2_HOME)/lib -lre2
+endif
+THRIFT_HOME ?=
+ifneq ($(strip $(THRIFT_HOME)),)
+COMMON_LDFLAGS := $(COMMON_LDFLAGS) -L$(THRIFT_HOME)/lib -lthrift
+endif
+UTF8PROC_HOME ?=
+ifneq ($(strip $(UTF8PROC_HOME)),)
+COMMON_LDFLAGS := $(COMMON_LDFLAGS) -L$(UTF8PROC_HOME)/lib -lutf8proc
+endif
+SNAPPY_HOME ?=
+ifneq ($(strip $(SNAPPY_HOME)),)
+COMMON_LDFLAGS := $(COMMON_LDFLAGS) -L$(SNAPPY_HOME)/lib -lsnappy
+endif
+ZSTD_HOME ?=
+ifneq ($(strip $(ZSTD_HOME)),)
+COMMON_LDFLAGS := $(COMMON_LDFLAGS) -L$(ZSTD_HOME)/lib -lzstd
+endif
+ZLIB_HOME ?=
+ifneq ($(strip $(ZLIB_HOME)),)
+COMMON_LDFLAGS := $(COMMON_LDFLAGS) -L$(ZLIB_HOME)/lib -lz
+endif
+SSL_HOME ?= /usr/local
+COMMON_LDFLAGS := $(COMMON_LDFLAGS) \
+	-L$(SSL_HOME)/lib \
+	-lssl \
+	-lcrypto
 endif
 
 COMMON_LIB := $(LIBNAME)/lib$(LIBNAME).so
