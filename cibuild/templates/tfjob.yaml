@@ -3,7 +3,6 @@ kind: TFJob
 metadata:
   name: {{ .Release.Name }}
 spec:
-  cleanPodPolicy: All
   tfReplicaSpecs:
     Chief:
       replicas: 1
@@ -44,7 +43,7 @@ spec:
             ports:
             - containerPort: {{ .Values.port }}
               name: tfjob-port
-            {{- range untilStep (int .Values.port) (int (add .Values.port .Values.gpus)) 1}}
+            {{- range untilStep (int (add .Values.port 1)) (int (add .Values.port (add .Values.gpus 1))) 1}}
             - containerPort: {{ . }}
               name: {{ $portName := (printf "gpu-port-%d" .) }}{{ $portName }}
             {{- end }}

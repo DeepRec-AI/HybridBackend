@@ -1,0 +1,45 @@
+FROM nvcr.io/nvidia/tensorflow:22.01-tf1-py3
+
+LABEL com.nvidia.volumes.needed="nvidia_driver"
+LABEL com.nvidia.cuda.version="${CUDA_VERSION}"
+ENV NVIDIA_VISIBLE_DEVICES= \
+    NVIDIA_REQUIRE_CUDA=
+
+RUN apt-get update && \
+    DEBIAN_FRONTEND="noninteractive" \
+    apt-get install -y --allow-unauthenticated \
+    patchelf \
+    git \
+    unzip \
+    clang-format-7 \
+    vim \
+    wget \
+    curl \
+    cmake \
+    libssl-dev \
+    libzstd-dev \
+    libcurl4-openssl-dev \
+    && apt-get clean \
+    && ln -sf clang-format-7 /usr/bin/clang-format
+
+RUN pip install -U \
+    pip \
+    wheel \
+    cython \
+    auditwheel \
+    pybind11 && \
+    pip install \
+    sphinx \
+    sphinx-rtd-theme \
+    myst-parser \
+    pyarrow \
+    pandas \
+    docutils==0.16 \
+    pylint==2.12.2
+
+ENV HYBRIDBACKEND_WITH_CUDA=ON \
+    HYBRIDBACKEND_WITH_ARROW_ZEROCOPY=ON \
+    HYBRIDBACKEND_WITH_ARROW_SIMD_LEVEL=AVX2 \
+    HYBRIDBACKEND_USE_CXX11_ABI=0 \
+    ZSTD_HOME=/usr/local \
+    ZLIB_HOME=/usr/local
