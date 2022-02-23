@@ -24,8 +24,4 @@ from . import data
 from . import training as train
 
 from hybridbackend.libhybridbackend import buildinfo
-from hybridbackend.tensorflow.framework.context import Context
-from hybridbackend.tensorflow.framework.context import context
 from hybridbackend.tensorflow.framework.random import enable_deterministic
-from hybridbackend.tensorflow.framework.scope import function
-from hybridbackend.tensorflow.framework.scope import scope
