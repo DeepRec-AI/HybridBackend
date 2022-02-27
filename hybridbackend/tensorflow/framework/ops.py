@@ -13,15 +13,28 @@
 # limitations under the License.
 # =============================================================================
 
-r'''Support for training models in hybridbackend.
+r'''Classes and functions used to construct graphs.
 '''
 
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from hybridbackend.tensorflow.training.server import wraps_server
-from hybridbackend.tensorflow.training.server import Server
-from hybridbackend.tensorflow.training.server import MonitoredTrainingSession
-from hybridbackend.tensorflow.training.server_lib import device_setter
-from hybridbackend.tensorflow.training.step_stat_hook import StepStatHook
+
+class CollectiveOps(object): # pylint: disable=useless-object-inheritance
+  r'''Collective operations.
+  '''
+  SUM = 0
+  PROD = 1
+  MAX = 2
+  MIN = 3
+  AVG = 4
+
+
+class GraphKeys(object):  # pylint: disable=useless-object-inheritance
+  r'''Names to use for graph collections.
+  '''
+  # Collection for variables placed at multiple devices.
+  SHARDED_VARIABLES = "sharded_variables"
+  # Collection for resources placed at multiple devices.
+  SHARDED_RESOURCES = "sharded_resources"

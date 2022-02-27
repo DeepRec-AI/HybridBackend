@@ -1,0 +1,209 @@
+# Copyright 2021 Alibaba Group Holding Limited. All Rights Reserved.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+# =============================================================================
+
+r'''Tests for Alltoallv.
+'''
+
+from __future__ import absolute_import
+from __future__ import division
+from __future__ import print_function
+
+import numpy as np
+import os
+from six.moves import xrange # pylint: disable=redefined-builtin
+import tensorflow as tf
+import unittest
+
+from hybridbackend.tensorflow.distribute.communicator import Communicator
+from hybridbackend.tensorflow.framework.context import context
+from hybridbackend.tensorflow.training.server import MonitoredTrainingSession
+from hybridbackend.tensorflow.training.server import Server
+
+from tests.tensorflow.spawn import register
+
+
+# pylint: disable=missing-docstring
+class AlltoallvTest(unittest.TestCase):
+  def test_alltoallv(self):
+    context.update_params(pubsub_device='')
+
+    devices = ['/gpu:0', '/gpu:1']
+    comm_id = "alltoallv_test"
+    server = Server({"localhost": ["localhost:0"]})
+    try:
+      with tf.Graph().as_default():
+        train_ops = []
+        with tf.device(devices[0]):
+          comm0 = Communicator.create(comm_id, devices)
+          ids0 = tf.constant([1, 2, 3], dtype=tf.int64)
+          sizes0 = tf.constant([1, 2], dtype=tf.int64)
+          out0, out_sizes0 = comm0.alltoallv(ids0, sizes0)
+          train_ops.append([out0, out_sizes0])
+        with tf.device(devices[1]):
+          comm1 = Communicator.create(comm_id, devices)
+          ids1 = tf.constant([4, 5, 6], dtype=tf.int64)
+          sizes1 = tf.constant([1, 2], dtype=tf.int64)
+          out1, out_sizes1 = comm1.alltoallv(ids1, sizes1)
+          train_ops.append([out1, out_sizes1])
+        with MonitoredTrainingSession(server.target) as sess:
+          d0result, d1result = sess.run(train_ops)
+          print('d0=', d0result)
+          print('d1=', d1result)
+          np.testing.assert_allclose(d0result[0], [1, 4], rtol=1e-6)
+          np.testing.assert_allclose(d0result[1], [1, 1], rtol=1e-6)
+          np.testing.assert_allclose(d1result[0], [2, 3, 5, 6], rtol=1e-6)
+          np.testing.assert_allclose(d1result[1], [2, 2], rtol=1e-6)
+    finally:
+      del server
+
+  def test_alltoallv_half_prec(self):
+    context.update_params(pubsub_device='')
+
+    os.environ['HB_COMM_WIRE_DTYPE_FLOAT'] = 'float16'
+    devices = ['/gpu:0', '/gpu:1']
+    comm_id = "alltoallv_test"
+    server = Server({"localhost": ["localhost:0"]})
+    try:
+      with tf.Graph().as_default():
+        train_ops = []
+        with tf.device(devices[0]):
+          comm0 = Communicator.create(comm_id, devices)
+          ids0 = tf.constant(
+              [1.0123, 2.3333, 3.4444], dtype=tf.float32)
+          sizes0 = tf.constant([1, 2], dtype=tf.int64)
+          out0, out_sizes0 = comm0.alltoallv(ids0, sizes0)
+          train_ops.append([out0, out_sizes0])
+        with tf.device(devices[1]):
+          comm1 = Communicator.create(comm_id, devices)
+          ids1 = tf.constant(
+              [4.3333, 5.4444, 6.5555], dtype=tf.float32)
+          sizes1 = tf.constant([1, 2], dtype=tf.int64)
+          out1, out_sizes1 = comm1.alltoallv(ids1, sizes1)
+          train_ops.append([out1, out_sizes1])
+        with MonitoredTrainingSession(server.target) as sess:
+          d0result, d1result = sess.run(train_ops)
+          print('d0=', d0result)
+          print('d1=', d1result)
+          np.testing.assert_allclose(d0result[0], [1.0123, 4.3333], rtol=1e-2)
+          np.testing.assert_allclose(d0result[1], [1, 1], rtol=1e-6)
+          np.testing.assert_allclose(
+              d1result[0], [2.3333, 3.4444, 5.4444, 6.5555], rtol=1e-2)
+          np.testing.assert_allclose(d1result[1], [2, 2], rtol=1e-6)
+    finally:
+      del server
+    del os.environ['HB_COMM_WIRE_DTYPE_FLOAT']
+
+  def test_alltoallv_multi_steps(self):
+    context.update_params(pubsub_device='')
+
+    devices = ['/gpu:0', '/gpu:1']
+    comm_id = 'alltoallv_multistep_test'
+    server = Server({'localhost': ['localhost:0']})
+    shapes = [[10230+5260, 64], [4000+990, 64]]
+    sizes = [[10230, 5260], [4000, 990]]
+    train_ops = []
+    try:
+      with tf.Graph().as_default():
+        for i, d in enumerate(devices):
+          with tf.device(d):
+            comm = Communicator.create(comm_id, devices)
+            merged = tf.get_variable(
+                f'input_{i}',
+                initializer=tf.random_normal(
+                    shapes[i], mean=100, stddev=80))
+            out, out_sizes = comm.alltoallv(
+                merged, sizes[i], common_shape=[64])
+            train_ops.append(tf.group([out, out_sizes]))
+        with MonitoredTrainingSession(server.target) as sess:
+          for _ in xrange(100):
+            sess.run(train_ops)
+    finally:
+      del server
+
+  def test_mutli_alltoallv_multi_steps(self):
+    context.update_params(pubsub_device='')
+
+    devices = ['/gpu:0', '/gpu:1']
+    comm_id = 'multi_alltoallv_multistep_test'
+    num_comms = 2
+    server = Server({'localhost': ['localhost:0']})
+    train_ops = []
+    try:
+      with tf.Graph().as_default():
+        for i, d in enumerate(devices):
+          prev_op = None
+          with tf.device(d):
+            for c in xrange(num_comms):
+              shapes = [[1023+c+526+c, 64], [400+c+99+c, 64]]
+              sizes = [[1023+c, 526+c], [400+c, 99+c]]
+              merged = tf.get_variable(
+                  f'comm_{c}/input_{i}',
+                  initializer=tf.random_normal(
+                      shapes[i], mean=100, stddev=80))
+              comm = Communicator.create(f'{comm_id}_{c}', devices)
+              with tf.control_dependencies(
+                  None if prev_op is None else [prev_op]):
+                out, out_sizes = comm.alltoallv(
+                    merged, sizes[i], common_shape=[64])
+              train_op = tf.group([out, out_sizes])
+              prev_op = train_op
+              train_ops.append(train_op)
+        with MonitoredTrainingSession(server.target) as sess:
+          for _ in xrange(100):
+            sess.run(train_ops)
+    finally:
+      del server
+
+  def test_reuse_comm_mutli_alltoallv_multi_steps(self):
+    context.update_params(pubsub_device='')
+
+    devices = ['/gpu:0', '/gpu:1']
+    comm_id = "multi_alltoallv_multistep_test"
+    num_ops = 2
+    server = Server({"localhost": ["localhost:0"]})
+    train_ops = []
+    try:
+      with tf.Graph().as_default():
+        for i, d in enumerate(devices):
+          with tf.device(d):
+            comm = Communicator.create(comm_id, devices)
+            for c in xrange(num_ops):
+              shapes = [[1023+c+526+c, 64], [400+c+99+c, 64]]
+              sizes = [[1023+c, 526+c], [400+c, 99+c]]
+              merged = tf.get_variable(
+                  f'comm_{c}/input_{i}',
+                  initializer=tf.random_normal(
+                      shapes[i], mean=100, stddev=80))
+              if c == 0:
+                out, out_sizes = comm.alltoallv(
+                    merged, sizes[i], common_shape=[64])
+                train_ops.append(tf.group([out, out_sizes]))
+              else:
+                with tf.control_dependencies([train_ops[-1]]):
+                  out, out_sizes = comm.alltoallv(
+                      merged, sizes[i], common_shape=[64])
+                  train_ops.append(tf.group([out, out_sizes]))
+        with MonitoredTrainingSession(server.target) as sess:
+          for _ in xrange(100):
+            sess.run(train_ops)
+    finally:
+      del server
+
+
+if __name__ == '__main__':
+  register(['gpu', 'dist'])
+  os.environ['CUDA_VISIBLE_DEVICES'] = '0,1'
+  os.environ['TF_CPP_VMODULE'] = 'nccl_alltoallv=1'
+  unittest.main()
