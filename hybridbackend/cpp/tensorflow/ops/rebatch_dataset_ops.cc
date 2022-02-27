@@ -294,7 +294,7 @@ class RebatchTabularDatasetOp::Dataset::Iterator
       return 0;
     }
     if (field_ranks_[0] > 0) {
-      return input_tensors[1].dim_size(0);
+      return input_tensors[1].dim_size(0) - 1;
     }
     return input_tensors[0].dim_size(0);
   }

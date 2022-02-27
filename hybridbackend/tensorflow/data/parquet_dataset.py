@@ -23,12 +23,12 @@ from __future__ import print_function
 try:
   from tensorflow.python.data.ops.dataset_ops import DatasetV2 as _dataset  # pylint: disable=unused-import
   from hybridbackend.tensorflow.data.parquet_dataset_v2 import \
-      ParquetDatasetV2 as ParquetDataset
+    ParquetDatasetV2 as ParquetDataset
   ParquetDataset.__module__ = __name__
   ParquetDataset.__name__ = 'ParquetDataset'
 except ImportError:
   from hybridbackend.tensorflow.data.parquet_dataset_v1 import \
-      ParquetDatasetV1 as ParquetDataset
+    ParquetDatasetV1 as ParquetDataset
   ParquetDataset.__module__ = __name__
   ParquetDataset.__name__ = 'ParquetDataset'
 
@@ -58,12 +58,12 @@ def read_parquet(
     '''
   def _apply_fn(filenames):
     return ParquetDataset(
-        filenames,
-        batch_size=batch_size,
-        fields=fields,
-        partition_count=partition_count,
-        partition_index=partition_index,
-        drop_remainder=drop_remainder,
-        num_parallel_reads=num_parallel_reads,
-        num_sequential_reads=num_sequential_reads)
+      filenames,
+      batch_size=batch_size,
+      fields=fields,
+      partition_count=partition_count,
+      partition_index=partition_index,
+      drop_remainder=drop_remainder,
+      num_parallel_reads=num_parallel_reads,
+      num_sequential_reads=num_sequential_reads)
   return _apply_fn

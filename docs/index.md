@@ -3,7 +3,7 @@
 ```{toctree}
 :maxdepth: 2
 
-hybridbackend
+introduction
 architecture
-tutorials/tutorials
+data
 ```

@@ -38,4 +38,14 @@ int EnvGetInt(const std::string& env_var, int default_val) {
   return result;
 }
 
+std::string EnvGet(const std::string& env_var, const std::string& default_val) {
+  const char* env_var_val = getenv(env_var.c_str());
+  if (env_var_val == nullptr) {
+    return default_val;
+  }
+
+  std::string result(env_var_val);
+  return result;
+}
+
 }  // namespace hybridbackend
