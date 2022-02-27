@@ -25,4 +25,3 @@ from hybridbackend.tensorflow.training.server import Server
 from hybridbackend.tensorflow.training.server import MonitoredTrainingSession
 from hybridbackend.tensorflow.training.server_lib import device_setter
 from hybridbackend.tensorflow.training.step_stat_hook import StepStatHook
-
