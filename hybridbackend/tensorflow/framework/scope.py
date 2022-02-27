@@ -22,6 +22,9 @@ from __future__ import print_function
 
 import contextlib
 
+from tensorflow.python.framework import ops
+from tensorflow.python.keras.backend import reset_uids as reset_keras_uids
+
 from hybridbackend.tensorflow.framework.context import Context
 
 
@@ -31,7 +34,7 @@ def scope(**kwargs):
   '''
   try:
     ctx = Context.get()
-    prev_kwargs = {k: ctx[k] for k in kwargs if ctx.has_param(k)}
+    prev_kwargs = {k: ctx.get_param(k) for k in kwargs if ctx.has_param(k)}
     ctx.update_params(**kwargs)
     yield ctx
   finally:
@@ -50,3 +53,12 @@ def function(**params):
         return fn(*args, **kwargs)
     return wrapped_fn
   return decorated
+
+
+def reset_keras_var_count():
+  r'''Reset variable scope counts of keras.
+  '''
+  reset_keras_uids()
+  varscope = ops.get_default_graph().get_collection_ref(('__varscope',))
+  if varscope:
+    varscope[0].variable_scopes_count.clear()

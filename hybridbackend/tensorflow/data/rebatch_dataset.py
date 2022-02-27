@@ -24,14 +24,14 @@ import inspect
 try:
   from tensorflow.python.data.ops.dataset_ops import DatasetV2 as _dataset  # pylint: disable=unused-import
   from hybridbackend.tensorflow.data.rebatch_dataset_v2 import \
-      RebatchDatasetV2 as RebatchDataset
+    RebatchDatasetV2 as RebatchDataset
   if inspect.isabstract(RebatchDataset):
     raise ImportError
   RebatchDataset.__module__ = __name__
   RebatchDataset.__name__ = 'RebatchDataset'
 except ImportError:
   from hybridbackend.tensorflow.data.rebatch_dataset_v1 import \
-      RebatchDatasetV1 as RebatchDataset
+    RebatchDatasetV1 as RebatchDataset
   RebatchDataset.__module__ = __name__
   RebatchDataset.__name__ = 'RebatchDataset'
   assert not inspect.isabstract(RebatchDataset)
@@ -58,9 +58,9 @@ def rebatch(
   '''
   def _apply_fn(dataset):
     return RebatchDataset(
-        dataset, batch_size,
-        min_batch_size=min_batch_size,
-        fields=fields,
-        drop_remainder=drop_remainder,
-        num_parallel_scans=num_parallel_scans)
+      dataset, batch_size,
+      min_batch_size=min_batch_size,
+      fields=fields,
+      drop_remainder=drop_remainder,
+      num_parallel_scans=num_parallel_scans)
   return _apply_fn

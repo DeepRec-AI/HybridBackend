@@ -1,3 +1,52 @@
+FROM quay.io/pypa/manylinux_2_24_x86_64 AS DEVEL
+
+ENV PATH=/opt/python/cp36-cp36m/bin:$PATH
+
+RUN apt-get update && \
+    DEBIAN_FRONTEND="noninteractive" \
+    apt-get install -y --allow-unauthenticated \
+    wget \
+    cmake \
+    git \
+    unzip \
+    curl \
+    libssl-dev \
+    libcurl4-openssl-dev \
+    zlib1g-dev \
+    && apt-get clean
+
+COPY sources.list /etc/apt/sources.list
+RUN rm -rf /etc/apt/sources.list.d/* && \
+    ldconfig && apt-get update && \
+    apt-get update && \
+    DEBIAN_FRONTEND="noninteractive" \
+    apt-get install -y --allow-unauthenticated \
+    gcc-4.9 g++-4.9
+
+ENV HYBRIDBACKEND_USE_CXX11_ABI=0 \
+    HYBRIDBACKEND_WITH_ARROW_HDFS=ON \
+    HYBRIDBACKEND_WITH_ARROW_S3=ON \
+    HADOOP_URL=https://archive.apache.org/dist/hadoop/common/hadoop-2.7.7/hadoop-2.7.7.tar.gz \
+    TMP=/tmp \
+    CXX=/usr/bin/g++-4.9
+
+RUN wget -nv -O /tmp/hadoop.tar.gz ${HADOOP_URL} \
+    && mkdir -p /opt/hadoop \
+    && tar -xzf /tmp/hadoop.tar.gz --skip-old-files --strip-components=1 \
+    -C /opt/hadoop && rm -f /tmp/hadoop.tar.gz
+
+ADD arrow/build.sh /src/arrow/build.sh
+ADD arrow/patches /src/arrow/patches
+RUN cd /src/arrow/ && \
+    ARROW_USE_CXX11_ABI=${HYBRIDBACKEND_USE_CXX11_ABI} \
+    ARROW_HDFS=ON \
+    ARROW_S3=ON \
+    ./build.sh /opt/arrow
+
+COPY sparsehash/build.sh /src/sparsehash/
+RUN cd /src/sparsehash && \
+    ./build.sh /opt/sparsehash
+
 FROM quay.io/pypa/manylinux_2_24_x86_64
 
 ENV PATH=/opt/python/cp36-cp36m/bin:$PATH
@@ -5,50 +54,64 @@ ENV PATH=/opt/python/cp36-cp36m/bin:$PATH
 RUN apt-get update && \
     DEBIAN_FRONTEND="noninteractive" \
     apt-get install -y --allow-unauthenticated \
-    cmake \
-    clang-format-7 \
+    wget \
+    curl \
     libssl-dev \
     libcurl4-openssl-dev \
-    wget && \
-    apt-get clean && \
-    ln -sf clang-format-7 /usr/bin/clang-format
+    clang-format-7 \
+    patchelf \
+    git \
+    unzip \
+    vim \
+    cmake \
+    openjdk-8-jdk \
+    inetutils-ping net-tools \
+    && apt-get clean \
+    && ln -sf clang-format-7 /usr/bin/clang-format
 
 COPY sources.list /etc/apt/sources.list
 RUN rm -rf /etc/apt/sources.list.d/* && \
-    ldconfig && apt-get update
-RUN apt-get update && \
+    ldconfig && apt-get update && \
+    apt-get update && \
     DEBIAN_FRONTEND="noninteractive" \
     apt-get install -y --allow-unauthenticated \
     gcc-4.9 g++-4.9
 
 RUN pip install \
+    auditwheel \
     pybind11 \
     sphinx \
     sphinx-rtd-theme \
     myst-parser \
     pandas \
     pyarrow \
-    portpicker \
-    six==1.16.0 \
-    cffi==1.14.5 \
-    urllib3==1.26.4 \
-    requests==2.25.1 \
-    isort==4.3.18 \
-    toposort==1.5 \
     docutils==0.16 \
-    numpy==1.16.6 \
-    pylint==2.12.2
-
-RUN pip install \
-    tensorflow==1.14.0
+    pylint==2.12.2 \
+    pylint-quotes \
+    pycodestyle \
+    numpy==1.16.6
 
 COPY patch_manylinux_policy.py /opt/
 RUN python /opt/patch_manylinux_policy.py \
     /opt/_internal/pipx/venvs/auditwheel/lib/python3.9/site-packages/auditwheel/policy/manylinux-policy.json && \
     mkdir -p /opt/dist/
 
+COPY --from=DEVEL /opt/hadoop /opt/hadoop
+COPY --from=DEVEL /opt/arrow /opt/arrow
+COPY --from=DEVEL /opt/sparsehash /opt/sparsehash
+
+RUN pip install \
+    tensorflow==1.14.0 \
+    numpy==1.16.6 \
+    && rm -f /root/.bashrc
+
+COPY bash.bashrc /etc/bash.bashrc
+COPY hbash /bin/hbash
 ENV CXX=/usr/bin/g++-4.9 \
     HYBRIDBACKEND_WITH_CUDA=OFF \
     HYBRIDBACKEND_WITH_ARROW_ZEROCOPY=OFF \
-    HYBRIDBACKEND_WITH_ARROW_SIMD_LEVEL=AVX2 \
-    HYBRIDBACKEND_USE_CXX11_ABI=0
+    HYBRIDBACKEND_USE_CXX11_ABI=0 \
+    ARROW_HOME=/opt/arrow \
+    SPARSEHASH_HOME=/opt/sparsehash \
+    JAVA_HOME=/usr/lib/jvm/java-8-openjdk-amd64 \
+    HADOOP_HOME=/opt/hadoop

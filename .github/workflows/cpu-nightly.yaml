@@ -6,7 +6,6 @@ env:
   IMAGE: registry.cn-shanghai.aliyuncs.com/pai-dlc/hybridbackend:developer-tf1.15-py3.6-manylinux_2_24
   JOBNAME: hbci-${{ github.run_id }}
   PODNAME: hbci-${{ github.run_id }}-chief-0
-  ARROW_CACHE_URL_PREFIX: ${{ secrets.ARROW_CACHE_URL_PREFIX }}
 
 jobs:
   build:
@@ -28,15 +27,14 @@ jobs:
         helm install ${JOBNAME} cibuild/ \
         --set image=${IMAGE} \
         --set gpus=0 && \
-        cibuild/upload ${PODNAME} ../cibuild && \
-        kubectl exec -it ${PODNAME} -- arrow/download.sh ${ARROW_CACHE_URL_PREFIX}
+        cibuild/upload ${PODNAME} ../cibuild
     - name: Build
       run: |-
         kubectl exec -it ${PODNAME} -- sh -c 'make -j32 HYBRIDBACKEND_WHEEL_ALIAS=-cpu-nightly HYBRIDBACKEND_WHEEL_BUILD=.dev${{ github.run_id }}' && \
         kubectl exec -it ${PODNAME} -- cibuild/repair_dist manylinux_2_24_x86_64 -w /opt/dist/
     - name: Test
       run: |-
-        kubectl exec -it ${PODNAME} -- make lint cpu_test
+        kubectl exec -it ${PODNAME} -- sh -c 'TEST_ALLOWS=cpu make lint test'
     - name: Download
       run: |-
         kubectl exec -it ${PODNAME} -- \

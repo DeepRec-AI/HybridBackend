@@ -24,7 +24,7 @@ import argparse
 import numpy as np
 import pandas as pd
 import os
-from six.moves import xrange # pylint: disable=redefined-builtin
+from six.moves import xrange  # pylint: disable=redefined-builtin
 import tempfile
 import tensorflow as tf
 from tqdm import tqdm as tq
@@ -41,11 +41,11 @@ def generate(params):
   tf.logging.info('Mock data starts generating...')
   columns = [f'col{c}' for c in xrange(params.cols)]
   df = pd.DataFrame(
-      np.random.randint(
-          params.min, params.max,
-          size=(params.samples, params.cols),
-          dtype=np.int64),
-      columns=columns)
+    np.random.randint(
+      params.min, params.max,
+      size=(params.samples, params.cols),
+      dtype=np.int64),
+    columns=columns)
   if params.format == 'parquet':
     tf.logging.info('Mock data starts writing to parquet...')
     df.to_parquet(filename)
@@ -57,10 +57,10 @@ def generate(params):
     writer = tf.python_io.TFRecordWriter(filename)
     for row in tq(range(params.samples)):
       feats = tf.train.Features(
-          feature={
-              c: tf.train.Feature(
-                  int64_list=tf.train.Int64List(value=[df[c][row]]))
-              for c in columns})
+        feature={
+          c: tf.train.Feature(
+            int64_list=tf.train.Int64List(value=[df[c][row]]))
+          for c in columns})
       example = tf.train.Example(features=feats)
       writer.write(example.SerializeToString())
     writer.close()

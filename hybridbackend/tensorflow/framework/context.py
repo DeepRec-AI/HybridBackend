@@ -33,12 +33,12 @@ from tensorflow.python.distribute import multi_worker_util
 from tensorflow.python.framework import device as pydev
 try:
   from tensorflow.python.training import device_util
-except: # pylint: disable=bare-except
+except:  # pylint: disable=bare-except
   from tensorflow.python.distribute import device_util
 from tensorflow.python.training import server_lib
 
 
-class Context(object): # pylint: disable=useless-object-inheritance
+class Context(object):  # pylint: disable=useless-object-inheritance
   r'''Configurations for cluster and servers.
   '''
   DEFAULT_DEVICE = '/job:localhost'
@@ -58,15 +58,15 @@ class Context(object): # pylint: disable=useless-object-inheritance
     r'''Current device.
     '''
     return device_util.canonicalize(
-        device_util.current(), default=cls.DEFAULT_DEVICE)
+      device_util.current(), default=cls.DEFAULT_DEVICE)
 
   @classmethod
   def canonicalize(cls, devices):
     r'''Canonicalize devices.
     '''
     return [
-        device_util.canonicalize(d.strip(), default=cls.DEFAULT_DEVICE)
-        for d in devices]
+      device_util.canonicalize(d.strip(), default=cls.DEFAULT_DEVICE)
+      for d in devices]
 
   @classmethod
   def set_tf_config(
@@ -84,40 +84,40 @@ class Context(object): # pylint: disable=useless-object-inheritance
                       False by default.
     '''
     tf_config = {}
-    tf_config["task"] = {}
-    tf_config["task"]["type"] = task_type
-    tf_config["task"]["index"] = task_id
-    tf_config["cluster"] = {}
+    tf_config['task'] = {}
+    tf_config['task']['type'] = task_type
+    tf_config['task']['index'] = task_id
+    tf_config['cluster'] = {}
     if worker_hosts:
-      tf_config["cluster"]["chief"] = [worker_hosts[0]]
+      tf_config['cluster']['chief'] = [worker_hosts[0]]
       if len(worker_hosts) > 1:
         if has_evaluator:
-          tf_config["cluster"]["evaluator"] = [worker_hosts[1]]
+          tf_config['cluster']['evaluator'] = [worker_hosts[1]]
           if len(worker_hosts) > 2:
-            tf_config["cluster"]["worker"] = worker_hosts[2:]
-          if task_type == "worker":
+            tf_config['cluster']['worker'] = worker_hosts[2:]
+          if task_type == 'worker':
             if task_id == 0:
-              tf_config["task"]["type"] = "chief"
-              tf_config["task"]["index"] = 0
+              tf_config['task']['type'] = 'chief'
+              tf_config['task']['index'] = 0
             elif task_id == 1:
-              tf_config["task"]["type"] = "evaluator"
-              tf_config["task"]["index"] = 0
+              tf_config['task']['type'] = 'evaluator'
+              tf_config['task']['index'] = 0
             else:
-              tf_config["task"]["index"] -= 2
+              tf_config['task']['index'] -= 2
         else:
-          tf_config["cluster"]["worker"] = worker_hosts[1:]
-          if task_type == "worker":
+          tf_config['cluster']['worker'] = worker_hosts[1:]
+          if task_type == 'worker':
             if task_id == 0:
-              tf_config["task"]["type"] = "chief"
-              tf_config["task"]["index"] = 0
+              tf_config['task']['type'] = 'chief'
+              tf_config['task']['index'] = 0
             else:
-              tf_config["task"]["index"] -= 1
+              tf_config['task']['index'] -= 1
       else:
-        if task_type == "worker":
-          tf_config["task"]["type"] = "chief"
-          tf_config["task"]["index"] = 0
+        if task_type == 'worker':
+          tf_config['task']['type'] = 'chief'
+          tf_config['task']['index'] = 0
     if ps_hosts:
-      tf_config["cluster"]["ps"] = ps_hosts
+      tf_config['cluster']['ps'] = ps_hosts
     os.environ['TF_CONFIG'] = json.dumps(tf_config)
 
   @classmethod
@@ -132,8 +132,24 @@ class Context(object): # pylint: disable=useless-object-inheritance
     task_type = task['type']
     task_id = int(task['index'])
     tf_config_type = collections.namedtuple(
-        "TfConfig", ["task_type", "task_id", "cluster"])
+      'TfConfig', ['task_type', 'task_id', 'cluster'])
     return tf_config_type(task_type, task_id, cluster)
+
+  @classmethod
+  def parse_bool(cls, s):
+    r'''Parse integer to boolean.
+    '''
+    if s is None:
+      return None
+    if isinstance(s, bool):
+      return s
+    trues = ['TRUE', 'YES', '1']
+    falses = ['FALSE', 'NO', '0']
+    if s.upper() in trues:
+      return True
+    if s.upper() in falses:
+      return False
+    return bool(int(s))
 
   def __init__(self):
     r'''Construct a server specification.
@@ -149,12 +165,15 @@ class Context(object): # pylint: disable=useless-object-inheritance
       self._num_gpus = 1
     self._update()
     self._params = {}
-    self._hooks = []
+    self._training_hooks = []
+    self._training_chief_hooks = []
+    self._evaluation_hooks = []
+    self._prediction_hooks = []
 
   def __str__(self):
-    return f'Context {self._task_type}:{self._task_id} ' + \
-           f'{"chief" if self._is_chief else ""} {self._num_gpus}GPU, ' + \
-           f'local={self._local_devices}, all={self._devices}'
+    task_def = f'{self._task_type}:{self._task_id}, #GPUs={self._num_gpus}'
+    cluster_def = f'local={self._local_devices}, all={self._devices}'
+    return f'Context {task_def}, {cluster_def}'
 
   @property
   def cluster_spec(self):
@@ -173,6 +192,16 @@ class Context(object): # pylint: disable=useless-object-inheritance
     r'''task index of current server. 0 by default.
     '''
     return self._task_id
+
+  @property
+  def target(self):
+    r'''target of current server.
+    '''
+    if not self._cluster_spec:
+      return ''
+
+    addr = self._cluster_spec.job_tasks(self._task_type)[self._task_id]
+    return f'grpc://{addr}'
 
   @property
   def is_chief(self):
@@ -229,10 +258,24 @@ class Context(object): # pylint: disable=useless-object-inheritance
     return len(self._devices)
 
   @property
-  def rank(self):
-    r'''Index of the default device in current node.
+  def tower_index(self):
+    r'''Local index of default local device.
     '''
-    return self.rank_at(0)
+    tower_index = self.param('tower_index', 0)
+    if self.has_gpu:
+      if tower_index >= len(self.local_devices):
+        raise ValueError(
+          f'Invalid tower_index {tower_index} (>= {len(self.local_devices)})')
+    else:
+      if tower_index > 0:
+        raise ValueError('tower_index must not be set for CPU-only worker')
+    return tower_index
+
+  @property
+  def rank(self):
+    r'''Global index of default local device.
+    '''
+    return self.rank_at(self.tower_index)
 
   def rank_at(self, device_or_tower_id):
     r'''Get global index of device or tower_id.
@@ -248,14 +291,14 @@ class Context(object): # pylint: disable=useless-object-inheritance
     else:
       if device_or_tower_id >= self._num_gpus:
         raise ValueError(
-            f'Tower {device_or_tower_id} does not exist in the worker ' + \
-            f'with {self._num_gpus} towers')
+          f'Tower {device_or_tower_id} does not exist in the worker '
+          f'with {self._num_gpus} towers')
       local_device = f'/gpu:{device_or_tower_id}'
     local_device = pydev.DeviceSpec.from_string(
-        f'/job:{self.task_type}/task:{self.task_id}{local_device}')
+      f'/job:{self.task_type}/task:{self.task_id}{local_device}')
     local_device = device_util.canonicalize(
-        local_device.to_string(),
-        default=self.DEFAULT_DEVICE)
+      local_device.to_string(),
+      default=self.DEFAULT_DEVICE)
     return self._devices.index(local_device)
 
   def current_index(self):
@@ -275,7 +318,11 @@ class Context(object): # pylint: disable=useless-object-inheritance
       task_id: (Optional.) index of current task. 0 by default.
       cluster_spec: (Optional.) ClusterSpec object.
     '''
-    tf_config = self.get_tf_config()
+    tf_config = None
+    try:
+      tf_config = self.get_tf_config()
+    except:  # pylint: disable=bare-except
+      pass
     if tf_config:
       self._task_type = tf_config.task_type
       self._task_id = tf_config.task_id
@@ -286,15 +333,22 @@ class Context(object): # pylint: disable=useless-object-inheritance
       self._cluster_spec = None
     if task_type:
       self._task_type = task_type
+    if self._task_type not in ('localhost', 'chief', 'worker'):
+      return
+
     if task_id:
       self._task_id = task_id
     if cluster_spec:
       self._cluster_spec = cluster_spec
     if self._cluster_spec:
       self._cluster_spec = multi_worker_util.normalize_cluster_spec(
-          self._cluster_spec)
-      self._is_chief = multi_worker_util.is_chief(
+        self._cluster_spec)
+      self._is_chief = False
+      try:
+        self._is_chief = multi_worker_util.is_chief(
           self._cluster_spec, self._task_type, self._task_id)
+      except:  # pylint: disable=bare-except
+        pass
     if num_gpus:
       self._num_gpus = num_gpus
     elif not self._num_gpus:
@@ -307,79 +361,95 @@ class Context(object): # pylint: disable=useless-object-inheritance
         if device.device_type == 'GPU':
           num_gpus += 1
       self._num_gpus = num_gpus
-    self._default_device = \
-        f'/job:{self._task_type}/replica:0/task:{self._task_id}'
-    self._local_cpu_device = \
-        device_util.canonicalize('/device:CPU:0', default=self._default_device)
+    self._default_device = (
+      f'/job:{self._task_type}/replica:0/task:{self._task_id}')
+    self._local_cpu_device = device_util.canonicalize(
+      '/device:CPU:0', default=self._default_device)
     if self._num_gpus == 0:
       self._local_devices = [self._local_cpu_device]
     else:
       self._local_devices = [
-          device_util.canonicalize(
-              f'/device:GPU:{d}', default=self._default_device) \
-              for d in xrange(self._num_gpus)]
+        device_util.canonicalize(
+          f'/device:GPU:{d}', default=self._default_device)
+        for d in xrange(self._num_gpus)]
     if not self._cluster_spec:
       self._devices = list(self._local_devices)
       return
-    task_defs = dict(enumerate(self._cluster_spec.job_tasks(self._task_type)))
-    task_indices = sorted(task_defs, key=task_defs.__getitem__)
+    task_indices = []
+    try:
+      task_defs = dict(enumerate(self._cluster_spec.job_tasks(self._task_type)))
+      task_indices = sorted(task_defs, key=task_defs.__getitem__)
+    except:  # pylint: disable=bare-except
+      pass
     worker_indices = []
     try:
       worker_defs = dict(enumerate(self._cluster_spec.job_tasks('worker')))
       worker_indices = sorted(worker_defs, key=worker_defs.__getitem__)
-    except: # pylint: disable=bare-except
+    except:  # pylint: disable=bare-except
       pass
     chief_indices = []
     try:
       chief_defs = dict(enumerate(self._cluster_spec.job_tasks('chief')))
       chief_indices = sorted(chief_defs, key=chief_defs.__getitem__)
-    except: # pylint: disable=bare-except
+    except:  # pylint: disable=bare-except
       pass
     self._cpu_devices = [
-        device_util.resolve(
-            f'/job:{self._task_type}/task:{t}/device:CPU:0') \
-            for t in task_indices]
+      device_util.resolve(f'/job:{self._task_type}/task:{t}/device:CPU:0')
+      for t in task_indices]
     if self._num_gpus == 0:
       self._devices = self._cpu_devices
       if self._task_type == 'worker':
-        self._devices = [
-            device_util.resolve(
-                f'/job:chief/task:{t}/device:CPU:0') \
-                for t in chief_indices] + self._devices
+        chief_devices = [
+          device_util.resolve(f'/job:chief/task:{t}/device:CPU:0')
+          for t in chief_indices]
+        self._devices = chief_devices + self._devices
       elif self._task_type == 'chief':
         self._devices += [
-            device_util.resolve(
-                f'/job:worker/task:{t}/device:CPU:0') \
-                for t in worker_indices]
+          device_util.resolve(f'/job:worker/task:{t}/device:CPU:0')
+          for t in worker_indices]
       return
     self._devices = [
-        device_util.resolve(
-            f'/job:{self._task_type}/task:{t}/device:GPU:{g}') \
-            for t in task_indices for g in xrange(self._num_gpus)]
+      device_util.resolve(f'/job:{self._task_type}/task:{t}/device:GPU:{g}')
+      for t in task_indices for g in xrange(self._num_gpus)]
     if self._task_type == 'worker':
-      self._devices = [
-          device_util.resolve(
-              f'/job:chief/task:{t}/device:GPU:{g}') \
-              for t in chief_indices for g in xrange(self._num_gpus)] + \
-              self._devices
+      chief_devices = [
+        device_util.resolve(f'/job:chief/task:{t}/device:GPU:{g}')
+        for t in chief_indices for g in xrange(self._num_gpus)]
+      self._devices = chief_devices + self._devices
     elif self._task_type == 'chief':
       self._devices += [
-          device_util.resolve(
-              f'/job:worker/task:{t}/device:GPU:{g}') \
-              for t in worker_indices for g in xrange(self._num_gpus)]
+        device_util.resolve(f'/job:worker/task:{t}/device:GPU:{g}')
+        for t in worker_indices for g in xrange(self._num_gpus)]
 
-  def param(self, key, default=None, env=None, parser=None):
-    r'''Get param for key with default value.
+  def param(self, key, default, env=None, parser=None, select=None):
+    r'''Get or create param for key with default value.
     '''
     if env is None:
-      return self._params.get(key, default)
+      p = self._params.get(key, default)
+      if isinstance(p, dict):
+        if select is not None:
+          if select in p:
+            return p[select]
+          if '*' in p:
+            return p['*']
+          return default
+      return p
     if parser is None:
-      parser = lambda s: s
+      def parser(s):
+        return s
     try:
       default_value = parser(os.getenv(env, default))
     except:  # pylint: disable=bare-except
       default_value = default
-    return self._params.get(key, default_value)
+    p = self._params.get(key, default_value)
+    if isinstance(p, dict):
+      if select is not None:
+        if select in p:
+          return p[select]
+        if '*' in p:
+          return p['*']
+        return default_value
+    return p
 
   def update_params(self, **kwargs):
     r'''Update parameters.
@@ -392,15 +462,54 @@ class Context(object): # pylint: disable=useless-object-inheritance
     '''
     return key in self._params
 
-  def add_hook(self, hook):
-    r'''Add training hook.
+  def get_param(self, key):
+    r'''Get specific param in the conetxt.
     '''
-    self._hooks.append(hook)
+    return self._params[key]
 
   @property
-  def hooks(self):
+  def training_hooks(self):
     r'''Get all training hooks.
     '''
-    return self._hooks
+    return self._training_hooks
+
+  @property
+  def training_chief_hooks(self):
+    r'''Get all training chief hooks.
+    '''
+    return self._training_chief_hooks
+
+  @property
+  def evaluation_hooks(self):
+    r'''Get all evaluation hooks.
+    '''
+    return self._evaluation_hooks
+
+  @property
+  def prediction_hooks(self):
+    r'''Get all prediction hooks.
+    '''
+    return self._prediction_hooks
+
+  def add_training_hook(self, hook):
+    r'''Add training hook.
+    '''
+    self._training_hooks.append(hook)
+
+  def add_training_chief_hook(self, hook):
+    r'''Add training chief hook.
+    '''
+    self._training_chief_hooks.append(hook)
+
+  def add_evaluation_hook(self, hook):
+    r'''Add evaluation hook.
+    '''
+    self._evaluation_hooks.append(hook)
+
+  def add_prediction_hook(self, hook):
+    r'''Add prediction hook.
+    '''
+    self._prediction_hooks.append(hook)
+
 
 context = Context.get()

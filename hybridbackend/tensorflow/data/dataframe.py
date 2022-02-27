@@ -25,7 +25,7 @@ from __future__ import print_function
 
 import collections
 import numpy as np
-from six.moves import xrange # pylint: disable=redefined-builtin
+from six.moves import xrange  # pylint: disable=redefined-builtin
 
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
@@ -89,37 +89,40 @@ class DataFrame(object):  # pylint: disable=useless-object-inheritance
       return self.map(lambda _: tensor_shape.TensorShape([None]))
 
     def __repr__(self):
-      return \
-          f'{self._name} <dtype={self._dtype} ' + \
-          f'ragged_rank={self._ragged_rank} shape={self._shape}>'
+      dtypestr = self._dtype.name
+      if self._ragged_rank > 1:
+        dtypestr = f'list<{self._ragged_rank}, {dtypestr}>'
+      elif self._ragged_rank > 0:
+        dtypestr = f'list<{dtypestr}>'
+      return f'{self._name} ({dtypestr})'
 
     def map(self, func):
       if self._ragged_rank == 0:
         return func(0)
       return DataFrame.Value(
-          func(0),
-          tuple(func(i+1) for i in xrange(self._ragged_rank)))
+        func(0),
+        tuple(func(i + 1) for i in xrange(self._ragged_rank)))
 
   # pylint: disable=inherit-non-class
   class Value(
       collections.namedtuple(
-          'DataFrameValue',
-          ['values', 'nested_row_splits'])):
+        'DataFrameValue',
+        ['values', 'nested_row_splits'])):
     r'''A structure represents a value in DataFrame.
     '''
     def to_ragged(self, name=None):
       return ragged_tensor.RaggedTensor.from_nested_row_splits(
-          self.values, self.nested_row_splits,
-          validate=False,
-          name=name)
+        self.values, self.nested_row_splits,
+        validate=False,
+        name=name)
 
     def to_sparse(self, name=None):
       sparse_value = gen_ragged_conversion_ops.ragged_tensor_to_sparse(
-          self.nested_row_splits, self.values, name=name)
+        self.nested_row_splits, self.values, name=name)
       return sparse_tensor.SparseTensor(
-          sparse_value.sparse_indices,
-          sparse_value.sparse_values,
-          sparse_value.sparse_dense_shape)
+        sparse_value.sparse_indices,
+        sparse_value.sparse_values,
+        sparse_value.sparse_dense_shape)
 
   @classmethod
   def to_sparse(cls, features):
@@ -147,20 +150,20 @@ class DataFrame(object):  # pylint: disable=useless-object-inheritance
     '''
     if isinstance(features, dict):
       return {
-          f: cls.unbatch_and_to_sparse(features[f])
-          for f in features}
+        f: cls.unbatch_and_to_sparse(features[f])
+        for f in features}
     if isinstance(features, DataFrame.Value):
       if len(features.nested_row_splits) > 1:
         features = features.to_sparse()
         features = sparse_ops.sparse_reshape(
-            features, features.dense_shape[1:])
+          features, features.dense_shape[1:])
       elif len(features.nested_row_splits) == 1:
         num_elems = math_ops.cast(
-            features.nested_row_splits[0][1], dtype=dtypes.int64)
+          features.nested_row_splits[0][1], dtype=dtypes.int64)
         indices = math_ops.range(num_elems)
         indices = array_ops.reshape(indices, [-1, 1])
         features = sparse_tensor.SparseTensor(
-            indices, features.values, [-1])
+          indices, features.values, [-1])
       else:
         features = features.values
         features = array_ops.reshape(features, features.shape[1:])
@@ -169,14 +172,14 @@ class DataFrame(object):  # pylint: disable=useless-object-inheritance
       if features.ragged_rank > 1:
         features = features.to_sparse()
         features = sparse_ops.sparse_reshape(
-            features, features.dense_shape[1:])
+          features, features.dense_shape[1:])
       elif features.ragged_rank == 1:
         actual_batch_size = math_ops.cast(
-            features.row_splits[1], dtype=dtypes.int64)
+          features.row_splits[1], dtype=dtypes.int64)
         indices = math_ops.range(actual_batch_size)
         indices = array_ops.reshape(indices, [-1, 1])
         features = sparse_tensor.SparseTensor(
-            indices, features.values, [-1])
+          indices, features.values, [-1])
       return features
     if isinstance(features, ops.Tensor):
       return array_ops.reshape(features, features.shape[1:])
@@ -188,8 +191,8 @@ def to_sparse(num_parallel_calls=None):
   '''
   def _apply_fn(dataset):
     return dataset.map(
-        DataFrame.to_sparse,
-        num_parallel_calls=num_parallel_calls)
+      DataFrame.to_sparse,
+      num_parallel_calls=num_parallel_calls)
   return _apply_fn
 
 
@@ -198,6 +201,6 @@ def unbatch_and_to_sparse(num_parallel_calls=None):
   '''
   def _apply_fn(dataset):
     return dataset.map(
-        DataFrame.unbatch_and_to_sparse,
-        num_parallel_calls=num_parallel_calls)
+      DataFrame.unbatch_and_to_sparse,
+      num_parallel_calls=num_parallel_calls)
   return _apply_fn

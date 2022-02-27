@@ -57,29 +57,29 @@ class RebatchDatasetV2(dataset_ops.DatasetV2):
     '''
     self._input_dataset = input_dataset
     self._batch_size = ops.convert_to_tensor(
-        batch_size,
-        dtype=dtypes.int64,
-        name="batch_size")
+      batch_size,
+      dtype=dtypes.int64,
+      name='batch_size')
     if min_batch_size is None:
       min_batch_size = batch_size
     self._min_batch_size = ops.convert_to_tensor(
-        min_batch_size,
-        dtype=dtypes.int64,
-        name="min_batch_size")
+      min_batch_size,
+      dtype=dtypes.int64,
+      name='min_batch_size')
     self._fields = input_fields(input_dataset, fields)
     self._drop_remainder = drop_remainder
     self._num_parallel_scans = num_parallel_scans
     self._impl = _ops.rebatch_tabular_dataset(
-        self._input_dataset._variant_tensor,  # pylint: disable=protected-access
-        self._batch_size,
-        self._min_batch_size,
-        field_ids=nest.flatten({
-            f.name: f.map(lambda _, j=idx: j)
-            for idx, f in enumerate(self._fields)}),
-        field_ragged_indices=nest.flatten(
-            {f.name: f.ragged_indices for f in self._fields}),
-        drop_remainder=self._drop_remainder,
-        num_parallel_scans=self._num_parallel_scans)
+      self._input_dataset._variant_tensor,  # pylint: disable=protected-access
+      self._batch_size,
+      self._min_batch_size,
+      field_ids=nest.flatten({
+        f.name: f.map(lambda _, j=idx: j)
+        for idx, f in enumerate(self._fields)}),
+      field_ragged_indices=nest.flatten(
+        {f.name: f.ragged_indices for f in self._fields}),
+      drop_remainder=self._drop_remainder,
+      num_parallel_scans=self._num_parallel_scans)
     super().__init__(self._impl)
 
   @property

@@ -22,7 +22,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from six.moves import xrange # pylint: disable=redefined-builtin
+from six.moves import xrange  # pylint: disable=redefined-builtin
 
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.data.ops import readers
@@ -33,6 +33,7 @@ from tensorflow.python.framework import type_spec
 from tensorflow.python.util import nest
 
 from hybridbackend.tensorflow.data.dataframe import DataFrame
+from hybridbackend.tensorflow.data.parquet import parquet_fields
 from hybridbackend.tensorflow.data.parquet import parquet_filenames_and_fields
 from hybridbackend.tensorflow.pywrap import _ops
 
@@ -53,8 +54,8 @@ class DataFrameValueSpec(type_spec.BatchableTypeSpec):
     self._field = field
     self._specs = [tensor_spec.TensorSpec(field.shape, dtype=field.dtype)]
     self._specs += [
-        tensor_spec.TensorSpec(field.shape, dtype=dtypes.int32)
-        for _ in xrange(field.ragged_rank)]
+      tensor_spec.TensorSpec(field.shape, dtype=dtypes.int32)
+      for _ in xrange(field.ragged_rank)]
 
   def _serialize(self):
     return (self._field.dtype, self._field.ragged_rank)
@@ -94,7 +95,6 @@ class DataFrameValueSpec(type_spec.BatchableTypeSpec):
 class _ParquetDatasetV2(dataset_ops.DatasetSource):  # pylint: disable=abstract-method
   r'''A Parquet Dataset that reads batches from parquet files.
   '''
-
   def __init__(
       self, filename, batch_size, fields,
       partition_count=1,
@@ -112,32 +112,33 @@ class _ParquetDatasetV2(dataset_ops.DatasetSource):  # pylint: disable=abstract-
         `batch_size` samples.
     '''
     self._filename = ops.convert_to_tensor(
-        filename, dtype=dtypes.string, name="filename")
+      filename, dtype=dtypes.string, name='filename')
     self._batch_size = ops.convert_to_tensor(
-        batch_size, dtype=dtypes.int64, name="batch_size")
+      batch_size, dtype=dtypes.int64, name='batch_size')
     self._fields = fields
     self._output_specs = {
-        f.name: \
-            DataFrameValueSpec(f) if f.ragged_rank > 0 \
-            else tensor_spec.TensorSpec(shape=[None], dtype=f.dtype)
-        for f in self._fields}
+      f.name: (
+        DataFrameValueSpec(f)
+        if f.ragged_rank > 0
+        else tensor_spec.TensorSpec(shape=[None], dtype=f.dtype))
+      for f in self._fields}
     self._field_names = nest.flatten({f.name: f.name for f in self._fields})
     self._field_dtypes = nest.flatten({f.name: f.dtype for f in self._fields})
     self._field_ragged_ranks = nest.flatten(
-        {f.name: f.ragged_rank for f in self._fields})
+      {f.name: f.ragged_rank for f in self._fields})
     self._partition_count = partition_count
     self._partition_index = partition_index
     self._drop_remainder = drop_remainder
 
     variant_tensor = _ops.parquet_tabular_dataset(
-        self._filename,
-        self._batch_size,
-        field_names=self._field_names,
-        field_dtypes=self._field_dtypes,
-        field_ragged_ranks=self._field_ragged_ranks,
-        partition_count=self._partition_count,
-        partition_index=self._partition_index,
-        drop_remainder=self._drop_remainder)
+      self._filename,
+      self._batch_size,
+      field_names=self._field_names,
+      field_dtypes=self._field_dtypes,
+      field_ragged_ranks=self._field_ragged_ranks,
+      partition_count=self._partition_count,
+      partition_index=self._partition_index,
+      drop_remainder=self._drop_remainder)
     super().__init__(variant_tensor)
 
   @property
@@ -149,6 +150,19 @@ class ParquetDatasetV2(dataset_ops.DatasetV2):  # pylint: disable=abstract-metho
   r'''A Parquet Dataset that reads batches from parquet files.
   '''
   VERSION = 2002
+
+  @classmethod
+  def read_schema(cls, filename, fields=None):
+    r'''Read schema from a parquet file.
+
+    Args:
+      filename: Path of the parquet file.
+      fields: Existing field definitions or field names.
+
+    Returns:
+      Field definition list.
+    '''
+    return parquet_fields(filename, fields=fields)
 
   def __init__(
       self, filenames,
@@ -182,17 +196,17 @@ class ParquetDatasetV2(dataset_ops.DatasetV2):  # pylint: disable=abstract-metho
     self._drop_remainder = drop_remainder
 
     def _create_dataset(f):
-      f = ops.convert_to_tensor(f, dtypes.string, name="filename")
+      f = ops.convert_to_tensor(f, dtypes.string, name='filename')
       return _ParquetDatasetV2(  # pylint: disable=abstract-class-instantiated
-          f, batch_size,
-          fields=self._fields,
-          partition_count=self._partition_count,
-          partition_index=self._partition_index,
-          drop_remainder=self._drop_remainder)
+        f, batch_size,
+        fields=self._fields,
+        partition_count=self._partition_count,
+        partition_index=self._partition_index,
+        drop_remainder=self._drop_remainder)
     self._impl = self._build_dataset(
-        _create_dataset, filenames,
-        num_parallel_reads=num_parallel_reads,
-        num_sequential_reads=num_sequential_reads)
+      _create_dataset, filenames,
+      num_parallel_reads=num_parallel_reads,
+      num_sequential_reads=num_sequential_reads)
     super().__init__(self._impl._variant_tensor)  # pylint: disable=protected-access
 
   @property
@@ -228,11 +242,11 @@ class ParquetDatasetV2(dataset_ops.DatasetV2):  # pylint: disable=abstract-metho
       return filenames.flat_map(dataset_creator)
     if num_parallel_reads == dataset_ops.AUTOTUNE:
       return filenames.interleave(
-          dataset_creator, num_parallel_calls=num_parallel_reads)
+        dataset_creator, num_parallel_calls=num_parallel_reads)
     return readers.ParallelInterleaveDataset(
-        filenames, dataset_creator,
-        cycle_length=num_parallel_reads,
-        block_length=num_sequential_reads,
-        sloppy=True,
-        buffer_output_elements=None,
-        prefetch_input_elements=1)
+      filenames, dataset_creator,
+      cycle_length=num_parallel_reads,
+      block_length=num_sequential_reads,
+      sloppy=True,
+      buffer_output_elements=None,
+      prefetch_input_elements=1)

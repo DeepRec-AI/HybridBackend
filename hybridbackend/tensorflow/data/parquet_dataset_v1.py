@@ -27,6 +27,7 @@ from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.util import nest
 
+from hybridbackend.tensorflow.data.parquet import parquet_fields
 from hybridbackend.tensorflow.data.parquet import parquet_filenames_and_fields
 from hybridbackend.tensorflow.pywrap import _ops
 
@@ -52,9 +53,9 @@ class _ParquetDatasetV1(dataset_ops.Dataset):
         `batch_size` samples.
     '''
     self._filename = ops.convert_to_tensor(
-        filename, dtype=dtypes.string, name="filename")
+      filename, dtype=dtypes.string, name='filename')
     self._batch_size = ops.convert_to_tensor(
-        batch_size, dtype=dtypes.int64, name="batch_size")
+      batch_size, dtype=dtypes.int64, name='batch_size')
     self._fields = fields
     self._output_classes = {f.name: f.output_classes for f in self._fields}
     self._output_types = {f.name: f.output_types for f in self._fields}
@@ -62,7 +63,7 @@ class _ParquetDatasetV1(dataset_ops.Dataset):
     self._field_names = nest.flatten({f.name: f.name for f in self._fields})
     self._field_dtypes = nest.flatten({f.name: f.dtype for f in self._fields})
     self._field_ragged_ranks = nest.flatten(
-        {f.name: f.ragged_rank for f in self._fields})
+      {f.name: f.ragged_rank for f in self._fields})
     self._partition_count = partition_count
     self._partition_index = partition_index
     self._drop_remainder = drop_remainder
@@ -70,14 +71,14 @@ class _ParquetDatasetV1(dataset_ops.Dataset):
 
   def _as_variant_tensor(self):
     return _ops.parquet_tabular_dataset(
-        self._filename,
-        self._batch_size,
-        field_names=self._field_names,
-        field_dtypes=self._field_dtypes,
-        field_ragged_ranks=self._field_ragged_ranks,
-        partition_count=self._partition_count,
-        partition_index=self._partition_index,
-        drop_remainder=self._drop_remainder)
+      self._filename,
+      self._batch_size,
+      field_names=self._field_names,
+      field_dtypes=self._field_dtypes,
+      field_ragged_ranks=self._field_ragged_ranks,
+      partition_count=self._partition_count,
+      partition_index=self._partition_index,
+      drop_remainder=self._drop_remainder)
 
   def _inputs(self):
     return []
@@ -99,6 +100,19 @@ class ParquetDatasetV1(dataset_ops.Dataset):
   r'''A Parquet Dataset that reads batches from parquet files.
   '''
   VERSION = 2001
+
+  @classmethod
+  def read_schema(cls, filename, fields=None):
+    r'''Read schema from a parquet file.
+
+    Args:
+      filename: Path of the parquet file.
+      fields: Existing field definitions or field names.
+
+    Returns:
+      Field definition list.
+    '''
+    return parquet_fields(filename, fields=fields)
 
   def __init__(
       self, filenames,
@@ -132,15 +146,15 @@ class ParquetDatasetV1(dataset_ops.Dataset):
     self._drop_remainder = drop_remainder
 
     def _create_dataset(f):
-      f = ops.convert_to_tensor(f, dtypes.string, name="filename")
+      f = ops.convert_to_tensor(f, dtypes.string, name='filename')
       return _ParquetDatasetV1(
-          f, batch_size,
-          fields=self._fields,
-          partition_count=self._partition_count,
-          partition_index=self._partition_index,
-          drop_remainder=self._drop_remainder)
+        f, batch_size,
+        fields=self._fields,
+        partition_count=self._partition_count,
+        partition_index=self._partition_index,
+        drop_remainder=self._drop_remainder)
     self._impl = self._build_dataset(
-        _create_dataset, filenames, num_parallel_reads, num_sequential_reads)
+      _create_dataset, filenames, num_parallel_reads, num_sequential_reads)
     super().__init__()
 
   @property
@@ -185,7 +199,7 @@ class ParquetDatasetV1(dataset_ops.Dataset):
     if num_parallel_reads is None:
       return filenames.flat_map(dataset_creator)
     return filenames.interleave(
-        dataset_creator,
-        cycle_length=num_parallel_reads if num_parallel_reads > 0 else 1,
-        block_length=num_sequential_reads,
-        num_parallel_calls=num_parallel_reads)
+      dataset_creator,
+      cycle_length=num_parallel_reads if num_parallel_reads > 0 else 1,
+      block_length=num_sequential_reads,
+      num_parallel_calls=num_parallel_reads)

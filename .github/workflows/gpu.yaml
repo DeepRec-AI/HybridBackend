@@ -3,10 +3,9 @@ name: release deploy on gpu
 on: workflow_dispatch
 
 env:
-  IMAGE: registry.cn-shanghai.aliyuncs.com/pai-dlc/hybridbackend:developer-nvtf1-py3.6-cu114-ubuntu18.04
+  IMAGE: registry.cn-shanghai.aliyuncs.com/pai-dlc/hybridbackend:developer-tf1.15-py3.6-cu114-ubuntu18.04
   JOBNAME: hbci-${{ github.run_id }}
   PODNAME: hbci-${{ github.run_id }}-chief-0
-  ARROW_CACHE_URL_PREFIX: ${{ secrets.ARROW_CACHE_URL_PREFIX }}
 
 jobs:
   build:
@@ -28,8 +27,7 @@ jobs:
         helm install ${JOBNAME} cibuild/ \
         --set image=${IMAGE} \
         --set gpus=2 && \
-        cibuild/upload ${PODNAME} ../cibuild && \
-        kubectl exec -it ${PODNAME} -- arrow/download.sh ${ARROW_CACHE_URL_PREFIX}
+        cibuild/upload ${PODNAME} ../cibuild
     - name: Build
       run: |-
         kubectl exec -it ${PODNAME} -- sh -c 'make -j32 HYBRIDBACKEND_WHEEL_REQUIRES="tensorflow>=1.15,<2.0"'

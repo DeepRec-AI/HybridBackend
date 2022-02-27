@@ -23,7 +23,7 @@ from __future__ import print_function
 import numpy as np
 import pandas as pd
 import os
-from six.moves import xrange # pylint: disable=redefined-builtin
+from six.moves import xrange  # pylint: disable=redefined-builtin
 import tempfile
 import tensorflow as tf
 import unittest
@@ -34,6 +34,8 @@ from hybridbackend.tensorflow.data import ParquetDataset
 from hybridbackend.tensorflow.data import rebatch
 from hybridbackend.tensorflow.data import to_sparse
 
+from tests.tensorflow.spawn import register
+
 
 # pylint: disable=missing-docstring
 class ParquetDatasetRebatchTest(unittest.TestCase):
@@ -42,23 +44,24 @@ class ParquetDatasetRebatchTest(unittest.TestCase):
     self._filename = os.path.join(self._workspace, 'test.parquet')
     nrows = 100
     cols = list('ABCDE')
+
     def build_row(br, er, bseq, eseq):
       a = np.random.randint(br, er, dtype=np.int64)
       b = np.random.randint(
-          br, er, size=(np.random.randint(bseq, eseq),), dtype=np.int64)
+        br, er, size=(np.random.randint(bseq, eseq),), dtype=np.int64)
       c = np.random.randint(br, er, dtype=np.int64)
       d = np.random.randint(
-          br, er, size=(np.random.randint(bseq, eseq),), dtype=np.int64)
+        br, er, size=(np.random.randint(bseq, eseq),), dtype=np.int64)
       e = np.array(list(map(
-          str,
-          np.random.randint(
-              br, er * 100,
-              size=(np.random.randint(bseq, eseq),),
-              dtype=np.int64))))
+        str,
+        np.random.randint(
+          br, er * 100,
+          size=(np.random.randint(bseq, eseq),),
+          dtype=np.int64))))
       return [a, b, c, d, e]
     self._df = pd.DataFrame(
-        np.array([build_row(0, 100, 1, 5) for _ in xrange(nrows)]),
-        columns=cols)
+      np.array([build_row(0, 100, 1, 5) for _ in xrange(nrows)], dtype=object),
+      columns=cols)
     self._df.to_parquet(self._filename)
 
   def tearDown(self):  # pylint: disable=invalid-name
@@ -78,7 +81,7 @@ class ParquetDatasetRebatchTest(unittest.TestCase):
       for i in xrange(3):
         result = sess.run(batch)
         start_row = i * batch_size
-        end_row = (i+1) * batch_size
+        end_row = (i + 1) * batch_size
         np.testing.assert_equal(result['A'], a[start_row:end_row].to_numpy())
         np.testing.assert_equal(result['C'], c[start_row:end_row].to_numpy())
 
@@ -97,7 +100,7 @@ class ParquetDatasetRebatchTest(unittest.TestCase):
       for i in xrange(3):
         result = sess.run(batch)
         start_row = i * batch_size
-        end_row = (i+1) * batch_size
+        end_row = (i + 1) * batch_size
         np.testing.assert_equal(result['A'], a[start_row:end_row].to_numpy())
         np.testing.assert_equal(result['C'], c[start_row:end_row].to_numpy())
 
@@ -139,7 +142,7 @@ class ParquetDatasetRebatchTest(unittest.TestCase):
       for i in xrange(3):
         result = sess.run(batch)
         start_row = i * batch_size
-        end_row = (i+1) * batch_size
+        end_row = (i + 1) * batch_size
         expected_items = b[start_row:end_row].to_numpy().tolist()
         expected_values = []
         expected_splits = [0]
@@ -147,12 +150,12 @@ class ParquetDatasetRebatchTest(unittest.TestCase):
           expected_values.extend(item)
           expected_splits.append(expected_splits[-1] + len(item))
         expected = DataFrame.Value(
-            np.array(expected_values),
-            tuple([np.array(expected_splits, dtype=np.int32)]))
+          np.array(expected_values),
+          tuple([np.array(expected_splits, dtype=np.int32)]))
         actual = result['B']
         np.testing.assert_allclose(actual.values, expected.values)
         np.testing.assert_equal(
-            actual.nested_row_splits, expected.nested_row_splits)
+          actual.nested_row_splits, expected.nested_row_splits)
 
   def test_to_sparse(self):
     micro_batch_size = 20
@@ -169,7 +172,7 @@ class ParquetDatasetRebatchTest(unittest.TestCase):
       for i in xrange(3):
         result = sess.run(batch)
         start_row = i * batch_size
-        end_row = (i+1) * batch_size
+        end_row = (i + 1) * batch_size
         expected_items = b[start_row:end_row].to_numpy().tolist()
         expected_values = []
         expected_splits = [0]
@@ -177,13 +180,13 @@ class ParquetDatasetRebatchTest(unittest.TestCase):
           expected_values.extend(item)
           expected_splits.append(expected_splits[-1] + len(item))
         expected = DataFrame.Value(
-            np.array(expected_values),
-            tuple([np.array(expected_splits, dtype=np.int32)]))
+          np.array(expected_values),
+          tuple([np.array(expected_splits, dtype=np.int32)]))
         actual = result['B']
         np.testing.assert_equal(actual.values, expected.values)
         np.testing.assert_equal(
-            len(set(list(zip(*actual.indices))[0])) + 1,
-            len(expected.nested_row_splits[0]))
+          len(set(list(zip(*actual.indices))[0])) + 1,
+          len(expected.nested_row_splits[0]))
 
   def test_shuffle_micro_batch(self):
     micro_batch_size = 20
@@ -192,7 +195,7 @@ class ParquetDatasetRebatchTest(unittest.TestCase):
       srcds = ParquetDataset(self._filename, micro_batch_size)
       ds = srcds.shuffle(4)
       ds = ds.apply(
-          rebatch(batch_size, fields=srcds.fields, num_parallel_scans=2))
+        rebatch(batch_size, fields=srcds.fields, num_parallel_scans=2))
       ds = ds.apply(to_sparse())
       ds = ds.prefetch(4)
       batch = make_one_shot_iterator(ds).get_next()
@@ -215,7 +218,7 @@ class ParquetDatasetRebatchTest(unittest.TestCase):
       for i in xrange(3):
         result = sess.run(batch)
         start_row = i * batch_size
-        end_row = (i+1) * batch_size
+        end_row = (i + 1) * batch_size
         expected_items = b[start_row:end_row].to_numpy().tolist()
         expected_values = []
         expected_splits = [0]
@@ -223,14 +226,15 @@ class ParquetDatasetRebatchTest(unittest.TestCase):
           expected_values.extend(item)
           expected_splits.append(expected_splits[-1] + len(item))
         expected = DataFrame.Value(
-            np.array(expected_values),
-            tuple([np.array(expected_splits, dtype=np.int32)]))
+          np.array(expected_values),
+          tuple([np.array(expected_splits, dtype=np.int32)]))
         actual = result['B']
         np.testing.assert_allclose(actual.values, expected.values)
         np.testing.assert_equal(
-            actual.nested_row_splits, expected.nested_row_splits)
+          actual.nested_row_splits, expected.nested_row_splits)
 
 
 if __name__ == '__main__':
+  register(['cpu', 'data'])
   os.environ['CUDA_VISIBLE_DEVICES'] = ''
   unittest.main()

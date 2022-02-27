@@ -298,7 +298,7 @@ deprecated-members=string.atof,string.atoi,string.atol,string.capitalize,string.
 # List of exceptions that do not need to be mentioned in the Raises section of
 # a docstring.
 ignore-exceptions=AssertionError,NotImplementedError,StopIteration,TypeError
-
+docstring-quote=single
 
 
 [TOKENS]

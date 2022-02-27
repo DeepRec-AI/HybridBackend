@@ -19,7 +19,11 @@ if [[ -z "$DOCKER_RUN_ARGS" ]]; then
 fi
 
 if [[ -z "$DOCKER_RUN_IMAGE" ]]; then
-  DOCKER_RUN_IMAGE=registry.cn-shanghai.aliyuncs.com/pai-dlc/hybridbackend:developer-nvtf1-py3.6-cu114-ubuntu18.04
+  DOCKER_RUN_IMAGE=registry.cn-shanghai.aliyuncs.com/pai-dlc/hybridbackend:developer-tf1.15-py3.6-cu114-ubuntu18.04
+fi
+
+if [[ -z "$NVIDIA_VISIBLE_DEVICES" ]]; then
+  NVIDIA_VISIBLE_DEVICES=all
 fi
 
 nvidia-smi 1>/dev/null 2>/dev/null
@@ -28,12 +32,16 @@ USE_GPU=$?
 if [[ $USE_GPU -gt 0 ]]; then
   DOCKERRUN="docker run"
 else
-  DOCKERRUN="docker run --runtime=nvidia -e NVIDIA_VISIBLE_DEVICES=all"
+  DOCKERRUN="docker run --runtime=nvidia -e NVIDIA_VISIBLE_DEVICES=$NVIDIA_VISIBLE_DEVICES"
   $DOCKERRUN $DOCKER_RUN_IMAGE echo 1>/dev/null 2>/dev/null
   DOCKER_USE_NVRT=$?
   if [[ $DOCKER_USE_NVRT -gt 0 ]]; then
-    DOCKERRUN="nvidia-docker run"
+    DOCKERRUN="NV_GPU=$NV_GPU nvidia-docker run"
   fi
+fi
+
+if [[ -z "$NCCL_LAUNCH_MODE" ]]; then
+  NCCL_LAUNCH_MODE=PARALLEL
 fi
 
 set -eo pipefail
@@ -54,7 +62,7 @@ sudo ${DOCKERRUN} \
   -e PYTHONPATH=$DIR \
   -e MALLOC_CONF=background_thread:true,metadata_thp:auto \
   -e NCCL_DEBUG=INFO \
-  -e NCCL_LAUNCH_MODE=PARALLEL \
+  -e NCCL_LAUNCH_MODE=$NCCL_LAUNCH_MODE \
   -e TF_GPU_VMEM=false \
   --user ${USRPSWD} \
   --pid=host \

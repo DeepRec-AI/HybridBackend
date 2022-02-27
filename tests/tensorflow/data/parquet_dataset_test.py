@@ -23,7 +23,7 @@ from __future__ import print_function
 import numpy as np
 import pandas as pd
 import os
-from six.moves import xrange # pylint: disable=redefined-builtin
+from six.moves import xrange  # pylint: disable=redefined-builtin
 import tempfile
 import tensorflow as tf
 import unittest
@@ -38,6 +38,8 @@ from hybridbackend.tensorflow.data import make_one_shot_iterator
 from hybridbackend.tensorflow.data import ParquetDataset
 from hybridbackend.tensorflow.data import read_parquet
 
+from tests.tensorflow.spawn import register
+
 
 # pylint: disable=missing-docstring
 class ParquetDatasetTest(unittest.TestCase):
@@ -45,8 +47,8 @@ class ParquetDatasetTest(unittest.TestCase):
     self._workspace = tempfile.mkdtemp()
     self._filename = os.path.join(self._workspace, 'test.parquet')
     self._df = pd.DataFrame(
-        np.random.randint(0, 100, size=(200, 4), dtype=np.int64),
-        columns=list('ABCD'))
+      np.random.randint(0, 100, size=(200, 4), dtype=np.int64),
+      columns=list('ABCD'))
     self._df.to_parquet(self._filename)
 
   def tearDown(self):  # pylint: disable=invalid-name
@@ -56,10 +58,10 @@ class ParquetDatasetTest(unittest.TestCase):
     batch_size = 32
     with tf.Graph().as_default() as graph:
       ds = ParquetDataset(
-          self._filename,
-          batch_size=batch_size,
-          fields=[DataFrame.Field('A', tf.int64),
-                  DataFrame.Field('C', tf.int64)])
+        self._filename,
+        batch_size=batch_size,
+        fields=[DataFrame.Field('A', tf.int64),
+                DataFrame.Field('C', tf.int64)])
       ds = ds.prefetch(4)
       batch = make_one_shot_iterator(ds).get_next()
 
@@ -69,7 +71,7 @@ class ParquetDatasetTest(unittest.TestCase):
       for i in xrange(3):
         result = sess.run(batch)
         start_row = i * batch_size
-        end_row = (i+1) * batch_size
+        end_row = (i + 1) * batch_size
         np.testing.assert_equal(result['A'], a[start_row:end_row].to_numpy())
         np.testing.assert_equal(result['C'], c[start_row:end_row].to_numpy())
 
@@ -85,16 +87,16 @@ class ParquetDatasetTest(unittest.TestCase):
       for i in xrange(3):
         result = sess.run(batch)
         start_row = i * batch_size
-        end_row = (i+1) * batch_size
+        end_row = (i + 1) * batch_size
         np.testing.assert_equal(result['C'], c[start_row:end_row].to_numpy())
 
   def test_dtype_auto_detection_read(self):
     batch_size = 32
     with tf.Graph().as_default() as graph:
       ds = ParquetDataset(
-          [self._filename],
-          batch_size=batch_size,
-          fields=['B', 'C'])
+        [self._filename],
+        batch_size=batch_size,
+        fields=['B', 'C'])
       ds = ds.prefetch(4)
       batch = make_one_shot_iterator(ds).get_next()
 
@@ -103,7 +105,7 @@ class ParquetDatasetTest(unittest.TestCase):
       for i in xrange(3):
         result = sess.run(batch)
         start_row = i * batch_size
-        end_row = (i+1) * batch_size
+        end_row = (i + 1) * batch_size
         np.testing.assert_equal(result['C'], c[start_row:end_row].to_numpy())
 
   def test_read_from_generator(self):
@@ -116,10 +118,10 @@ class ParquetDatasetTest(unittest.TestCase):
             return  # raise StopIteration
           yield self._filename
       filenames = tf.data.Dataset.from_generator(
-          gen_filenames, tf.string, tf.TensorShape([]))
+        gen_filenames, tf.string, tf.TensorShape([]))
       fields = [
-          DataFrame.Field('A', tf.int64),
-          DataFrame.Field('C', tf.int64)]
+        DataFrame.Field('A', tf.int64),
+        DataFrame.Field('C', tf.int64)]
       ds = filenames.apply(read_parquet(batch_size, fields=fields))
       ds = ds.prefetch(4)
       batch = make_one_shot_iterator(ds).get_next()
@@ -140,12 +142,12 @@ class ParquetDatasetTest(unittest.TestCase):
             return  # raise StopIteration
           yield self._filename
       filenames = tf.data.Dataset.from_generator(
-          gen_filenames, tf.string, tf.TensorShape([]))
+        gen_filenames, tf.string, tf.TensorShape([]))
       fields = [
-          DataFrame.Field('A', tf.int64),
-          DataFrame.Field('C', tf.int64)]
+        DataFrame.Field('A', tf.int64),
+        DataFrame.Field('C', tf.int64)]
       ds = filenames.apply(
-          read_parquet(batch_size, fields=fields, num_parallel_reads=3))
+        read_parquet(batch_size, fields=fields, num_parallel_reads=3))
       ds = ds.prefetch(4)
       batch = make_one_shot_iterator(ds).get_next()
 
@@ -165,12 +167,12 @@ class ParquetDatasetTest(unittest.TestCase):
             return  # raise StopIteration
           yield self._filename
       filenames = tf.data.Dataset.from_generator(
-          gen_filenames, tf.string, tf.TensorShape([]))
+        gen_filenames, tf.string, tf.TensorShape([]))
       fields = [
-          DataFrame.Field('A', tf.int64),
-          DataFrame.Field('C', tf.int64)]
+        DataFrame.Field('A', tf.int64),
+        DataFrame.Field('C', tf.int64)]
       ds = filenames.apply(
-          read_parquet(batch_size, fields=fields, num_parallel_reads=AUTOTUNE))
+        read_parquet(batch_size, fields=fields, num_parallel_reads=AUTOTUNE))
       ds = ds.prefetch(4)
       batch = make_one_shot_iterator(ds).get_next()
 
@@ -182,5 +184,6 @@ class ParquetDatasetTest(unittest.TestCase):
 
 
 if __name__ == '__main__':
+  register(['cpu', 'data'])
   os.environ['CUDA_VISIBLE_DEVICES'] = ''
   unittest.main()

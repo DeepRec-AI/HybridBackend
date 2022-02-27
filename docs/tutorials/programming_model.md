@@ -27,8 +27,8 @@ python -m hybridbackend.run python /path/to/main.py
 ### Configure parameters globally
 
 ```python
-# Use half precison communication for collective data movements globally.
-hb.context.update_params(comm_wire_dtype_for_float=tf.float16)
+# Hint batch size for further optimization globally.
+hb.context.update_params(batch_size=64000)
 ```
 
 ### Configure parameters within a scope
