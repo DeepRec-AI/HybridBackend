@@ -20,7 +20,7 @@ if [[ -z "${PYTHON}" ]]; then
     export PYTHON=$(which python)
 fi
 
-PYSOURCES=$(find \( -path ./arrow -o -path ./build -o -path ./dist \) -prune -false -o -type f -name '*.py')
+PYSOURCES=$(find \( -path ./arrow -o -path ./sparsehash -o -path ./build -o -path ./dist \) -prune -false -o -type f -name '*.py')
 if [[ ! -z ${PYSOURCES} ]]; then
     PYLINTHOME=$(pwd)/.pylint.d \
     $PYTHON -m pylint \
@@ -29,8 +29,8 @@ if [[ ! -z ${PYSOURCES} ]]; then
     ${PYSOURCES}
 fi
 
-HEADERS=$(find \( -path ./arrow -o -path ./build -o -path ./dist \) -prune -false -o -type f -name '*.h')
-SOURCES=$(find \( -path ./arrow -o -path ./build -o -path ./dist \) -prune -false -o -type f -name '*.cc')
+HEADERS=$(find \( -path ./arrow -o -path ./sparsehash -o -path ./build -o -path ./dist \) -prune -false -o -type f -name '*.h')
+SOURCES=$(find \( -path ./arrow -o -path ./sparsehash -o -path ./build -o -path ./dist \) -prune -false -o -type f -name '*.cc')
 
 if [[ ! -z ${HEADERS} ]] || [[ ! -z ${SOURCES} ]]; then
     replacements=$(clang-format -style=file -output-replacements-xml ${HEADERS} ${SOURCES})

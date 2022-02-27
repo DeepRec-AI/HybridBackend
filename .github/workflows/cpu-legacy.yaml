@@ -36,7 +36,7 @@ jobs:
         kubectl exec -it ${PODNAME} -- cibuild/repair_dist manylinux_2_24_x86_64 -w /opt/dist/
     - name: Test
       run: |-
-        kubectl exec -it ${PODNAME} -- make cpu_test
+        kubectl exec -it ${PODNAME} -- sh -c 'TEST_ALLOWS=cpu make test'
     - name: Download
       run: |-
         kubectl exec -it ${PODNAME} -- \

@@ -38,6 +38,8 @@ from hybridbackend.tensorflow.data import make_one_shot_iterator
 from hybridbackend.tensorflow.data import ParquetDataset
 from hybridbackend.tensorflow.data import read_parquet
 
+from tests.tensorflow.spawn import register
+
 
 # pylint: disable=missing-docstring
 class ParquetDatasetTest(unittest.TestCase):
@@ -182,5 +184,6 @@ class ParquetDatasetTest(unittest.TestCase):
 
 
 if __name__ == '__main__':
+  register(['cpu', 'data'])
   os.environ['CUDA_VISIBLE_DEVICES'] = ''
   unittest.main()
