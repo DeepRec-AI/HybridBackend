@@ -48,10 +48,10 @@ def parquet_fields(filename, fields=None):
   all_field_tuples = _lib.parquet_file_get_fields(filename)  # pylint: disable=c-extension-no-member
   if not all_field_tuples:
     raise ValueError(
-        f'No supported fields found in parquet file {filename}')
+      f'No supported fields found in parquet file {filename}')
   all_fields = {
-      f[0]: {'dtype': f[1], 'ragged_rank': f[2]}
-      for f in all_field_tuples}
+    f[0]: {'dtype': f[1], 'ragged_rank': f[2]}
+    for f in all_field_tuples}
   if fields is None:
     fields = all_fields.keys()
   fields = tuple(fields)
@@ -62,15 +62,15 @@ def parquet_fields(filename, fields=None):
       continue
     if not isinstance(f, string):
       raise ValueError(
-          f'Field {f} is not a DataFrame.Field or a string')
+        f'Field {f} is not a DataFrame.Field or a string')
     if f not in all_fields:
       raise ValueError(
-          f'Field {f} is not found in the parquet file {filename}')
+        f'Field {f} is not found in the parquet file {filename}')
     new_fields.append(DataFrame.Field(
-        f,
-        dtype=np.dtype(all_fields[f]['dtype']),
-        ragged_rank=all_fields[f]['ragged_rank'],
-        shape=[None]))
+      f,
+      dtype=np.dtype(all_fields[f]['dtype']),
+      ragged_rank=all_fields[f]['ragged_rank'],
+      shape=[None]))
   return tuple(new_fields)
 
 
@@ -95,11 +95,11 @@ def parquet_filenames_and_fields(filenames, fields):
   elif isinstance(filenames, dataset_ops.Dataset):
     if filenames.output_types != dtypes.string:
       raise TypeError(
-          '`filenames` must be a `tf.data.Dataset` of `tf.string` elements.')
+        '`filenames` must be a `tf.data.Dataset` of `tf.string` elements.')
     if not filenames.output_shapes.is_compatible_with(tensor_shape.scalar()):
       raise ValueError(
-          '`filenames` must be a `tf.data.Dataset` of scalar `tf.string` '
-          'elements.')
+        '`filenames` must be a `tf.data.Dataset` of scalar `tf.string` '
+        'elements.')
     if fields is None:
       raise ValueError('`fields` must be specified.')
     if not isinstance(fields, (tuple, list)):
@@ -110,7 +110,7 @@ def parquet_filenames_and_fields(filenames, fields):
   elif isinstance(filenames, ops.Tensor):
     if filenames.dtype != dtypes.string:
       raise TypeError(
-          '`filenames` must be a `tf.Tensor` of `tf.string`.')
+        '`filenames` must be a `tf.Tensor` of `tf.string`.')
     if fields is None:
       raise ValueError('`fields` must be specified.')
     if not isinstance(fields, (tuple, list)):
@@ -120,9 +120,9 @@ def parquet_filenames_and_fields(filenames, fields):
         raise ValueError(f'{f} must be `hb.data.DataFrame.Field`.')
   else:
     raise ValueError(
-        f'`filenames` {filenames} must be a `tf.data.Dataset` of scalar '
-        '`tf.string` elements or can be converted to a `tf.Tensor` of '
-        '`tf.string`.')
+      f'`filenames` {filenames} must be a `tf.data.Dataset` of scalar '
+      '`tf.string` elements or can be converted to a `tf.Tensor` of '
+      '`tf.string`.')
 
   if not isinstance(filenames, dataset_ops.Dataset):
     filenames = ops.convert_to_tensor(filenames, dtype=dtypes.string)

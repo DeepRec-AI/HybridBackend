@@ -1,6 +1,6 @@
-name: nightly deploy on gpu
+name: cibuild on gpu
 
-on: workflow_dispatch
+on: [workflow_dispatch, push]
 
 env:
   IMAGE: registry.cn-shanghai.aliyuncs.com/pai-dlc/hybridbackend:developer-tf1.15-py3.6-cu114-ubuntu18.04
@@ -30,23 +30,10 @@ jobs:
         cibuild/upload ${PODNAME} ../cibuild
     - name: Build
       run: |-
-        kubectl exec -it ${PODNAME} -- sh -c 'make -j32 HYBRIDBACKEND_WHEEL_ALIAS=-nightly HYBRIDBACKEND_WHEEL_BUILD=.dev${{ github.run_id }}' && \
-        kubectl exec -it ${PODNAME} -- cibuild/auditwheel /opt/dist
+        kubectl exec -it ${PODNAME} -- sh -c 'make -j32 HYBRIDBACKEND_WHEEL_ALIAS=-nightly HYBRIDBACKEND_WHEEL_BUILD=rc${{ github.run_id }}'
     - name: Test
       run: |-
         kubectl exec -it ${PODNAME} -- make lint test
-    - name: Download
-      run: |-
-        kubectl exec -it ${PODNAME} -- \
-        tar -cf dist.tar -C /opt dist/ && \
-        kubectl cp ${PODNAME}:dist.tar ./dist.tar && \
-        tar -xf ./dist.tar
-    - name: Publish
-      uses: pypa/gh-action-pypi-publish@release/v1
-      with:
-        skip_existing: true
-        user: __token__
-        password: ${{ secrets.PYPI_API_TOKEN }}
     - name: Cleanup Environment
       if: always()
       run: |-

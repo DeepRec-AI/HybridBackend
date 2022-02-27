@@ -31,8 +31,8 @@ limitations under the License.
 #include <arrow/filesystem/s3fs.h>
 #endif
 
-#include "tensorflow/core/framework/tensor.h"
-#include "tensorflow/core/lib/core/errors.h"
+#include <tensorflow/core/framework/tensor.h>
+#include <tensorflow/core/lib/core/errors.h>
 
 #define TF_RETURN_IF_ARROW_ERROR(...)              \
   do {                                             \

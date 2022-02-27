@@ -54,13 +54,6 @@ prefered to use.
 
 ## Build from source on Linux/macOS w/ docker
 
-- Fetch source from git and sync submodules.
-
-```bash
-git submodule sync
-git submodule update --init
-```
-
 - Step into developer docker.
 
 ```bash
@@ -90,11 +83,21 @@ cibuild/run make -j8
 
 ## Build from source on Linux w/o docker
 
-- Fetch source from git and sync submodules.
+- Build & install arrow.
 
 ```bash
-git submodule sync
-git submodule update --init
+cd cibuild/arrow/
+ARROW_USE_CXX11_ABI=${HYBRIDBACKEND_USE_CXX11_ABI} \
+ARROW_HDFS=ON \
+ARROW_S3=ON \
+./build.sh
+```
+
+- Build & install sparsehash.
+
+```bash
+cd cibuild/sparsehash
+./build.sh
 ```
 
 - Install TensorFlow and other requirements.
@@ -122,11 +125,21 @@ make -j8
 
 ## Build from source on macOS w/o docker
 
-- Fetch source from git and sync submodules.
+- Build & install arrow.
 
 ```bash
-git submodule sync
-git submodule update --init
+cd cibuild/arrow/
+ARROW_USE_CXX11_ABI=${HYBRIDBACKEND_USE_CXX11_ABI} \
+ARROW_HDFS=ON \
+ARROW_S3=ON \
+./build.sh
+```
+
+- Build & install sparsehash.
+
+```bash
+cd cibuild/sparsehash
+./build.sh
 ```
 
 - Install TensorFlow and other requirements.

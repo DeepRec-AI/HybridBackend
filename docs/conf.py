@@ -32,15 +32,15 @@ release = 'latest'
 # extensions coming with Sphinx (named 'sphinx.ext.*') or your custom
 # ones.
 extensions = [
-    'myst_parser',
-    'sphinx.ext.autodoc',
-    'sphinx.ext.napoleon',
-    'sphinx.ext.autosectionlabel',
-    'sphinx.ext.autosummary',
-    'sphinx.ext.extlinks',
-    'sphinx.ext.mathjax',
-    'sphinx.ext.todo',
-    'sphinx.ext.ifconfig'
+  'myst_parser',
+  'sphinx.ext.autodoc',
+  'sphinx.ext.napoleon',
+  'sphinx.ext.autosectionlabel',
+  'sphinx.ext.autosummary',
+  'sphinx.ext.extlinks',
+  'sphinx.ext.mathjax',
+  'sphinx.ext.todo',
+  'sphinx.ext.ifconfig'
 ]
 
 # Add any paths that contain templates here, relative to this directory.
@@ -60,5 +60,5 @@ html_theme = 'sphinx_rtd_theme'
 html_static_path = ['images']
 
 suppress_warnings = [
-    'autosectionlabel.*'
+  'autosectionlabel.*'
 ]

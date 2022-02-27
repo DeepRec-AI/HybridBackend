@@ -20,17 +20,27 @@ if [[ -z "${PYTHON}" ]]; then
     export PYTHON=$(which python)
 fi
 
-PYSOURCES=$(find \( -path ./arrow -o -path ./build -o -path ./dist \) -prune -false -o -type f -name '*.py')
+PYSOURCES="$@"
+if [[ -z "$PYSOURCES" ]]; then
+    PYSOURCES=$(find \( -path ./cibuild -o -path ./build -o -path ./dist \) -prune -false -o -type f -name '*.py')
+fi
 if [[ ! -z ${PYSOURCES} ]]; then
     PYLINTHOME=$(pwd)/.pylint.d \
     $PYTHON -m pylint \
+    --load-plugins pylint_quotes \
     --rcfile=.pylintrc \
     --jobs=32 \
     ${PYSOURCES}
+    $PYTHON -m pycodestyle \
+    --config=.pycodestylerc \
+    --format=pylint \
+    --indent-size=2 \
+    --statistics \
+    ${PYSOURCES}
 fi
 
-HEADERS=$(find \( -path ./arrow -o -path ./build -o -path ./dist \) -prune -false -o -type f -name '*.h')
-SOURCES=$(find \( -path ./arrow -o -path ./build -o -path ./dist \) -prune -false -o -type f -name '*.cc')
+HEADERS=$(find \( -path ./cibuild -o -path ./build -o -path ./dist \) -prune -false -o -type f -name '*.h')
+SOURCES=$(find \( -path ./cibuild -o -path ./build -o -path ./dist \) -prune -false -o -type f -name '*.cc')
 
 if [[ ! -z ${HEADERS} ]] || [[ ! -z ${SOURCES} ]]; then
     replacements=$(clang-format -style=file -output-replacements-xml ${HEADERS} ${SOURCES})

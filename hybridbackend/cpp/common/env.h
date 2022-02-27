@@ -18,9 +18,26 @@ limitations under the License.
 
 #include <string>
 
+#ifdef __has_builtin
+#define HYBRIDBACKEND_HAS_BUILTIN(x) __has_builtin(x)
+#else
+#define HYBRIDBACKEND_HAS_BUILTIN(x) 0
+#endif
+
+#if (!defined(__NVCC__)) && (HYBRIDBACKEND_HAS_BUILTIN(__builtin_expect) || \
+                             (defined(__GNUC__) && __GNUC__ >= 3))
+#define HYBRIDBACKEND_PREDICT_FALSE(x) (__builtin_expect(x, 0))
+#define HYBRIDBACKEND_PREDICT_TRUE(x) (__builtin_expect(!!(x), 1))
+#else
+#define HYBRIDBACKEND_PREDICT_FALSE(x) (x)
+#define HYBRIDBACKEND_PREDICT_TRUE(x) (x)
+#endif
+
 namespace hybridbackend {
 
 int EnvGetInt(const std::string& env_var, int default_val);
+
+std::string EnvGet(const std::string& env_var, const std::string& default_val);
 
 }  // namespace hybridbackend
 

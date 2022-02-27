@@ -15,7 +15,7 @@
 # =============================================================================
 
 if [[ -z "$DOCKER_BASE_IMAGE" ]]; then
-  DOCKER_BASE_IMAGE=registry.cn-shanghai.aliyuncs.com/pai-dlc/hybridbackend:developer-nvtf1-py3.6-cu114-ubuntu18.04
+  DOCKER_BASE_IMAGE=registry.cn-shanghai.aliyuncs.com/pai-dlc/hybridbackend:developer-tf1.15-py3.6-cu114-ubuntu18.04
 fi
 
 set -eo pipefail
@@ -24,7 +24,7 @@ DOCKERFILE="dockerfiles/Dockerfile.$(sed 's/.*\://g' <<< $DOCKER_BASE_IMAGE)"
 
 cd cibuild/
 
-sudo docker build -t ${DOCKER_BASE_IMAGE} -f ${DOCKERFILE} .
+sudo docker build -t ${DOCKER_BASE_IMAGE} -f ${DOCKERFILE} $@ .
 
 cd -
 

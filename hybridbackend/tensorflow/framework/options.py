@@ -21,7 +21,7 @@ from __future__ import division
 from __future__ import print_function
 
 
-class Options(object): # pylint: disable=useless-object-inheritance
+class Options(object):  # pylint: disable=useless-object-inheritance
   r'''Options for configuration.
   '''
   def __init__(self, **kwargs):

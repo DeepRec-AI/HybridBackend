@@ -14,26 +14,10 @@
 # limitations under the License.
 # =============================================================================
 
-if [[ -z "$DOCKER_IMAGE" ]]; then
-  DOCKER_IMAGE=registry.cn-shanghai.aliyuncs.com/pai-dlc/hybridbackend:tf1.15-py3.6-cu114-ubuntu18.04
-fi
+export PS1="\e[0;33m\W\$\e[0m "
 
-if [[ -z "$DOCKER_BASE_IMAGE" ]]; then
-  DOCKER_BASE_IMAGE=registry.cn-shanghai.aliyuncs.com/pai-dlc/hybridbackend:developer-tf1.15-py3.6-cu114-ubuntu18.04
-fi
+export PATH=${PATH}:${HADOOP_HOME}/bin
+export LD_LIBRARY_PATH=${LD_LIBRARY_PATH}:${JAVA_HOME}/jre/lib/amd64/server
+source ${HADOOP_HOME}/libexec/hadoop-config.sh
+export CLASSPATH=$(${HADOOP_HOME}/bin/hadoop classpath --glob)
 
-set -eo pipefail
-
-DOCKER_RUN_IMAGE=${DOCKER_BASE_IMAGE} \
-cibuild/run make build doc -j$(nproc)
-
-cd cibuild/
-mkdir -p build
-
-sed "s|{{baseimage}}|${DOCKER_BASE_IMAGE}|g" dockerfiles/Dockerfile.jinja2 \
-> build/Dockerfile
-sudo docker build -t ${DOCKER_IMAGE} -f build/Dockerfile $@ .
-
-cd -
-
-echo "Successfully built $DOCKER_IMAGE"

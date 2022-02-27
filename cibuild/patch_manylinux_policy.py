@@ -26,9 +26,9 @@ import json
 import sys
 
 LIB_WHITELIST = [
-    'libcrypt.so.1',
-    'libtensorflow_framework.so.1',
-    'libhybridbackend.so']
+  'libcrypt.so.1',
+  'libtensorflow_framework.so.1',
+  'libhybridbackend.so']
 
 if __name__ == '__main__':
   if len(sys.argv) < 2:

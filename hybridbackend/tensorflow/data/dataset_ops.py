@@ -1,4 +1,3 @@
-#!/bin/bash
 # Copyright 2021 Alibaba Group Holding Limited. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -14,9 +13,20 @@
 # limitations under the License.
 # =============================================================================
 
-set -eo pipefail
+r''' wrappers for using dataset_ops within hybridbackend.
+'''
 
-PLAT=$1
-shift
+from __future__ import absolute_import
+from __future__ import division
+from __future__ import print_function
 
-auditwheel repair --plat $PLAT cibuild/dist/*.whl $@
+from hybridbackend.tensorflow.data.adapter import make_one_shot_iterator
+
+
+def make_iterator(ds):
+  r''' wrapper of make_initializable_iterator.
+
+  Args:
+    ds: a `tf.data.Dataset`
+  '''
+  return make_one_shot_iterator(ds)
