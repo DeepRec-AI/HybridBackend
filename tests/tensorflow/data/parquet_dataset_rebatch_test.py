@@ -34,6 +34,8 @@ from hybridbackend.tensorflow.data import ParquetDataset
 from hybridbackend.tensorflow.data import rebatch
 from hybridbackend.tensorflow.data import to_sparse
 
+from tests.tensorflow.spawn import register
+
 
 # pylint: disable=missing-docstring
 class ParquetDatasetRebatchTest(unittest.TestCase):
@@ -232,5 +234,6 @@ class ParquetDatasetRebatchTest(unittest.TestCase):
 
 
 if __name__ == '__main__':
+  register(['cpu', 'data'])
   os.environ['CUDA_VISIBLE_DEVICES'] = ''
   unittest.main()

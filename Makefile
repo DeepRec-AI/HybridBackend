@@ -6,12 +6,12 @@ HYBRIDBACKEND_WITH_BUILDINFO ?= ON
 HYBRIDBACKEND_WITH_CUDA ?= ON
 HYBRIDBACKEND_WITH_CUDA_GENCODE ?= "70 75 86"
 HYBRIDBACKEND_WITH_NCCL ?= ON
-HYBRIDBACKEND_WITH_CUB ?= ON
 HYBRIDBACKEND_WITH_ARROW ?= ON
 HYBRIDBACKEND_WITH_ARROW_ZEROCOPY ?= ON
 HYBRIDBACKEND_WITH_ARROW_HDFS ?= ON
 HYBRIDBACKEND_WITH_ARROW_S3 ?= ON
 HYBRIDBACKEND_WITH_ARROW_SIMD_LEVEL ?= AVX2
+HYBRIDBACKEND_WITH_SPARSEHASH ?= ON
 HYBRIDBACKEND_WITH_TENSORFLOW ?= ON
 HYBRIDBACKEND_USE_CXX11_ABI ?= 0
 HYBRIDBACKEND_WHEEL_ALIAS ?= ""
@@ -63,7 +63,8 @@ ifeq ($(HYBRIDBACKEND_WITH_CUDA),ON)
 NVCC ?= nvcc
 CUDA_HOME ?= /usr/local/cuda
 CFLAGS := $(CFLAGS) \
-	-isystem $(CUDA_HOME)/include
+	-isystem $(CUDA_HOME)/include \
+	-DHYBRIDBACKEND_CUDA=1
 NVCC_CFLAGS := --std=c++11 \
 	--expt-relaxed-constexpr \
 	--expt-extended-lambda \
@@ -73,10 +74,6 @@ NVCC_CFLAGS := --std=c++11 \
 LDFLAGS := $(LDFLAGS) \
 	-L$(CUDA_HOME)/lib64 \
 	-lcudart
-ifeq ($(HYBRIDBACKEND_WITH_CUB),ON)
-CFLAGS := $(CFLAGS) \
-	-DHYBRIDBACKEND_CUB=1
-endif
 ifeq ($(HYBRIDBACKEND_WITH_NCCL),ON)
 NCCL_HOME ?= /usr/local
 CFLAGS := $(CFLAGS) \
@@ -91,7 +88,7 @@ endif
 
 ifneq ($(OS),Darwin)
 D_FILES := $(shell \
-    find \( -path ./arrow -o -path ./build -o -path ./dist \) \
+    find \( -path ./arrow -o -path ./sparsehash -o -path ./build -o -path ./dist \) \
 	-prune -false -o -type f -name '*.d' \
 	-exec realpath {} --relative-to . \;)
 
@@ -195,18 +192,6 @@ TESTS := $(shell \
 .PHONY: test
 test:
 	for t in $(TESTS); do \
-		echo -e "\033[1;33m[TEST] $$t \033[0m" ; \
-		$(PYTHON) $$t || exit 1; \
-		echo ; \
-	done
-
-CPU_TESTS := $(shell \
-	find tests/tensorflow/data/ -type f -name "*_test.py" \
-	-exec realpath {} --relative-to . \;)
-
-.PHONY: cpu_test
-cpu_test:
-	for t in $(CPU_TESTS); do \
 		echo -e "\033[1;33m[TEST] $$t \033[0m" ; \
 		$(PYTHON) $$t || exit 1; \
 		echo ; \

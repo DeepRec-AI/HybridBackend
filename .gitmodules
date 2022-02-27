@@ -1,3 +1,6 @@
 [submodule "arrow/src"]
 	path = arrow/src
 	url = https://github.com/apache/arrow.git
+[submodule "sparsehash/src"]
+	path = sparsehash/src
+	url = https://github.com/sparsehash/sparsehash-c11.git

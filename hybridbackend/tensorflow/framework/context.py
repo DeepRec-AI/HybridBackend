@@ -149,7 +149,10 @@ class Context(object): # pylint: disable=useless-object-inheritance
       self._num_gpus = 1
     self._update()
     self._params = {}
-    self._hooks = []
+    self._training_hooks = []
+    self._training_chief_hooks = []
+    self._evaluation_hooks = []
+    self._prediction_hooks = []
 
   def __str__(self):
     return f'Context {self._task_type}:{self._task_id} ' + \
@@ -173,6 +176,16 @@ class Context(object): # pylint: disable=useless-object-inheritance
     r'''task index of current server. 0 by default.
     '''
     return self._task_id
+
+  @property
+  def target(self):
+    r'''target of current server.
+    '''
+    if not self._cluster_spec:
+      return ''
+
+    addr = self._cluster_spec.job_tasks(self._task_type)[self._task_id]
+    return f'grpc://{addr}'
 
   @property
   def is_chief(self):
@@ -229,10 +242,24 @@ class Context(object): # pylint: disable=useless-object-inheritance
     return len(self._devices)
 
   @property
-  def rank(self):
-    r'''Index of the default device in current node.
+  def tower_index(self):
+    r'''Local index of default local device.
     '''
-    return self.rank_at(0)
+    tower_index = self.param('tower_index', 0)
+    if self.has_gpu:
+      if tower_index >= len(self.local_devices):
+        raise ValueError(
+            f'Invalid tower_index {tower_index} (>= {len(self.local_devices)})')
+    else:
+      if tower_index > 0:
+        raise ValueError('tower_index must not be set for CPU-only worker')
+    return tower_index
+
+  @property
+  def rank(self):
+    r'''Global index of default local device.
+    '''
+    return self.rank_at(self.tower_index)
 
   def rank_at(self, device_or_tower_id):
     r'''Get global index of device or tower_id.
@@ -275,7 +302,11 @@ class Context(object): # pylint: disable=useless-object-inheritance
       task_id: (Optional.) index of current task. 0 by default.
       cluster_spec: (Optional.) ClusterSpec object.
     '''
-    tf_config = self.get_tf_config()
+    tf_config = None
+    try:
+      tf_config = self.get_tf_config()
+    except: # pylint: disable=bare-except
+      pass
     if tf_config:
       self._task_type = tf_config.task_type
       self._task_id = tf_config.task_id
@@ -286,6 +317,9 @@ class Context(object): # pylint: disable=useless-object-inheritance
       self._cluster_spec = None
     if task_type:
       self._task_type = task_type
+    if self._task_type not in ('localhost', 'chief', 'worker'):
+      return
+
     if task_id:
       self._task_id = task_id
     if cluster_spec:
@@ -293,8 +327,12 @@ class Context(object): # pylint: disable=useless-object-inheritance
     if self._cluster_spec:
       self._cluster_spec = multi_worker_util.normalize_cluster_spec(
           self._cluster_spec)
-      self._is_chief = multi_worker_util.is_chief(
-          self._cluster_spec, self._task_type, self._task_id)
+      self._is_chief = False
+      try:
+        self._is_chief = multi_worker_util.is_chief(
+            self._cluster_spec, self._task_type, self._task_id)
+      except: # pylint: disable=bare-except
+        pass
     if num_gpus:
       self._num_gpus = num_gpus
     elif not self._num_gpus:
@@ -321,8 +359,12 @@ class Context(object): # pylint: disable=useless-object-inheritance
     if not self._cluster_spec:
       self._devices = list(self._local_devices)
       return
-    task_defs = dict(enumerate(self._cluster_spec.job_tasks(self._task_type)))
-    task_indices = sorted(task_defs, key=task_defs.__getitem__)
+    task_indices = []
+    try:
+      task_defs = dict(enumerate(self._cluster_spec.job_tasks(self._task_type)))
+      task_indices = sorted(task_defs, key=task_defs.__getitem__)
+    except: # pylint: disable=bare-except
+      pass
     worker_indices = []
     try:
       worker_defs = dict(enumerate(self._cluster_spec.job_tasks('worker')))
@@ -392,15 +434,48 @@ class Context(object): # pylint: disable=useless-object-inheritance
     '''
     return key in self._params
 
-  def add_hook(self, hook):
-    r'''Add training hook.
-    '''
-    self._hooks.append(hook)
-
   @property
-  def hooks(self):
+  def training_hooks(self):
     r'''Get all training hooks.
     '''
-    return self._hooks
+    return self._training_hooks
+
+  @property
+  def training_chief_hooks(self):
+    r'''Get all training chief hooks.
+    '''
+    return self._training_chief_hooks
+
+  @property
+  def evaluation_hooks(self):
+    r'''Get all evaluation hooks.
+    '''
+    return self._evaluation_hooks
+
+  @property
+  def prediction_hooks(self):
+    r'''Get all prediction hooks.
+    '''
+    return self._prediction_hooks
+
+  def add_training_hook(self, hook):
+    r'''Add training hook.
+    '''
+    self._training_hooks.append(hook)
+
+  def add_training_chief_hook(self, hook):
+    r'''Add training chief hook.
+    '''
+    self._training_chief_hooks.append(hook)
+
+  def add_evaluation_hook(self, hook):
+    r'''Add evaluation hook.
+    '''
+    self._evaluation_hooks.append(hook)
+
+  def add_prediction_hook(self, hook):
+    r'''Add prediction hook.
+    '''
+    self._prediction_hooks.append(hook)
 
 context = Context.get()
