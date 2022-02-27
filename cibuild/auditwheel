@@ -1,5 +1,4 @@
-#!/usr/bin/env python
-
+#!/bin/bash
 # Copyright 2021 Alibaba Group Holding Limited. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -15,28 +14,13 @@
 # limitations under the License.
 # =============================================================================
 
-r'''Patch manylinux-policy.json for auditwheel.
-'''
+OUTDIR=$1
+mkdir -p $OUTDIR
+GLIBC=$(ldd --version | head -1 | awk '{print $NF}' | tr '.' '_')
+PLATFORM="manylinux_${GLIBC}_x86_64"
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
+set -eo pipefail
 
-import json
-import sys
-
-LIB_WHITELIST = [
-    'libcrypt.so.1',
-    'libtensorflow_framework.so.1',
-    'libhybridbackend.so']
-
-if __name__ == '__main__':
-  if len(sys.argv) < 2:
-    raise ValueError('Path to manylinux-policy.json must be provided')
-  path = sys.argv[1]
-  with open(path, encoding='utf8') as f:
-    policies = json.load(f)
-  for p in policies:
-    p['lib_whitelist'].extend(LIB_WHITELIST)
-  with open(path, 'w', encoding='utf8') as f:
-    json.dump(policies, f)
+TFLIB=$(python -c "import tensorflow as tf; print(tf.sysconfig.get_lib())" 2>/dev/null)
+LD_LIBRARY_PATH=${LD_LIBRARY_PATH}:${TFLIB} \
+auditwheel repair --plat ${PLATFORM} cibuild/dist/*.whl -w ${OUTDIR}

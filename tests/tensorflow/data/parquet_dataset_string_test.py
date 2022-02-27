@@ -23,7 +23,7 @@ from __future__ import print_function
 import numpy as np
 import pandas as pd
 import os
-from six.moves import xrange # pylint: disable=redefined-builtin
+from six.moves import xrange  # pylint: disable=redefined-builtin
 import tempfile
 import tensorflow as tf
 import unittest
@@ -31,6 +31,8 @@ import unittest
 from hybridbackend.tensorflow.data import DataFrame
 from hybridbackend.tensorflow.data import make_one_shot_iterator
 from hybridbackend.tensorflow.data import ParquetDataset
+
+from tests.tensorflow.spawn import register
 
 
 # pylint: disable=missing-docstring
@@ -40,21 +42,20 @@ class ParquetDatasetStringTest(unittest.TestCase):
     self._filename = os.path.join(self._workspace, 'string_test.parquet')
     num_cols = 3
     self._df = pd.DataFrame(
-        np.array(
-            [
-                [
-                    np.array(list(map(str, np.random.randint(
-                        0, 100,
-                        size=(np.random.randint(1, 5),),
-                        dtype=np.int64))))
-                    for _ in xrange(num_cols - 1)] + \
-                [
-                    np.random.randint(
-                        0, 100,
-                        size=(np.random.randint(1, 5),),
-                        dtype=np.int64)]
-                for _ in xrange(100)]),
-        columns=[f'col{c}' for c in xrange(num_cols)])
+      np.array([
+        [
+          *[
+            np.array(list(map(str, np.random.randint(
+              0, 100,
+              size=(np.random.randint(1, 5),),
+              dtype=np.int64))))
+            for _ in xrange(num_cols - 1)],
+          np.random.randint(
+            0, 100,
+            size=(np.random.randint(1, 5),),
+            dtype=np.int64)]
+        for _ in xrange(100)]),
+      columns=[f'col{c}' for c in xrange(num_cols)])
     self._df.to_parquet(self._filename)
 
   def tearDown(self):  # pylint: disable=invalid-name
@@ -64,8 +65,8 @@ class ParquetDatasetStringTest(unittest.TestCase):
     batch_size = 32
     with tf.Graph().as_default() as graph:
       ds = ParquetDataset(
-          [self._filename],
-          batch_size=batch_size)
+        [self._filename],
+        batch_size=batch_size)
       ds = ds.prefetch(4)
       batch = make_one_shot_iterator(ds).get_next()
 
@@ -74,7 +75,7 @@ class ParquetDatasetStringTest(unittest.TestCase):
       for i in xrange(3):
         result = sess.run(batch)
         start_row = i * batch_size
-        end_row = (i+1) * batch_size
+        end_row = (i + 1) * batch_size
         expected_items = c[start_row:end_row].to_numpy().tolist()
         expected_values = []
         expected_splits = [0]
@@ -82,16 +83,16 @@ class ParquetDatasetStringTest(unittest.TestCase):
           expected_values.extend(item)
           expected_splits.append(expected_splits[-1] + len(item))
         expected = DataFrame.Value(
-            np.array(expected_values),
-            tuple([np.array(expected_splits, dtype=np.int32)]))
+          np.array(expected_values),
+          tuple([np.array(expected_splits, dtype=np.int32)]))
         actual = result['col0']
         expected_values = np.array(
-            list(map(str.encode, expected.values)),
-            dtype=object)
+          list(map(str.encode, expected.values)),
+          dtype=object)
         np.testing.assert_equal(actual.values, expected_values)
         np.testing.assert_equal(
-            actual.nested_row_splits,
-            expected.nested_row_splits)
+          actual.nested_row_splits,
+          expected.nested_row_splits)
 
   def test_to_sparse(self):
     batch_size = 32
@@ -106,7 +107,7 @@ class ParquetDatasetStringTest(unittest.TestCase):
       for i in xrange(3):
         result = sess.run(batch)
         start_row = i * batch_size
-        end_row = (i+1) * batch_size
+        end_row = (i + 1) * batch_size
         expected_items = c[start_row:end_row].to_numpy().tolist()
         expected_values = []
         expected_splits = [0]
@@ -114,16 +115,16 @@ class ParquetDatasetStringTest(unittest.TestCase):
           expected_values.extend(item)
           expected_splits.append(expected_splits[-1] + len(item))
         expected = DataFrame.Value(
-            np.array(expected_values),
-            tuple([np.array(expected_splits, dtype=np.int32)]))
+          np.array(expected_values),
+          tuple([np.array(expected_splits, dtype=np.int32)]))
         actual = result['col0']
         expected_values = np.array(
-            list(map(str.encode, expected.values)),
-            dtype=object)
+          list(map(str.encode, expected.values)),
+          dtype=object)
         np.testing.assert_equal(actual.values, expected_values)
         np.testing.assert_equal(
-            len(set(list(zip(*actual.indices))[0])) + 1,
-            len(expected.nested_row_splits[0]))
+          len(set(list(zip(*actual.indices))[0])) + 1,
+          len(expected.nested_row_splits[0]))
 
   def test_unbatch_and_to_sparse(self):
     with tf.Graph().as_default() as graph:
@@ -137,7 +138,7 @@ class ParquetDatasetStringTest(unittest.TestCase):
       for i in xrange(3):
         result = sess.run(batch)
         start_row = i
-        end_row = (i+1)
+        end_row = i + 1
         expected_items = c[start_row:end_row].to_numpy().tolist()
         expected_values = []
         expected_splits = [0]
@@ -145,18 +146,19 @@ class ParquetDatasetStringTest(unittest.TestCase):
           expected_values.extend(item)
           expected_splits.append(expected_splits[-1] + len(item))
         expected = DataFrame.Value(
-            np.array(expected_values),
-            tuple([np.array(expected_splits, dtype=np.int32)]))
+          np.array(expected_values),
+          tuple([np.array(expected_splits, dtype=np.int32)]))
         actual = result['col0']
         expected_values = np.array(
-            list(map(str.encode, expected.values)),
-            dtype=object)
+          list(map(str.encode, expected.values)),
+          dtype=object)
         np.testing.assert_equal(actual.values, expected_values)
         np.testing.assert_equal(
-            len(list(zip(*actual.indices))[0]),
-            expected.nested_row_splits[0][1])
+          len(list(zip(*actual.indices))[0]),
+          expected.nested_row_splits[0][1])
 
 
 if __name__ == '__main__':
+  register(['cpu', 'data'])
   os.environ['CUDA_VISIBLE_DEVICES'] = ''
   unittest.main()

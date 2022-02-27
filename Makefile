@@ -6,12 +6,11 @@ HYBRIDBACKEND_WITH_BUILDINFO ?= ON
 HYBRIDBACKEND_WITH_CUDA ?= ON
 HYBRIDBACKEND_WITH_CUDA_GENCODE ?= "70 75 86"
 HYBRIDBACKEND_WITH_NCCL ?= ON
-HYBRIDBACKEND_WITH_CUB ?= ON
 HYBRIDBACKEND_WITH_ARROW ?= ON
 HYBRIDBACKEND_WITH_ARROW_ZEROCOPY ?= ON
 HYBRIDBACKEND_WITH_ARROW_HDFS ?= ON
 HYBRIDBACKEND_WITH_ARROW_S3 ?= ON
-HYBRIDBACKEND_WITH_ARROW_SIMD_LEVEL ?= AVX2
+HYBRIDBACKEND_WITH_SPARSEHASH ?= ON
 HYBRIDBACKEND_WITH_TENSORFLOW ?= ON
 HYBRIDBACKEND_USE_CXX11_ABI ?= 0
 HYBRIDBACKEND_WHEEL_ALIAS ?= ""
@@ -63,7 +62,8 @@ ifeq ($(HYBRIDBACKEND_WITH_CUDA),ON)
 NVCC ?= nvcc
 CUDA_HOME ?= /usr/local/cuda
 CFLAGS := $(CFLAGS) \
-	-isystem $(CUDA_HOME)/include
+	-isystem $(CUDA_HOME)/include \
+	-DHYBRIDBACKEND_CUDA=1
 NVCC_CFLAGS := --std=c++11 \
 	--expt-relaxed-constexpr \
 	--expt-extended-lambda \
@@ -73,10 +73,6 @@ NVCC_CFLAGS := --std=c++11 \
 LDFLAGS := $(LDFLAGS) \
 	-L$(CUDA_HOME)/lib64 \
 	-lcudart
-ifeq ($(HYBRIDBACKEND_WITH_CUB),ON)
-CFLAGS := $(CFLAGS) \
-	-DHYBRIDBACKEND_CUB=1
-endif
 ifeq ($(HYBRIDBACKEND_WITH_NCCL),ON)
 NCCL_HOME ?= /usr/local
 CFLAGS := $(CFLAGS) \
@@ -91,7 +87,7 @@ endif
 
 ifneq ($(OS),Darwin)
 D_FILES := $(shell \
-    find \( -path ./arrow -o -path ./build -o -path ./dist \) \
+    find \( -path ./cibuild -o -path ./build -o -path ./dist \) \
 	-prune -false -o -type f -name '*.d' \
 	-exec realpath {} --relative-to . \;)
 
@@ -100,11 +96,12 @@ endif
 
 THIRDPARTY_DEPS :=
 ifeq ($(HYBRIDBACKEND_WITH_ARROW),ON)
-include arrow/Makefile
-THIRDPARTY_DEPS := $(THIRDPARTY_DEPS) $(ARROW_LIB)
+ARROW_HOME ?= cibuild/arrow/dist
+ARROW_API_H := $(ARROW_HOME)/include/arrow/api.h
+THIRDPARTY_DEPS := $(THIRDPARTY_DEPS) $(ARROW_API_H)
 CFLAGS := $(CFLAGS) \
 	-DHYBRIDBACKEND_ARROW=1 \
-	-isystem $(ARROW_DISTDIR)/include
+	-isystem $(ARROW_HOME)/include
 ifeq ($(HYBRIDBACKEND_WITH_ARROW_ZEROCOPY),ON)
 CFLAGS := $(CFLAGS) -DHYBRIDBACKEND_ARROW_ZEROCOPY=1
 endif
@@ -115,7 +112,7 @@ ifeq ($(HYBRIDBACKEND_WITH_ARROW_S3),ON)
 CFLAGS := $(CFLAGS) -DHYBRIDBACKEND_ARROW_S3=1
 endif
 COMMON_LDFLAGS := \
-	-L$(ARROW_DISTDIR)/lib \
+	-L$(ARROW_HOME)/lib \
 	-larrow \
 	-larrow_dataset \
 	-larrow_bundled_dependencies \
@@ -128,15 +125,6 @@ COMMON_LDFLAGS := \
 	$(COMMON_LDFLAGS) \
 	-Wl,--no-whole-archive
 endif
-
-ifeq ($(HYBRIDBACKEND_WITH_SPARSEHASH),ON)
-CFLAGS := $(CFLAGS) \
-	-DHYBRIDBACKEND_SPARSEHASH=1 \
-	-isystem sparsehash/src
-LDFLAGS := $(LDFLAGS) \
-	-lpthread
-endif
-
 RE2_HOME ?=
 ifneq ($(strip $(RE2_HOME)),)
 COMMON_LDFLAGS := $(COMMON_LDFLAGS) -L$(RE2_HOME)/lib -lre2
@@ -166,6 +154,17 @@ COMMON_LDFLAGS := $(COMMON_LDFLAGS) \
 	-L$(SSL_HOME)/lib \
 	-lssl \
 	-lcrypto
+endif
+
+ifeq ($(HYBRIDBACKEND_WITH_SPARSEHASH),ON)
+SPARSEHASH_HOME ?= cibuild/sparsehash/dist
+SPARSEHASH_DENSE_HASH_MAP := $(SPARSEHASH_HOME)/include/sparsehash/dense_hash_map
+THIRDPARTY_DEPS := $(THIRDPARTY_DEPS) $(SPARSEHASH_DENSE_HASH_MAP)
+CFLAGS := $(CFLAGS) \
+	-DHYBRIDBACKEND_SPARSEHASH=1 \
+	-isystem ${SPARSEHASH_HOME}/include
+LDFLAGS := $(LDFLAGS) \
+	-lpthread
 endif
 
 COMMON_LIB := $(LIBNAME)/lib$(LIBNAME).so
@@ -200,18 +199,6 @@ test:
 		echo ; \
 	done
 
-CPU_TESTS := $(shell \
-	find tests/tensorflow/data/ -type f -name "*_test.py" \
-	-exec realpath {} --relative-to . \;)
-
-.PHONY: cpu_test
-cpu_test:
-	for t in $(CPU_TESTS); do \
-		echo -e "\033[1;33m[TEST] $$t \033[0m" ; \
-		$(PYTHON) $$t || exit 1; \
-		echo ; \
-	done
-
 .PHONY: doc
 doc:
 	sphinx-build -M html docs/ cibuild/dist/doc
@@ -225,11 +212,12 @@ cibuild: lint build doc test
 
 .PHONY: clean
 clean:
-	@rm -fr cibuild/dist/
-	@rm -fr build/
-	@rm -fr *.egg-info/
-	@find -name *.o -exec rm -fr {} \;
-	@find -name *.d -exec rm -fr {} \;
-	@find -name *.so -exec rm -fr {} \;
+	rm -fr cibuild/dist/
+	rm -fr build/
+	rm -fr *.egg-info/
+	rm -rf .pylint.d/
+	find -name *.o -exec rm -fr {} \;
+	find -name *.d -exec rm -fr {} \;
+	find -name *.so -exec rm -fr {} \;
 
 .DEFAULT_GOAL := build

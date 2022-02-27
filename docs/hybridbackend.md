@@ -24,15 +24,3 @@ HybridBackend could dramatically improve training performance of large deep
 recommender by bridging the gap between cloud infrastructure and model training.
 
 ![perf](images/hbperf.png)
-
-## Citation
-
-If you use HybridBackend in your research, please cite this project.
-
-```text
-@misc{hybridbackend,
-  title   = {{HybridBackend}: Efficient training of deep recommenders on cloud},
-  author  = {Yuan, Man and Chen, Langshi},
-  year={2021}
-}
-```

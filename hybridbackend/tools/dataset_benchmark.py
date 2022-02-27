@@ -22,7 +22,7 @@ from __future__ import print_function
 
 import argparse
 import os
-from six.moves import xrange # pylint: disable=redefined-builtin
+from six.moves import xrange  # pylint: disable=redefined-builtin
 import tensorflow as tf
 
 import hybridbackend.tensorflow as hb
@@ -30,43 +30,48 @@ import hybridbackend.tensorflow as hb
 
 # pylint: disable=missing-docstring
 def describe_csv():
-  return [[1<<32] for f in xrange(200)]
+  return [[1 << 32] for f in xrange(200)]
 
 
 def describe_tfrecord():
   return {
-      f'col{c}': tf.FixedLenFeature([1], tf.int64)
-      for c in xrange(200)}
+    f'col{c}': tf.FixedLenFeature([1], tf.int64)
+    for c in xrange(200)}
 
 
 def benchmark(params):
   with tf.Graph().as_default():
+    step = tf.train.get_or_create_global_step()
     if params.filename.endswith('.parquet'):
       ds = hb.data.ParquetDataset(
-          [params.filename] * params.epochs,
-          batch_size=params.batch_size)
+        [params.filename] * params.epochs,
+        batch_size=params.batch_size)
+      if params.rebatch_size is not None:
+        ds = ds.apply(hb.data.rebatch(params.rebatch_size))
       batch = hb.data.make_one_shot_iterator(ds).get_next()
       count_op = tf.shape(list(batch.values())[0])[0]
-      train_op = tf.group(batch.values())
+      train_op = tf.group(list(batch.values()) + [step.assign_add(1)])
     elif params.filename.endswith('.csv'):
       ds = tf.data.TextLineDataset([params.filename] * params.epochs)
       ds = ds.batch(params.batch_size)
       ds = ds.map(lambda line: tf.io.decode_csv(line, describe_csv()))
       batch = make_one_shot_iterator(ds).get_next()
       count_op = tf.shape(batch[0])[0]
-      train_op = tf.group(batch)
+      train_op = tf.group(batch + [step.assign_add(1)])
     elif params.filename.endswith('.tfrecord'):
       ds = tf.data.TFRecordDataset([params.filename] * params.epochs)
       ds = ds.batch(params.batch_size)
       ds = ds.map(lambda line: tf.parse_example(line, describe_tfrecord()))
       batch = make_one_shot_iterator(ds).get_next()
       count_op = tf.shape(batch[0])[0]
-      train_op = tf.group(batch)
+      train_op = tf.group(batch + [step.assign_add(1)])
     else:
       raise ValueError(f'File {params.filename} not supported.')
     with tf.train.MonitoredTrainingSession(
         is_chief=True,
-        hooks=[hb.train.StepStatHook(count=count_op)]) as sess:
+        hooks=[
+          tf.train.StopAtStepHook(params.num_steps),
+          hb.train.StepStatHook(count=count_op)]) as sess:
       while not sess.should_stop():
         sess.run(train_op)
 
@@ -78,6 +83,8 @@ if __name__ == '__main__':
   tf.logging.set_verbosity(tf.logging.INFO)
   parser = argparse.ArgumentParser()
   parser.add_argument('--batch-size', type=int, default=200000)
+  parser.add_argument('--rebatch-size', type=int, default=None)
   parser.add_argument('--epochs', type=int, default=1)
+  parser.add_argument('--num-steps', type=int, default=100)
   parser.add_argument('filename')
   benchmark(parser.parse_args())

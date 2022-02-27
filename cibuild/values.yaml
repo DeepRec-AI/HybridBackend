@@ -1,4 +1,4 @@
-image: registry.cn-shanghai.aliyuncs.com/pai-dlc/hybridbackend:developer-nvtf1-py3.6-cu114-ubuntu18.04
+image: registry.cn-shanghai.aliyuncs.com/pai-dlc/hybridbackend:developer-tf1.15-py3.6-cu114-ubuntu18.04
 port: 20000
 gpus: 2
 caps: ["SYS_ADMIN", "SYS_PTRACE"]

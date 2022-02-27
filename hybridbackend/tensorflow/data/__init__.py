@@ -29,3 +29,7 @@ from hybridbackend.tensorflow.data.parquet_dataset import ParquetDataset
 from hybridbackend.tensorflow.data.parquet_dataset import read_parquet
 from hybridbackend.tensorflow.data.rebatch_dataset import RebatchDataset
 from hybridbackend.tensorflow.data.rebatch_dataset import rebatch
+
+# HybridBackend operators must be loaded before TensorFlow operators to
+# make AWS SDK implementation correct.
+from hybridbackend.tensorflow.data.dataset_ops import make_iterator
