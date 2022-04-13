@@ -127,7 +127,7 @@ class ParquetTabularDatasetOp::Dataset : public DatasetBase {
   }
 
   Status Open() {
-    VLOG(0) << "Starting to read " << filename_ << " ...";
+    VLOG(1) << "Starting to read " << filename_ << " ...";
     return reader_->Open();
   }
 
