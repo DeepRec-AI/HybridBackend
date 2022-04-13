@@ -28,10 +28,10 @@ limitations under the License.
 #include <tensorflow/core/framework/tensor.pb.h>
 
 #include "hybridbackend/cpp/common/env.h"
+#include "hybridbackend/cpp/tensorflow/ops/floormod_shuffle.h"
 
 #if GOOGLE_CUDA
 #include "hybridbackend/cpp/tensorflow/cuda/stream.h"
-#include "hybridbackend/cpp/tensorflow/ops/floormod_shuffle.h"
 #endif  // GOOGLE_CUDA
 
 namespace tensorflow {

@@ -19,6 +19,7 @@ limitations under the License.
 
 #include <limits>
 
+#include <tensorflow/core/framework/op_kernel.h>
 #include <tensorflow/core/framework/register_types.h>
 #include <tensorflow/core/framework/tensor.h>
 #include <tensorflow/core/public/version.h>
@@ -73,6 +74,22 @@ template struct FloorModShuffle<CPUDevice, int32>;
 template struct FloorModShuffle<CPUDevice, int64>;
 template struct FloorModShuffle<CPUDevice, uint32>;
 template struct FloorModShuffle<CPUDevice, uint64>;
+
+template <typename T>
+struct GroupFloorModShuffle<CPUDevice, T> {
+  void operator()(const int32 num_partitions, const std::vector<Tensor>& inputs,
+                  std::vector<Tensor*>& outputs,
+                  std::vector<Tensor*>& outputs_sizes,
+                  std::vector<Tensor*>& outputs_indices, OpKernelContext* ctx) {
+    OP_REQUIRES_OK(ctx, errors::Unimplemented(
+                            "GroupFloorModShuffle on CPU not implemented."));
+  }
+};
+
+template struct GroupFloorModShuffle<CPUDevice, int32>;
+template struct GroupFloorModShuffle<CPUDevice, int64>;
+template struct GroupFloorModShuffle<CPUDevice, uint32>;
+template struct GroupFloorModShuffle<CPUDevice, uint64>;
 
 }  // namespace functor
 }  // namespace hybridbackend
