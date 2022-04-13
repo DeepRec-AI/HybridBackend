@@ -13,24 +13,16 @@
 # limitations under the License.
 # =============================================================================
 
-r'''HybridBackend for TensorFlow.
+r'''Feature columns for fully sharded training.
 '''
 
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from . import data
-from . import estimator
-from . import feature_column
-from .ops import math_ops as math
-from . import saved_model
-from . import training as train
-
-from hybridbackend.libhybridbackend import buildinfo
-from hybridbackend.tensorflow.framework.context import Context
-from hybridbackend.tensorflow.framework.context import context
-from hybridbackend.tensorflow.framework.random import enable_deterministic
-from hybridbackend.tensorflow.framework.scope import scope
-from hybridbackend.tensorflow.training.function import function
-from hybridbackend.tensorflow.training.function import function_extent
+from hybridbackend.tensorflow.feature_column.dense_features import \
+  DenseFeatures
+from hybridbackend.tensorflow.feature_column.feature_column import \
+  embedding_column
+from hybridbackend.tensorflow.feature_column.feature_column import \
+  shared_embedding_columns
