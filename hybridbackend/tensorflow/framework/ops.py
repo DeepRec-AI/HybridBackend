@@ -13,27 +13,30 @@
 # limitations under the License.
 # =============================================================================
 
-r'''Context manager to use HybridBackend globally.
+r'''Classes and functions used to construct graphs.
 '''
 
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import contextlib
 
-from hybridbackend.tensorflow.framework.context import Context
-
-
-@contextlib.contextmanager
-def scope(**kwargs):
-  r'''Update params in context.
+class CollectiveOps(object):  # pylint: disable=useless-object-inheritance
+  r'''Collective operations.
   '''
-  try:
-    ctx = Context.get()
-    prev_kwargs = {k: ctx.get_param(k) for k in kwargs if ctx.has_param(k)}
-    ctx.update_params(**kwargs)
-    yield ctx
-  finally:
-    ctx.update_params(**prev_kwargs)
-    del prev_kwargs
+  SUM = 0
+  PROD = 1
+  MAX = 2
+  MIN = 3
+  AVG = 4
+
+
+class GraphKeys(object):  # pylint: disable=useless-object-inheritance
+  r'''Names to use for graph collections.
+  '''
+  # Collection for variables placed at multiple devices.
+  SHARDED_VARIABLES = 'sharded_variables'
+  # Collection for resources placed at multiple devices.
+  SHARDED_RESOURCES = 'sharded_resources'
+  # Collection for resources or variables should not be replicated.
+  NOT_REPLICATED = 'not_replicated'

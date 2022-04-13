@@ -468,6 +468,21 @@ class Context(object):  # pylint: disable=useless-object-inheritance
     return self._params[key]
 
   @property
+  def model_dir(self):
+    r'''Directory for saving checkpoints.
+    '''
+    return self.param('model_dir', None, env='HB_MODEL_DIR')
+
+  @property
+  def batch_size(self):
+    r'''Batch size for training.
+    '''
+    return self.param(
+      'batch_size', -1,
+      env='HB_BATCH_SIZE',
+      parser=int)
+
+  @property
   def training_hooks(self):
     r'''Get all training hooks.
     '''

@@ -13,27 +13,14 @@
 # limitations under the License.
 # =============================================================================
 
-r'''Context manager to use HybridBackend globally.
+r'''Communicators and distribution options.
 '''
 
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import contextlib
-
-from hybridbackend.tensorflow.framework.context import Context
-
-
-@contextlib.contextmanager
-def scope(**kwargs):
-  r'''Update params in context.
-  '''
-  try:
-    ctx = Context.get()
-    prev_kwargs = {k: ctx.get_param(k) for k in kwargs if ctx.has_param(k)}
-    ctx.update_params(**kwargs)
-    yield ctx
-  finally:
-    ctx.update_params(**prev_kwargs)
-    del prev_kwargs
+from hybridbackend.tensorflow.distribute.communicator import Communicator
+from hybridbackend.tensorflow.distribute.communicator_pool import \
+  CommunicatorPool
+from hybridbackend.tensorflow.distribute.nccl import NcclCommunicator
