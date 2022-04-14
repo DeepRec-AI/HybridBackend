@@ -34,7 +34,11 @@ from hybridbackend.tensorflow.feature_column.embedding_backend import \
   EmbeddingBackend
 from hybridbackend.tensorflow.feature_column.embedding_backend_default import \
   EmbeddingBackendDefault  # pylint: disable=unused-import
-
+try:
+  from hybridbackend.tensorflow.feature_column.embedding_backend_paiev import \
+    EmbeddingBackendPAIEV  # pylint: disable=unused-import
+except ImportError:
+  pass
 from hybridbackend.tensorflow.feature_column.embedding_lookup_coalesced \
   import EmbeddingLookupCoalesced
 from hybridbackend.tensorflow.feature_column.feature_column import \

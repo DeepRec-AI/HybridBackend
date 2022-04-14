@@ -26,3 +26,5 @@ from hybridbackend.tensorflow.feature_column.feature_column import \
   embedding_column
 from hybridbackend.tensorflow.feature_column.feature_column import \
   shared_embedding_columns
+from hybridbackend.tensorflow.feature_column.raw_categorical_column import \
+  raw_categorical_column
