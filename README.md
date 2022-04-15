@@ -1,5 +1,6 @@
 # HybridBackend
 
+[![DOI](https://zenodo.org/badge/433715906.svg)](https://zenodo.org/badge/latestdoi/433715906)
 [![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
 [![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg?style=flat-square)](http://makeapullrequest.com)
 [![cibuild: cpu](https://github.com/alibaba/HybridBackend/actions/workflows/cpu-cibuild.yaml/badge.svg?branch=main&event=push)](https://github.com/alibaba/HybridBackend/actions/workflows/cpu-cibuild.yaml)
@@ -188,12 +189,10 @@ export ZLIB_HOME=/usr/local/opt/zlib
 make -j8
 ```
 
-## Contributing
+## Community
 
 We appreciate all contributions to improve HybridBackend. Please see
 [Contributing Guide](CONTRIBUTING.md) for more details.
-
-## Community
 
 If you are intrested in adoption of HybridBackend in your organization, you can
 add your organization name to our [list of adopters](ADOPTERS.md) by submitting
@@ -207,3 +206,16 @@ welcome to contact us in DingTalk:
 ## License
 
 HybridBackend is licensed under the [Apache 2.0 License](LICENSE).
+
+## Citation
+
+Please cite HybridBackend in your publications if it helps:
+
+```
+@article{zhang2022picasso,
+  title={PICASSO: Unleashing the Potential of GPU-centric Training for Wide-and-deep Recommender Systems},
+  author={Zhang, Yuanxing and Chen, Langshi and Yang, Siran and Yuan, Man and Yi, Huimin and Zhang, Jie and Wang, Jiamang and Dong, Jianbo and Xu, Yunlong and Song, Yue and others},
+  journal={arXiv preprint arXiv:2204.04903},
+  year={2022}
+}
+```
