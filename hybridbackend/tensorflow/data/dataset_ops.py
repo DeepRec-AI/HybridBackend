@@ -23,26 +23,30 @@ from __future__ import print_function
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.framework import ops
 
+from hybridbackend.tensorflow.training.detect_end import raises_out_of_range
 
-def make_one_shot_iterator(ds):
+
+def make_one_shot_iterator(ds, drop_remainder=None):
   r'''Wrapper of make_one_shot_iterator.
 
   Args:
     ds: a `tf.data.Dataset`
   '''
   with ops.device('/cpu:0'):
-    if hasattr(dataset_ops, 'make_one_shot_iterator'):
-      return dataset_ops.make_one_shot_iterator(ds)
-    return ds.make_one_shot_iterator()
+    with raises_out_of_range(ds, drop_remainder) as ods:
+      if hasattr(dataset_ops, 'make_one_shot_iterator'):
+        return dataset_ops.make_one_shot_iterator(ods)
+      return ods.make_one_shot_iterator()
 
 
-def make_initializable_iterator(ds):
+def make_initializable_iterator(ds, drop_remainder=None):
   r'''Wrapper of make_initializable_iterator.
 
   Args:
     ds: a `tf.data.Dataset`
   '''
   with ops.device('/cpu:0'):
-    if hasattr(dataset_ops, 'make_initializable_iterator'):
-      return dataset_ops.make_initializable_iterator(ds)
-    return ds.make_initializable_iterator()
+    with raises_out_of_range(ds, drop_remainder) as ods:
+      if hasattr(dataset_ops, 'make_initializable_iterator'):
+        return dataset_ops.make_initializable_iterator(ods)
+      return ods.make_initializable_iterator()

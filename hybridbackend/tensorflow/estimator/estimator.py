@@ -120,6 +120,9 @@ class PatchTensorflowAPIForEstimator(object):  # pylint: disable=useless-object-
   _lock = threading.Lock()
   _stack_depth = 0
 
+  def __init__(self, drop_remainder):
+    self._drop_remainder = drop_remainder
+
   def __enter__(self):
     with PatchTensorflowAPIForEstimator._lock:
       PatchTensorflowAPIForEstimator._stack_depth += 1
@@ -132,7 +135,7 @@ class PatchTensorflowAPIForEstimator(object):  # pylint: disable=useless-object-
             '''
             input_hooks = []
             if isinstance(result, (dataset_ops.Dataset, dataset_ops.DatasetV2)):
-              iterator = make_one_shot_iterator(result)
+              iterator = make_one_shot_iterator(result, self._drop_remainder)
               result = iterator.get_next()
             return estimator_util.parse_iterator_result(result) + (input_hooks,)
           return wrapped_parse_input_fn_result
@@ -166,6 +169,9 @@ def wraps_estimator(cls):
       '''
       kwargs['config'] = RunConfig.build(prototype=kwargs.pop('config', None))
       model_dir = kwargs.get('model_dir', None)
+      self._train_drop_remainder = kwargs.pop('train_drop_remainder', None)
+      self._eval_drop_remainder = kwargs.pop('eval_drop_remainder', None)
+      self._predict_drop_remainder = kwargs.pop('predict_drop_remainder', None)
 
       super().__init__(
         wraps_model_fn(model_fn, model_dir, kwargs['config']),
@@ -185,7 +191,7 @@ def wraps_estimator(cls):
       with context_scope(
           mode=mode_keys.EstimatorModeKeys.TRAIN,
           model_dir=self._model_dir):
-        with PatchTensorflowAPIForEstimator():
+        with PatchTensorflowAPIForEstimator(self._train_drop_remainder):
           return super().train(
             input_fn, hooks=hooks, max_steps=max_steps,
             saving_listeners=saving_listeners)
@@ -213,7 +219,8 @@ def wraps_estimator(cls):
           checkpoint_path = latest_path
 
         with ops.Graph().as_default() as g, g.device(self._device_fn):  # pylint: disable=protected-access
-          with eval_scope(), PatchTensorflowAPIForEstimator():
+          with eval_scope(), PatchTensorflowAPIForEstimator(
+              self._eval_drop_remainder):
             (scaffold, update_op, eval_dict, all_hooks) = (
               self._evaluate_build_graph(  # pylint: disable=protected-access
                 input_fn,
@@ -238,7 +245,7 @@ def wraps_estimator(cls):
       ctx = Context.get()
       if eval_every_n_iter is not None:
         def _eval_fn():
-          with PatchTensorflowAPIForEstimator():
+          with PatchTensorflowAPIForEstimator(self._eval_drop_remainder):
             with context_scope(model_dir=self._model_dir):
               (_, evaluation_hooks, input_hooks, update_op, metrics) = (
                 self._call_model_fn_eval(  # pylint: disable=protected-access
