@@ -28,8 +28,6 @@ from tensorflow.python.training import basic_session_run_hooks
 from tensorflow.python.training import monitored_session as _monitored_session
 from tensorflow.python.training import server_lib
 
-from hybridbackend.tensorflow.feature_column.embedding_buffer import \
-  EmbeddingBuffer
 from hybridbackend.tensorflow.framework.context import Context
 from hybridbackend.tensorflow.framework.context import context_scope
 from hybridbackend.tensorflow.framework.device import device_function
@@ -48,7 +46,7 @@ def wraps_monitored_session(cls):
       '''
       for h in hooks:
         if isinstance(h, basic_session_run_hooks.CheckpointSaverHook):
-          h._listeners += EmbeddingBuffer.saving_listeners()
+          h._listeners += Context.get().saving_listeners
       with ops.device('/cpu:0'):
         super(cls, self).__init__(  # pylint: disable=bad-super-call
           session_creator, hooks, should_recover=True, **kwargs)

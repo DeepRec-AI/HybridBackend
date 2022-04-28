@@ -13,24 +13,25 @@
 # limitations under the License.
 # =============================================================================
 
-r'''HybridBackend for TensorFlow.
+r'''Decorator to wraps customized object.
 '''
 
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from . import data
-from . import distribute
-from . import estimator
-from . import ops as math
-from . import saved_model
-from . import training as train
+from tensorflow.python.estimator import estimator
+from tensorflow.python.training import optimizer
 
-from hybridbackend.libhybridbackend import buildinfo
-from hybridbackend.tensorflow.framework.context import Context
-from hybridbackend.tensorflow.framework.context import context
-from hybridbackend.tensorflow.framework.context import context_scope
-from hybridbackend.tensorflow.training.function import function
-from hybridbackend.tensorflow.training.function import scope
-from hybridbackend.tensorflow.wraps import wraps
+from hybridbackend.tensorflow.estimator.estimator import wraps_estimator
+from hybridbackend.tensorflow.training.optimizer import wraps_optimizer
+
+
+def wraps(cls):
+  r'''Wraps object to be used in HybridBackend.
+  '''
+  if issubclass(cls, optimizer.Optimizer):
+    return wraps_optimizer(cls)
+  if issubclass(cls, estimator.Estimator):
+    return wraps_estimator(cls)
+  return cls

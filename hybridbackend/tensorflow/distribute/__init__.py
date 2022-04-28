@@ -13,24 +13,25 @@
 # limitations under the License.
 # =============================================================================
 
-r'''HybridBackend for TensorFlow.
+r'''Communicators and distribution options.
 '''
 
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from . import data
-from . import distribute
-from . import estimator
-from . import ops as math
-from . import saved_model
-from . import training as train
+from hybridbackend.tensorflow.distribute.communicator import CollectiveOps \
+  as ops
+from hybridbackend.tensorflow.distribute.communicator import Communicator
+from hybridbackend.tensorflow.distribute.communicator_pool import \
+  CommunicatorPool
+from hybridbackend.tensorflow.distribute.nccl import NcclCommunicator
+from hybridbackend.tensorflow.framework.context import Context as _ctx
 
-from hybridbackend.libhybridbackend import buildinfo
-from hybridbackend.tensorflow.framework.context import Context
-from hybridbackend.tensorflow.framework.context import context
-from hybridbackend.tensorflow.framework.context import context_scope
-from hybridbackend.tensorflow.training.function import function
-from hybridbackend.tensorflow.training.function import scope
-from hybridbackend.tensorflow.wraps import wraps
+
+_ = (
+  _ctx.get().options
+  .register('comm_default', 'NCCL', env='HB_COMM_DEFAULT')
+  .register('comm_pool_name', 'default')
+  .register('comm_pool_capacity', 1)
+  .register('comm_pubsub_device', '/cpu:0'))

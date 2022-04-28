@@ -13,24 +13,15 @@
 # limitations under the License.
 # =============================================================================
 
-r'''HybridBackend for TensorFlow.
+r'''Support for Estimators in hybridbackend.
 '''
 
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from . import data
-from . import distribute
-from . import estimator
-from . import ops as math
-from . import saved_model
-from . import training as train
+from tensorflow_estimator.python.estimator.model_fn import EstimatorSpec
 
-from hybridbackend.libhybridbackend import buildinfo
-from hybridbackend.tensorflow.framework.context import Context
-from hybridbackend.tensorflow.framework.context import context
-from hybridbackend.tensorflow.framework.context import context_scope
-from hybridbackend.tensorflow.training.function import function
-from hybridbackend.tensorflow.training.function import scope
-from hybridbackend.tensorflow.wraps import wraps
+from hybridbackend.tensorflow.estimator.estimator import RunConfig
+from hybridbackend.tensorflow.estimator.estimator import Estimator
+from hybridbackend.tensorflow.estimator.estimator import train_and_evaluate

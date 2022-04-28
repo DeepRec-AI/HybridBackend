@@ -13,24 +13,15 @@
 # limitations under the License.
 # =============================================================================
 
-r'''HybridBackend for TensorFlow.
+r'''Operations in HybridBackend.
 '''
 
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from . import data
-from . import distribute
-from . import estimator
-from . import ops as math
-from . import saved_model
-from . import training as train
+from hybridbackend.tensorflow.ops.floormod import floormod_partition
+from hybridbackend.tensorflow.ops.floormod import floormod_shuffle
+from hybridbackend.tensorflow.ops.floormod import group_floormod_shuffle
 
-from hybridbackend.libhybridbackend import buildinfo
-from hybridbackend.tensorflow.framework.context import Context
-from hybridbackend.tensorflow.framework.context import context
-from hybridbackend.tensorflow.framework.context import context_scope
-from hybridbackend.tensorflow.training.function import function
-from hybridbackend.tensorflow.training.function import scope
-from hybridbackend.tensorflow.wraps import wraps
+from hybridbackend.tensorflow.ops.segment_ops import segment_combine

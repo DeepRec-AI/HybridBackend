@@ -24,11 +24,84 @@ import contextlib
 import numpy as np
 import os
 import random as rn
+import threading
 
+from tensorflow._api.v1 import train as train_v1
+
+from tensorflow.core.protobuf import config_pb2
+from tensorflow.python.framework import device as pydev
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import random_seed
+from tensorflow.python.keras.backend import reset_uids as reset_keras_uids
+from tensorflow.python.keras.engine import base_layer
+from tensorflow.python.ops import variable_scope as vs
+from tensorflow.python.training import training
 
+from hybridbackend.tensorflow.framework.context import Context
+from hybridbackend.tensorflow.framework.context import context_scope
 from hybridbackend.tensorflow.framework.device import device_function
+from hybridbackend.tensorflow.training.optimizer import wraps_optimizer
+
+
+def configure(*args, prototype=None, **kwargs):
+  r'''Creates ConfigProto.
+  '''
+  ctx = Context.get()
+  if not prototype:
+    kwargs.setdefault('allow_soft_placement', True)
+    prototype = config_pb2.ConfigProto(*args, **kwargs)
+  prototype.gpu_options.allow_growth = True
+  prototype.gpu_options.force_gpu_compatible = True
+  chief = pydev.DeviceSpec.from_string(ctx.devices[0])
+  del prototype.device_filters[:]
+  prototype.device_filters.append(f'/job:{chief.job}/task:{chief.task}')
+  prototype.device_filters.append(
+    f'/job:{ctx.task_type}/task:{ctx.task_id}')
+  prototype.experimental.collective_group_leader = (
+    f'/job:{chief.job}/replica:{chief.replica}/task:{chief.task}')
+  return prototype
+
+
+class PatchTensorflowAPI(object):  # pylint: disable=useless-object-inheritance
+  r'''Context manager that patches TF APIs.
+  '''
+  _lock = threading.Lock()
+  _stack_depth = 0
+
+  def __enter__(self):
+    with PatchTensorflowAPI._lock:
+      PatchTensorflowAPI._stack_depth += 1
+      if PatchTensorflowAPI._stack_depth <= 1:
+        def decorate_add_weight(fn):
+          def decorated(layer, name, shape, **kwargs):
+            kwargs['getter'] = vs.get_variable
+            return fn(layer, name, shape, **kwargs)
+          return decorated
+        self._prev_add_weight = base_layer.Layer.add_weight
+        base_layer.Layer.add_weight = decorate_add_weight(self._prev_add_weight)
+
+        self._prev_optimizers = {}
+        for c in training.__dict__.values():
+          if (isinstance(c, type)
+              and issubclass(c, training.Optimizer)
+              and c not in (
+                training.Optimizer,
+                training.SyncReplicasOptimizer)):
+            self._prev_optimizers[c.__name__] = c
+            wrapped = wraps_optimizer(c)
+            setattr(training, c.__name__, wrapped)
+            setattr(train_v1, c.__name__, wrapped)
+      return self
+
+  def __exit__(self, exc_type, exc_val, exc_tb):
+    with PatchTensorflowAPI._lock:
+      if PatchTensorflowAPI._stack_depth <= 1:
+        base_layer.Layer.add_weight = self._prev_add_weight
+
+        for c, opt in self._prev_optimizers.items():
+          setattr(training, c, opt)
+          setattr(train_v1, c, opt)
+      PatchTensorflowAPI._stack_depth -= 1
 
 
 @contextlib.contextmanager
@@ -44,7 +117,8 @@ def scope(**kwargs):
     os.environ['TF_CUDNN_DETERMINISTIC'] = '1'
 
   with context_scope(**kwargs) as ctx, ops.device(device_function):
-    yield ctx
+    with PatchTensorflowAPI():
+      yield ctx
 
 
 def function(**params):
@@ -58,3 +132,28 @@ def function(**params):
         return fn(*args, **kwargs)
     return wrapped_fn
   return decorated
+
+
+class ReuseVariables(object):  # pylint: disable=useless-object-inheritance
+  r'''Variable reusing context.
+  '''
+  def __call__(self, reuse):
+    reset_keras_uids()
+    varscope = ops.get_default_graph().get_collection_ref(('__varscope',))
+    if varscope:
+      varscope[0].variable_scopes_count.clear()
+    vs.get_variable_scope()._reuse = reuse  # pylint: disable=protected-access
+
+
+@contextlib.contextmanager
+def reuse_variables(reuse=None):
+  r'''Context manager that reuses variables.
+  '''
+  try:
+    fn = ReuseVariables()
+    prev_reuse = vs.get_variable_scope()._reuse  # pylint: disable=protected-access
+    if reuse is not None:
+      fn(reuse)
+    yield fn
+  finally:
+    vs.get_variable_scope()._reuse = prev_reuse  # pylint: disable=protected-access
