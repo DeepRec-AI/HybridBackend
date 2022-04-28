@@ -63,3 +63,26 @@ def model_fn(features, labels, mode, params):
       loss=loss,
       train_op=train_op)
 ```
+
+## 2. Global Metrics
+
+### 2.1 APIs
+
+```{eval-rst}
+.. autofunction:: hybridbackend.tensorflow.metrics.accuracy
+.. autofunction:: hybridbackend.tensorflow.metrics.auc
+```
+
+### 2.2 Example: Global AUC
+
+```python
+import tensorflow as tf
+import hybridbackend.tensorflow as hb
+
+def eval_fn():
+  # ...
+  auc_and_update = hb.metrics.auc(
+    labels=eval_labels,
+    predictions=eval_logits)
+  return {'auc': auc_and_update}
+```
