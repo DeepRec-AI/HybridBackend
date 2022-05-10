@@ -44,7 +44,14 @@ jobs:
         kubectl exec -it ${PODNAME} -- \
         sh -c 'tar -czf hybridbackend.tgz -C /opt/hybridbackend/ .' && \
         kubectl cp ${PODNAME}:hybridbackend.tgz ./hybridbackend.tgz --retries=3 && \
+        kubectl cp ${PODNAME}:nosetests.xml ./nosetests.xml --retries=3 && \
         mkdir -p dist && tar -xzf ./hybridbackend.tgz -C dist/
+    - name: Report
+      uses: michaelhenry/create-report@v2.0.0
+      with:
+        title: "Testing Report"
+        path: nosetests.xml
+        format: junit
     - name: Publish
       uses: pypa/gh-action-pypi-publish@release/v1
       with:

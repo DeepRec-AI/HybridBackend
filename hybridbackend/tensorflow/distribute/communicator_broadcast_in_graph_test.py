@@ -30,7 +30,17 @@ import unittest
 
 
 # pylint: disable=missing-docstring
+@unittest.skipUnless(
+  os.getenv('HYBRIDBACKEND_WITH_CUDA') == 'ON', 'GPU required')
 class BroadcastTest(unittest.TestCase):
+  def setUp(self):  # pylint: disable=invalid-name
+    os.environ['CUDA_VISIBLE_DEVICES'] = '0,1'
+    os.environ['TF_CPP_VMODULE'] = 'nccl_broadcast=1'
+
+  def tearDown(self):  # pylint: disable=invalid-name
+    del os.environ['TF_CPP_VMODULE']
+    del os.environ['CUDA_VISIBLE_DEVICES']
+
   def test_broadcast_in_graph(self):
     hb.context.options.update(comm_pubsub_device='')
 
@@ -54,7 +64,4 @@ class BroadcastTest(unittest.TestCase):
 
 
 if __name__ == '__main__':
-  hbtest.register(['gpu', 'dist'])
-  os.environ['CUDA_VISIBLE_DEVICES'] = '0,1'
-  os.environ['TF_CPP_VMODULE'] = 'nccl_broadcast=1'
-  unittest.main()
+  hbtest.main(f'{__file__}.xml')

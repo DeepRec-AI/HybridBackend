@@ -26,7 +26,8 @@ import json as _json
 import multiprocessing as _mp
 import os as _os
 import socket as _socket
-import sys as _sys
+import unittest as _unittest
+import xmlrunner as _xmlrunner
 
 
 class Spawn(object):  # pylint: disable=useless-object-inheritance
@@ -135,24 +136,24 @@ class Spawn(object):  # pylint: disable=useless-object-inheritance
     return results
 
 
-def register(tags=None, extra=None):
-  r'''Register tags for unit tests.
+def main(filename=None):
+  r'''Entry for unittest.
   '''
-  if not isinstance(tags, (tuple, list)):
-    tags = [tags]
-  tags = [t.lower() for t in tags if t]
-  allows = [t.lower() for t in _os.getenv('TEST_ALLOWS', '').split(',') if t]
-  if allows:
-    if not any((tag in allows for tag in tags)):
-      print('The test is not allowed to run, skipped.', file=_sys.stderr)
-      _sys.exit(0)
-  denies = [t.lower() for t in _os.getenv('TEST_DENIES', '').split(',') if t]
-  if denies:
-    if any((tag in denies for tag in tags)):
-      print('The test is denied to run, skipped.', file=_sys.stderr)
-      _sys.exit(0)
-  if extra:
-    extras = [t.lower() for t in _os.getenv('TEST_EXTRAS', '').split(',') if t]
-    if extra.lower() not in extras:
-      print('The test is not needed to run, skipped.', file=_sys.stderr)
-      _sys.exit(0)
+  if filename is None:
+    _unittest.main(
+      failfast=False,
+      buffer=False,
+      catchbreak=False,
+      exit=False)
+    return
+  basedir = _os.getenv('HB_TEST_LOGDIR', '.')
+  logfile = _os.path.join(basedir, filename)
+  logdir = _os.path.dirname(logfile)
+  _os.makedirs(logdir, exist_ok=True)
+  with open(logfile, 'w', encoding='UTF-8') as output:
+    _unittest.main(
+      testRunner=_xmlrunner.XMLTestRunner(output=output),
+      failfast=False,
+      buffer=False,
+      catchbreak=False,
+      exit=False)

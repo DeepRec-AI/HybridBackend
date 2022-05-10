@@ -74,9 +74,14 @@ def _test_distributed(rank):
         return final_result
 
 
+@unittest.skipUnless(
+  os.getenv('HYBRIDBACKEND_WITH_CUDA') == 'ON', 'GPU required')
 class DetectEndTest(unittest.TestCase):
   r'''Tests for the out-of-range sync.
   '''
+  def setUp(self):  # pylint: disable=invalid-name
+    os.environ['CUDA_VISIBLE_DEVICES'] = '0,1'
+
   def test_single(self):
     results = hbtest.Spawn()(_test_single)
     np.testing.assert_equal(
@@ -88,6 +93,4 @@ class DetectEndTest(unittest.TestCase):
 
 
 if __name__ == '__main__':
-  hbtest.register(['gpu', 'train'])
-  os.environ['CUDA_VISIBLE_DEVICES'] = '0,1'
-  unittest.main()
+  hbtest.main(f'{__file__}.xml')

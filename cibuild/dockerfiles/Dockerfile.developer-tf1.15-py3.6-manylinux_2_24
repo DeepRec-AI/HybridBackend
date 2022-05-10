@@ -71,6 +71,7 @@ RUN pip install \
     pylint-quotes \
     pycodestyle \
     twine \
+    xmlrunner \
     numpy==1.16.6
 
 ENV AUDIT_HOME=/opt/_internal/pipx/venvs/auditwheel

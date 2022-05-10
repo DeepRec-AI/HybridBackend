@@ -532,9 +532,14 @@ def _test_shared_embedding_column(_, lr):
       return final_loss
 
 
+@unittest.skipUnless(
+  os.getenv('HYBRIDBACKEND_WITH_CUDA') == 'ON', 'GPU required')
 class DenseFeaturesTest(unittest.TestCase):
   '''Tests for embedding columns.
   '''
+  def setUp(self):  # pylint: disable=invalid-name
+    os.environ['CUDA_VISIBLE_DEVICES'] = '0,1'
+
   def test_get_dense_tensor(self):
     results = hbtest.Spawn()(_test_get_dense_tensor)
     np.testing.assert_allclose(
@@ -641,6 +646,4 @@ class DenseFeaturesTest(unittest.TestCase):
 
 # pylint: enable=missing-docstring
 if __name__ == '__main__':
-  hbtest.register(['gpu', 'emb'])
-  os.environ['CUDA_VISIBLE_DEVICES'] = '0,1'
-  unittest.main()
+  hbtest.main(f'{__file__}.xml')

@@ -1,7 +1,6 @@
 # HybridBackend
 
-[![cibuild: cpu](https://github.com/alibaba/HybridBackend/actions/workflows/cpu-cibuild.yaml/badge.svg?branch=main&event=push)](https://github.com/alibaba/HybridBackend/actions/workflows/cpu-cibuild.yaml)
-[![cibuild: gpu](https://github.com/alibaba/HybridBackend/actions/workflows/gpu-cibuild.yaml/badge.svg?branch=main&event=push)](https://github.com/alibaba/HybridBackend/actions/workflows/gpu-cibuild.yaml)
+[![cibuild](https://github.com/alibaba/HybridBackend/actions/workflows/cibuild.yaml/badge.svg?branch=main&event=push)](https://github.com/alibaba/HybridBackend/actions/workflows/cibuild.yaml)
 [![readthedocs](https://readthedocs.org/projects/hybridbackend/badge/?version=latest)](https://hybridbackend.readthedocs.io/en/latest/?badge=latest)
 [![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](http://makeapullrequest.com)
 [![license](https://img.shields.io/badge/License-Apache%202.0-brightgreen.svg)](https://opensource.org/licenses/Apache-2.0)

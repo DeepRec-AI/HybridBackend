@@ -40,6 +40,7 @@ except ImportError:
 # pylint: disable=missing-docstring
 class ParquetDatasetTest(unittest.TestCase):
   def setUp(self):  # pylint: disable=invalid-name
+    os.environ['CUDA_VISIBLE_DEVICES'] = ''
     self._workspace = tempfile.mkdtemp()
     self._filename = os.path.join(self._workspace, 'test.parquet')
     self._df = pd.DataFrame(
@@ -49,6 +50,7 @@ class ParquetDatasetTest(unittest.TestCase):
 
   def tearDown(self):  # pylint: disable=invalid-name
     os.remove(self._filename)
+    del os.environ['CUDA_VISIBLE_DEVICES']
 
   def test_read(self):
     batch_size = 32
@@ -181,6 +183,4 @@ class ParquetDatasetTest(unittest.TestCase):
 
 
 if __name__ == '__main__':
-  hbtest.register(['cpu', 'data'])
-  os.environ['CUDA_VISIBLE_DEVICES'] = ''
-  unittest.main()
+  hbtest.main(f'{__file__}.xml')

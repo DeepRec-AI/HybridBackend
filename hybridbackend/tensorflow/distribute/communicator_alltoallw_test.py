@@ -31,7 +31,17 @@ import unittest
 
 
 # pylint: disable=missing-docstring
+@unittest.skipUnless(
+  os.getenv('HYBRIDBACKEND_WITH_CUDA') == 'ON', 'GPU required')
 class AlltoallwTest(unittest.TestCase):
+  def setUp(self):  # pylint: disable=invalid-name
+    os.environ['CUDA_VISIBLE_DEVICES'] = '0,1'
+    os.environ['TF_CPP_VMODULE'] = 'nccl_alltoallw=1'
+
+  def tearDown(self):  # pylint: disable=invalid-name
+    del os.environ['TF_CPP_VMODULE']
+    del os.environ['CUDA_VISIBLE_DEVICES']
+
   def test_alltoallw(self):
     hb.context.options.update(comm_pubsub_device='')
 
@@ -257,7 +267,4 @@ class AlltoallwTest(unittest.TestCase):
 
 
 if __name__ == '__main__':
-  hbtest.register(['gpu', 'dist'])
-  os.environ['CUDA_VISIBLE_DEVICES'] = '0,1'
-  os.environ['TF_CPP_VMODULE'] = 'nccl_alltoallw=1'
-  unittest.main()
+  hbtest.main(f'{__file__}.xml')

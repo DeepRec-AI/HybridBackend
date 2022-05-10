@@ -1,0 +1,189 @@
+name: cibuild
+
+on: [workflow_dispatch, push]
+
+env:
+  JOBNAME: hbci-${{ github.run_id }}
+
+jobs:
+  cpu-cibuild:
+    name: "Run Tests on CPU"
+    runs-on: ubuntu-latest
+    environment: tf1.15-py3.6-manylinux_2_24
+    if: always()
+    steps:
+    - name: Checkout Code
+      uses: actions/checkout@v2
+      with:
+        submodules: 'true'
+    - name: Setup Environment
+      uses: aliyun/ack-set-context@v1
+      with:
+        access-key-id: "${{ secrets.ACCESS_KEY_ID }}"
+        access-key-secret: "${{ secrets.ACCESS_KEY_SECRET }}"
+        cluster-id: "${{ secrets.ACK_CLUSTER_ID }}"
+    - name: Upload
+      run: |-
+        helm install ${JOBNAME}-cpu cibuild/ \
+        --set image=registry.cn-shanghai.aliyuncs.com/pai-dlc/hybridbackend:developer-tf1.15-py3.6-manylinux_2_24 \
+        --set gpus=0 && \
+        cibuild/upload ${JOBNAME}-cpu-chief-0 ../cibuild
+    - name: Lint
+      run: |-
+        kubectl exec -it ${JOBNAME}-cpu-chief-0 -- sh -c 'make lint'
+    - name: Build
+      run: |-
+        kubectl exec -it ${JOBNAME}-cpu-chief-0 -- sh -c 'make -j32 HYBRIDBACKEND_WHEEL_ALIAS=-cpu-nightly HYBRIDBACKEND_WHEEL_BUILD=rc${{ github.run_id }}'
+    - name: Install
+      run: |-
+        kubectl exec -it ${JOBNAME}-cpu-chief-0 -- sh -c 'PYTHONPATH= pip install cibuild/dist/*.whl'
+    - name: Test
+      run: |-
+        kubectl exec -it ${JOBNAME}-cpu-chief-0 -- sh -c \
+        'mkdir -p build/reports && PYTHONPATH= HB_TEST_LOGDIR=build/reports make test && tar -czf reports.tgz -C build/ reports'
+    - name: Download Test Results
+      run: |-
+        kubectl cp ${JOBNAME}-cpu-chief-0:reports.tgz ./reports.tgz --retries=3 && \
+        tar -xzf reports.tgz
+    - name: Upload Artifacts
+      uses: actions/upload-artifact@v2
+      with:
+        name: cpu-cibuild-results
+        path: reports/**/*.xml
+    - name: Cleanup Environment
+      if: always()
+      run: |-
+        helm uninstall ${JOBNAME}-cpu
+  gpu-cibuild:
+    name: "Run Tests on GPU"
+    runs-on: ubuntu-latest
+    environment: tf1.15-py3.6-cu114-ubuntu18.04
+    if: always()
+    steps:
+    - name: Checkout Code
+      uses: actions/checkout@v2
+      with:
+        submodules: 'true'
+    - name: Setup Environment
+      uses: aliyun/ack-set-context@v1
+      with:
+        access-key-id: "${{ secrets.ACCESS_KEY_ID }}"
+        access-key-secret: "${{ secrets.ACCESS_KEY_SECRET }}"
+        cluster-id: "${{ secrets.ACK_CLUSTER_ID }}"
+    - name: Upload
+      run: |-
+        helm install ${JOBNAME}-gpu cibuild/ \
+        --set image=registry.cn-shanghai.aliyuncs.com/pai-dlc/hybridbackend:developer-tf1.15-py3.6-cu114-ubuntu18.04 \
+        --set gpus=2 && \
+        cibuild/upload ${JOBNAME}-gpu-chief-0 ../cibuild
+    - name: Lint
+      run: |-
+        kubectl exec -it ${JOBNAME}-gpu-chief-0 -- sh -c 'make lint'
+    - name: Build
+      run: |-
+        kubectl exec -it ${JOBNAME}-gpu-chief-0 -- sh -c 'make -j32 HYBRIDBACKEND_WHEEL_ALIAS=-nightly HYBRIDBACKEND_WHEEL_BUILD=rc${{ github.run_id }}'
+    - name: Install
+      run: |-
+        kubectl exec -it ${JOBNAME}-gpu-chief-0 -- sh -c 'PYTHONPATH= pip install cibuild/dist/*.whl'
+    - name: Test
+      run: |-
+        kubectl exec -it ${JOBNAME}-gpu-chief-0 -- sh -c \
+        'mkdir -p build/reports && PYTHONPATH= HB_TEST_LOGDIR=build/reports make test && tar -czf reports.tgz -C build/ reports'
+    - name: Download Test Results
+      run: |-
+        kubectl cp ${JOBNAME}-gpu-chief-0:reports.tgz ./reports.tgz --retries=3 && \
+        tar -xzf reports.tgz
+    - name: Upload Artifacts
+      uses: actions/upload-artifact@v2
+      with:
+        name: gpu-cibuild-results
+        path: reports/**/*.xml
+    - name: Cleanup Environment
+      if: always()
+      run: |-
+        helm uninstall ${JOBNAME}-gpu
+  deeprec-cibuild:
+    name: "Run Tests on GPU w/ DeepRec"
+    needs: ["gpu-cibuild"]
+    runs-on: ubuntu-latest
+    environment: deeprec-py3.6-cu114-ubuntu18.04
+    if: always()
+    steps:
+    - name: Checkout Code
+      uses: actions/checkout@v2
+      with:
+        submodules: 'true'
+    - name: Setup Environment
+      uses: aliyun/ack-set-context@v1
+      with:
+        access-key-id: "${{ secrets.ACCESS_KEY_ID }}"
+        access-key-secret: "${{ secrets.ACCESS_KEY_SECRET }}"
+        cluster-id: "${{ secrets.ACK_CLUSTER_ID }}"
+    - name: Upload
+      run: |-
+        helm install ${JOBNAME}-deeprec cibuild/ \
+        --set image=registry.cn-shanghai.aliyuncs.com/pai-dlc/hybridbackend:developer-deeprec-py3.6-cu114-ubuntu18.04 \
+        --set gpus=2 && \
+        cibuild/upload ${JOBNAME}-deeprec-chief-0 ../cibuild
+    - name: Build
+      run: |-
+        kubectl exec -it ${JOBNAME}-deeprec-chief-0 -- sh -c 'make -j32 HYBRIDBACKEND_WHEEL_ALIAS=-deeprec HYBRIDBACKEND_WHEEL_BUILD=rc${{ github.run_id }}'
+    - name: Install
+      run: |-
+        kubectl exec -it ${JOBNAME}-deeprec-chief-0 -- sh -c 'PYTHONPATH= pip install cibuild/dist/*.whl'
+    - name: Test
+      run: |-
+        kubectl exec -it ${JOBNAME}-deeprec-chief-0 -- sh -c \
+        'mkdir -p build/reports && PYTHONPATH= HB_TEST_LOGDIR=build/reports make test && tar -czf reports.tgz -C build/ reports'
+    - name: Download Test Results
+      run: |-
+        kubectl cp ${JOBNAME}-deeprec-chief-0:reports.tgz ./reports.tgz --retries=3 && \
+        tar -xzf reports.tgz
+    - name: Upload Artifacts
+      uses: actions/upload-artifact@v2
+      with:
+        name: deeprec-cibuild-results
+        path: reports/**/*.xml
+    - name: Cleanup Environment
+      if: always()
+      run: |-
+        helm uninstall ${JOBNAME}-deeprec
+  test-results:
+    name: "Collect Test Results"
+    needs: ["cpu-cibuild", "gpu-cibuild", "deeprec-cibuild"]
+    runs-on: ubuntu-latest
+    permissions:
+      checks: write
+      pull-requests: write
+    if: always()
+    steps:
+      - name: Download Artifacts
+        uses: actions/download-artifact@v2
+        with:
+          path: reports
+      - name: Publish Reports
+        uses: EnricoMi/publish-unit-test-result-action@v1
+        with:
+          check_name: Test Results
+          files: "**/*.xml"
+  detailed-test-results:
+    name: "Collect Detailed Test Results"
+    needs: ["cpu-cibuild", "gpu-cibuild", "deeprec-cibuild"]
+    runs-on: ubuntu-latest
+    if: always()
+    steps:
+      - uses: actions/checkout@v2
+        with:
+          token: '${{ secrets.GITHUB_TOKEN }}'
+      - name: Git Initialize
+        run: git init
+      - name: Download Artifacts
+        uses: actions/download-artifact@v2
+        with:
+          path: reports
+      - name: Publish Reports
+        uses: dorny/test-reporter@v1
+        with:
+          name: Detailed Test Results
+          path: '**/*.xml'
+          reporter: java-junit

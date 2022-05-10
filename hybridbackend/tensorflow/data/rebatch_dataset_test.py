@@ -23,9 +23,6 @@ from __future__ import print_function
 import numpy as np
 import os
 import pandas as pd
-import pyarrow as pa
-import pyarrow.parquet as pq
-import random
 from six.moves import xrange  # pylint: disable=redefined-builtin
 import tempfile
 import tensorflow as tf
@@ -38,6 +35,7 @@ import unittest
 # pylint: disable=missing-docstring
 class ParquetDatasetRebatchTest(unittest.TestCase):
   def setUp(self):  # pylint: disable=invalid-name
+    os.environ['CUDA_VISIBLE_DEVICES'] = ''
     self._workspace = tempfile.mkdtemp()
     self._filename = os.path.join(self._workspace, 'test.parquet')
     nrows = 100
@@ -64,6 +62,7 @@ class ParquetDatasetRebatchTest(unittest.TestCase):
 
   def tearDown(self):  # pylint: disable=invalid-name
     os.remove(self._filename)
+    del os.environ['CUDA_VISIBLE_DEVICES']
 
   def test_pasthrough(self):
     batch_size = 20
@@ -232,40 +231,5 @@ class ParquetDatasetRebatchTest(unittest.TestCase):
           actual.nested_row_splits, expected.nested_row_splits)
 
 
-class ParquetDatasetSequenceRebatchTest(unittest.TestCase):
-  def setUp(self):  # pylint: disable=invalid-name
-    self._workspace = tempfile.mkdtemp()
-    self._filename = os.path.join(self._workspace, 'seqtest.parquet')
-    self._nrows = 1000
-    self._ncols = 10
-    self._data = {
-      'clicks': [
-        [random.randint(0, 100) for col in range(self._ncols)]
-        for row in range(self._nrows)]}
-    pq.write_table(pa.Table.from_pydict(self._data), self._filename)
-
-  def tearDown(self):  # pylint: disable=invalid-name
-    os.remove(self._filename)
-
-  def test_ragged(self):
-    batch_size = 8
-    with tf.Graph().as_default() as graph:
-      ds = hb.data.ParquetDataset(self._filename, batch_size=batch_size)
-      ds = ds.apply(hb.data.rebatch(batch_size))
-      batch = hb.data.make_one_shot_iterator(ds).get_next()
-
-    clicks = self._data['clicks']
-    with tf.Session(graph=graph) as sess:
-      for i in xrange(3):
-        actual = sess.run(batch['clicks'])
-        start_row = i * batch_size
-        end_row = (i + 1) * batch_size
-        expected = clicks[start_row:end_row]
-        expected_values = [v for sublist in expected for v in sublist]
-        np.testing.assert_equal(actual.values, expected_values)
-
-
 if __name__ == '__main__':
-  hbtest.register(['cpu', 'data'])
-  os.environ['CUDA_VISIBLE_DEVICES'] = ''
-  unittest.main()
+  hbtest.main(f'{__file__}.xml')

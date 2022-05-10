@@ -74,7 +74,17 @@ def _test_simple_allreduce_multicomm(rank, a, b, ncomms):
       return sess.run(sums)
 
 
+@unittest.skipUnless(
+  os.getenv('HYBRIDBACKEND_WITH_CUDA') == 'ON', 'GPU required')
 class AllreduceTest(unittest.TestCase):
+  def setUp(self):  # pylint: disable=invalid-name
+    os.environ['CUDA_VISIBLE_DEVICES'] = '0,1'
+    os.environ['TF_CPP_VMODULE'] = 'nccl_allreduce=1'
+
+  def tearDown(self):  # pylint: disable=invalid-name
+    del os.environ['TF_CPP_VMODULE']
+    del os.environ['CUDA_VISIBLE_DEVICES']
+
   def test_simple_allreduce(self):
     a = 13
     b = 22
@@ -109,7 +119,4 @@ class AllreduceTest(unittest.TestCase):
 
 
 if __name__ == '__main__':
-  hbtest.register(['gpu', 'dist'])
-  os.environ['CUDA_VISIBLE_DEVICES'] = '0,1'
-  os.environ['TF_CPP_VMODULE'] = 'nccl_allreduce=1'
-  unittest.main()
+  hbtest.main(f'{__file__}.xml')

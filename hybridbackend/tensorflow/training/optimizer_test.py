@@ -98,9 +98,14 @@ def _test_adam_function(_, lr):
       return steps
 
 
+@unittest.skipUnless(
+  os.getenv('HYBRIDBACKEND_WITH_CUDA') == 'ON', 'GPU required')
 class OptimizerTest(unittest.TestCase):
   r'''Tests for `wraps_optimizer`.
   '''
+  def setUp(self):  # pylint: disable=invalid-name
+    os.environ['CUDA_VISIBLE_DEVICES'] = '0,1'
+
   def test_sgd(self):
     lr = 1.0
     results = hbtest.Spawn(2)(lambda rank: _test_sgd(rank, lr))
@@ -122,6 +127,4 @@ class OptimizerTest(unittest.TestCase):
 
 
 if __name__ == '__main__':
-  hbtest.register(['gpu', 'train'])
-  os.environ['CUDA_VISIBLE_DEVICES'] = '0,1'
-  unittest.main()
+  hbtest.main(f'{__file__}.xml')

@@ -35,6 +35,7 @@ import unittest
 # pylint: disable=missing-docstring
 class ParquetDatasetRaggedTest(unittest.TestCase):
   def setUp(self):  # pylint: disable=invalid-name
+    os.environ['CUDA_VISIBLE_DEVICES'] = ''
     self._workspace = tempfile.mkdtemp()
     self._filename = os.path.join(self._workspace, 'ragged_test.parquet')
     num_cols = 3
@@ -46,12 +47,13 @@ class ParquetDatasetRaggedTest(unittest.TestCase):
             size=(np.random.randint(1, 5),),
             dtype=np.int64)
           for _ in xrange(num_cols)]
-        for _ in xrange(100)]),
+        for _ in xrange(100)], dtype=object),
       columns=[f'col{c}' for c in xrange(num_cols)])
     self._df.to_parquet(self._filename)
 
   def tearDown(self):  # pylint: disable=invalid-name
     os.remove(self._filename)
+    del os.environ['CUDA_VISIBLE_DEVICES']
 
   def test_read(self):
     batch_size = 32
@@ -256,6 +258,4 @@ class ParquetDatasetRaggedTest(unittest.TestCase):
 
 
 if __name__ == '__main__':
-  hbtest.register(['cpu', 'data'])
-  os.environ['CUDA_VISIBLE_DEVICES'] = ''
-  unittest.main()
+  hbtest.main(f'{__file__}.xml')
