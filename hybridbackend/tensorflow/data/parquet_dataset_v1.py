@@ -102,17 +102,18 @@ class ParquetDatasetV1(dataset_ops.Dataset):
   VERSION = 2001
 
   @classmethod
-  def read_schema(cls, filename, fields=None):
+  def read_schema(cls, filename, fields=None, lower=False):
     r'''Read schema from a parquet file.
 
     Args:
       filename: Path of the parquet file.
       fields: Existing field definitions or field names.
+      lower: Convert field name to lower case if not found.
 
     Returns:
       Field definition list.
     '''
-    return parquet_fields(filename, fields=fields)
+    return parquet_fields(filename, fields, lower=lower)
 
   def __init__(
       self, filenames,

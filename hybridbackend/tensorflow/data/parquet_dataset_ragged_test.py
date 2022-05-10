@@ -79,7 +79,7 @@ class ParquetDatasetRaggedTest(unittest.TestCase):
           expected_splits.append(expected_splits[-1] + len(item))
         expected = hb.data.DataFrame.Value(
           np.array(expected_values),
-          tuple([np.array(expected_splits, dtype=np.int32)]))
+          [np.array(expected_splits, dtype=np.int32)])
         actual = result['col0']
         np.testing.assert_allclose(actual.values, expected.values)
         np.testing.assert_equal(
@@ -110,7 +110,7 @@ class ParquetDatasetRaggedTest(unittest.TestCase):
           expected_splits.append(expected_splits[-1] + len(item))
         expected = hb.data.DataFrame.Value(
           np.array(expected_values),
-          tuple([np.array(expected_splits, dtype=np.int32)]))
+          [np.array(expected_splits, dtype=np.int32)])
         actual = result['col0']
         np.testing.assert_allclose(actual.values, expected.values)
         np.testing.assert_equal(
@@ -142,7 +142,7 @@ class ParquetDatasetRaggedTest(unittest.TestCase):
           expected_splits.append(expected_splits[-1] + len(item))
         expected = hb.data.DataFrame.Value(
           np.array(expected_values),
-          tuple([np.array(expected_splits, dtype=np.int32)]))
+          [np.array(expected_splits, dtype=np.int32)])
         actual = result['col0']
         np.testing.assert_allclose(actual.values, expected.values)
         np.testing.assert_equal(
@@ -174,7 +174,7 @@ class ParquetDatasetRaggedTest(unittest.TestCase):
           expected_splits.append(expected_splits[-1] + len(item))
         expected = hb.data.DataFrame.Value(
           np.array(expected_values),
-          tuple([np.array(expected_splits, dtype=np.int32)]))
+          [np.array(expected_splits, dtype=np.int32)])
         actual = result['col0']
         np.testing.assert_equal(actual.values, expected.values)
         np.testing.assert_equal(
@@ -215,7 +215,7 @@ class ParquetDatasetRaggedTest(unittest.TestCase):
           expected_splits.append(expected_splits[-1] + len(item))
         expected = hb.data.DataFrame.Value(
           np.array(expected_values),
-          tuple([np.array(expected_splits, dtype=np.int32)]))
+          [np.array(expected_splits, dtype=np.int32)])
         actual = result['col0']
         np.testing.assert_equal(actual.values, expected.values)
         np.testing.assert_equal(
@@ -250,7 +250,7 @@ class ParquetDatasetRaggedTest(unittest.TestCase):
           expected_splits.append(expected_splits[-1] + len(item))
         expected = hb.data.DataFrame.Value(
           np.array(expected_values),
-          tuple([np.array(expected_splits, dtype=np.int32)]))
+          [np.array(expected_splits, dtype=np.int32)])
         actual = result[0]
         np.testing.assert_allclose(actual.values, expected.values)
         np.testing.assert_equal(

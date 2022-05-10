@@ -13,8 +13,10 @@ Supported logical data types:
 
 Name        | Data Structure
 ----------- | ------------------------
-Scalar      | `tf.Tensor`
-Nested List | `hb.data.DataFrame.Value` = `values` + `nested_row_splits`
+Scalar | `tf.Tensor` / `hb.data.DataFrame.Value`
+Fixed-Length List | `tf.Tensor` / `hb.data.DataFrame.Value`
+Variable-Length List | `tf.SparseTensor` / `hb.data.DataFrame.Value`
+Variable-Length Nested List | `tf.SparseTensor` / `hb.data.DataFrame.Value`
 
 Supported physical data types:
 

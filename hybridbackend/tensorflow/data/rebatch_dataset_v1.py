@@ -29,7 +29,7 @@ from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.util import nest
 
-from hybridbackend.tensorflow.data.rebatch import input_fields
+from hybridbackend.tensorflow.data.dataframe import input_fields
 from hybridbackend.tensorflow.pywrap import _ops
 
 
