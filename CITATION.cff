@@ -1,4 +1,4 @@
-cff-version: 1.2.0
+cff-version: 1.1.0
 title: HybridBackend
 doi: 10.5281/zenodo.6464188
 type: software
@@ -9,13 +9,11 @@ authors:
   - given-names: Langshi
     family-names: Chen
 message: >-
-  Please cite HybridBackend in your publications if
-  it helps
+  Please cite HybridBackend in your publications if it helps
 preferred-citation:
   title: "PICASSO: Unleashing the Potential of GPU-centric Training for Wide-and-deep Recommender Systems"
-  doi: "10.48550/arXiv.2204.04903"
-  type: article
-  journal: "arXiv preprint arXiv:2204.04903"
+  type: conference-paper
+  collection-title: "2022 IEEE 38th International Conference on Data Engineering (ICDE)"
   year: 2022
   authors:
   - family-names: "Zhang"

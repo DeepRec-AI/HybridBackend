@@ -50,6 +50,8 @@ def configure(*args, prototype=None, **kwargs):
   if not prototype:
     kwargs.setdefault('allow_soft_placement', True)
     prototype = config_pb2.ConfigProto(*args, **kwargs)
+  prototype.graph_options.optimizer_options.global_jit_level = (
+    config_pb2.OptimizerOptions.OFF)
   prototype.gpu_options.allow_growth = True
   prototype.gpu_options.force_gpu_compatible = True
   chief = pydev.DeviceSpec.from_string(ctx.devices[0])

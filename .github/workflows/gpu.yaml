@@ -3,14 +3,14 @@ name: release deploy on gpu
 on: workflow_dispatch
 
 env:
-  IMAGE: registry.cn-shanghai.aliyuncs.com/pai-dlc/hybridbackend:developer-tf1.15-py3.6-cu114-ubuntu18.04
+  IMAGE: registry.cn-shanghai.aliyuncs.com/pai-dlc/hybridbackend:developer-tf1.15-py3.6-cu116-ubuntu18.04
   JOBNAME: hbci-${{ github.run_id }}
   PODNAME: hbci-${{ github.run_id }}-chief-0
 
 jobs:
   deploy:
     runs-on: ubuntu-latest
-    environment: tf1.15-py3.6-cu114-ubuntu18.04
+    environment: tf1.15-py3.6-cu116-ubuntu18.04
     steps:
     - name: Checkout Code
       uses: actions/checkout@v2
@@ -30,7 +30,7 @@ jobs:
         cibuild/upload ${PODNAME} ../cibuild
     - name: Build
       run: |-
-        kubectl exec -it ${PODNAME} -- sh -c 'make -j32 HYBRIDBACKEND_WHEEL_ALIAS=-cu114 HYBRIDBACKEND_WHEEL_REQUIRES="tensorflow>=1.15,<2.0"' && \
+        kubectl exec -it ${PODNAME} -- sh -c 'make -j32 HYBRIDBACKEND_WHEEL_ALIAS=-cu116 HYBRIDBACKEND_WHEEL_REQUIRES="tensorflow>=1.15,<2.0"' && \
         kubectl exec -it ${PODNAME} -- cibuild/auditwheel /opt/hybridbackend
         kubectl exec -it ${PODNAME} -- twine check /opt/hybridbackend/*.whl
     - name: Install

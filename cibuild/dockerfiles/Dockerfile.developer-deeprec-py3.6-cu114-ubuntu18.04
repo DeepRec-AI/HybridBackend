@@ -103,13 +103,58 @@ RUN mkdir -p /opt/tensorflow && \
     /opt/tensorflow --gpu --project_name tensorflow
 
 RUN echo "${TF_REPO} ${TF_COMMIT}" > /opt/tensorflow/commit
+RUN pip install /opt/tensorflow/tensorflow-*.whl
+
+ARG BLADE_REPO=https://github.com/alibaba/BladeDISC.git
+ARG BLADE_COMMIT=main
+
+RUN git clone ${BLADE_REPO} /src/bladedisc && \
+    cd /src/bladedisc && \
+    git checkout ${BLADE_COMMIT} && \
+    git submodule update --init --recursive
+RUN cd /src/bladedisc && \
+    curl -fSsL -O https://github.com/bazelbuild/bazel/releases/download/5.1.1/bazel-5.1.1-installer-linux-x86_64.sh && \
+    chmod +x ./bazel-*.sh && \
+    ./bazel-5.1.1-installer-linux-x86_64.sh && \
+    rm -f ./bazel-5.1.1-installer-linux-x86_64.sh
+RUN cd /src/bladedisc/scripts/python && \
+    ./tao_build.py /usr -s configure --bridge-gcc=7.5 --compiler-gcc=7.5
+RUN mkdir -p /usr/local/nvidia/lib64 && \
+    cp -rf /usr/local/cuda/compat/* /usr/local/nvidia/lib64/ && \
+    cp -rf /usr/local/cuda/lib64/stubs/* /usr/local/nvidia/lib64/
+RUN cd /src/bladedisc/scripts/python && \
+    ./tao_build.py /usr -s build_tao_compiler
+RUN cd /src/bladedisc/scripts/python && \
+    ./tao_build.py /usr -s build_tao_bridge
+RUN cd /src/bladedisc && \
+    cp tf_community/bazel-bin/tensorflow/compiler/decoupling/tao_compiler_main \
+    tao/python/blade_disc_tf && \
+    cp tao/bazel-bin/libtao_ops.so tao/python/blade_disc_tf && \
+    cd tao && sed -i 's/detect_host_tf_version()$//g' setup.py && \
+    python setup.py bdist_wheel && \
+    mkdir -p /opt/bladedisc/ && cp dist/*.whl /opt/bladedisc/
+
+ARG PSTACK_REPO=https://github.com/peadar/pstack.git
+ARG PSTACK_COMMIT=master
+
+RUN git clone ${PSTACK_REPO} /src/pstack && \
+    cd /src/pstack && \
+    git checkout ${PSTACK_COMMIT} && \
+    cmake . && \
+    make -j$(nproc)
+RUN mkdir -p /opt/pstack/bin && \
+    cp /src/pstack/pstack /opt/pstack/bin/ && \
+    cp /src/pstack/canal /opt/pstack/bin/ && \
+    mkdir -p /opt/pstack/lib && \
+    cp -r /src/pstack/libdwelf.so* /opt/pstack/lib/ && \
+    cp -r /src/pstack/libprocman.so* /opt/pstack/lib/
 
 FROM quay.io/pypa/manylinux_2_24_x86_64 AS PYPA
 FROM nvidia/cuda:11.4.2-cudnn8-devel-ubuntu18.04
 LABEL com.nvidia.volumes.needed="nvidia_driver"
 LABEL com.nvidia.cuda.version="${CUDA_VERSION}"
 ENV NVIDIA_VISIBLE_DEVICES= \
-    NVIDIA_REQUIRE_CUDA=
+    NVIDIA_REQUIRE_CUDA="cuda>=11.0"
 
 RUN apt-get update && \
     DEBIAN_FRONTEND="noninteractive" \
@@ -175,23 +220,12 @@ RUN ln -sf ${AUDIT_HOME}/bin/auditwheel /usr/local/bin/auditwheel && \
     ${AUDIT_HOME}/bin/patch.py && \
     mkdir -p /opt/hybridbackend/
 
+COPY --from=DEVEL /opt/pstack/bin/* /usr/local/bin/
+COPY --from=DEVEL /opt/pstack/lib/* /usr/local/lib/
+
 COPY --from=DEVEL /opt/hadoop /opt/hadoop
 COPY --from=DEVEL /opt/arrow /opt/arrow
 COPY --from=DEVEL /opt/sparsehash /opt/sparsehash
-COPY --from=DEVEL /opt/tensorflow /opt/tensorflow
-RUN pip install --no-cache-dir \
-    /opt/tensorflow/tensorflow-*.whl && \
-    pip install numpy==1.16.6 || true && \
-    mkdir -p /usr/local/lib/python3.6/dist-packages/tensorflow_core/include/third_party/gpus/cuda/ && \
-    ln -sf /usr/local/cuda/include \
-    /usr/local/lib/python3.6/dist-packages/tensorflow_core/include/third_party/gpus/cuda/include
-
-RUN pip install \
-    nvidia-pyindex && \
-    pip install \
-    nvidia-nsys-cli \
-    nvtx-plugins \
-    && rm -f /root/.bashrc
 
 COPY bash.bashrc /etc/bash.bashrc
 COPY hbash /bin/hbash
@@ -202,8 +236,27 @@ ENV HYBRIDBACKEND_WITH_CUDA=ON \
     SPARSEHASH_HOME=/opt/sparsehash \
     JAVA_HOME=/usr/lib/jvm/java-8-openjdk-amd64 \
     HADOOP_HOME=/opt/hadoop \
-    HADOOP_HDFS_HOME=/opt/hadoop \
-    TENSORFLOW_DISTRO=DEEPREC
+    HADOOP_HDFS_HOME=/opt/hadoop
 ENV PATH=${PATH}:${HADOOP_HOME}/bin \
     LD_LIBRARY_PATH=${LD_LIBRARY_PATH}:/usr/local/lib:${JAVA_HOME}/jre/lib/amd64/server:${HADOOP_HOME}/lib/native \
     CLASSPATH=/opt/hadoop/etc/hadoop:/opt/hadoop/share/hadoop/common/lib/java-xmlbuilder-0.4.jar:/opt/hadoop/share/hadoop/common/lib/protobuf-java-2.5.0.jar:/opt/hadoop/share/hadoop/common/lib/slf4j-api-1.7.10.jar:/opt/hadoop/share/hadoop/common/lib/paranamer-2.3.jar:/opt/hadoop/share/hadoop/common/lib/commons-configuration-1.6.jar:/opt/hadoop/share/hadoop/common/lib/commons-lang-2.6.jar:/opt/hadoop/share/hadoop/common/lib/curator-client-2.7.1.jar:/opt/hadoop/share/hadoop/common/lib/zookeeper-3.4.6.jar:/opt/hadoop/share/hadoop/common/lib/asm-3.2.jar:/opt/hadoop/share/hadoop/common/lib/jaxb-api-2.2.2.jar:/opt/hadoop/share/hadoop/common/lib/jsp-api-2.1.jar:/opt/hadoop/share/hadoop/common/lib/hadoop-annotations-2.7.7.jar:/opt/hadoop/share/hadoop/common/lib/jsr305-3.0.0.jar:/opt/hadoop/share/hadoop/common/lib/jetty-sslengine-6.1.26.jar:/opt/hadoop/share/hadoop/common/lib/jetty-util-6.1.26.jar:/opt/hadoop/share/hadoop/common/lib/snappy-java-1.0.4.1.jar:/opt/hadoop/share/hadoop/common/lib/servlet-api-2.5.jar:/opt/hadoop/share/hadoop/common/lib/commons-cli-1.2.jar:/opt/hadoop/share/hadoop/common/lib/avro-1.7.4.jar:/opt/hadoop/share/hadoop/common/lib/commons-compress-1.4.1.jar:/opt/hadoop/share/hadoop/common/lib/jersey-core-1.9.jar:/opt/hadoop/share/hadoop/common/lib/gson-2.2.4.jar:/opt/hadoop/share/hadoop/common/lib/activation-1.1.jar:/opt/hadoop/share/hadoop/common/lib/jetty-6.1.26.jar:/opt/hadoop/share/hadoop/common/lib/jersey-json-1.9.jar:/opt/hadoop/share/hadoop/common/lib/commons-codec-1.4.jar:/opt/hadoop/share/hadoop/common/lib/jackson-jaxrs-1.9.13.jar:/opt/hadoop/share/hadoop/common/lib/httpclient-4.2.5.jar:/opt/hadoop/share/hadoop/common/lib/commons-beanutils-1.7.0.jar:/opt/hadoop/share/hadoop/common/lib/hamcrest-core-1.3.jar:/opt/hadoop/share/hadoop/common/lib/apacheds-kerberos-codec-2.0.0-M15.jar:/opt/hadoop/share/hadoop/common/lib/jackson-core-asl-1.9.13.jar:/opt/hadoop/share/hadoop/common/lib/jets3t-0.9.0.jar:/opt/hadoop/share/hadoop/common/lib/jettison-1.1.jar:/opt/hadoop/share/hadoop/common/lib/jaxb-impl-2.2.3-1.jar:/opt/hadoop/share/hadoop/common/lib/stax-api-1.0-2.jar:/opt/hadoop/share/hadoop/common/lib/curator-recipes-2.7.1.jar:/opt/hadoop/share/hadoop/common/lib/netty-3.6.2.Final.jar:/opt/hadoop/share/hadoop/common/lib/jsch-0.1.54.jar:/opt/hadoop/share/hadoop/common/lib/commons-net-3.1.jar:/opt/hadoop/share/hadoop/common/lib/xz-1.0.jar:/opt/hadoop/share/hadoop/common/lib/api-util-1.0.0-M20.jar:/opt/hadoop/share/hadoop/common/lib/apacheds-i18n-2.0.0-M15.jar:/opt/hadoop/share/hadoop/common/lib/httpcore-4.2.5.jar:/opt/hadoop/share/hadoop/common/lib/xmlenc-0.52.jar:/opt/hadoop/share/hadoop/common/lib/mockito-all-1.8.5.jar:/opt/hadoop/share/hadoop/common/lib/jackson-xc-1.9.13.jar:/opt/hadoop/share/hadoop/common/lib/commons-io-2.4.jar:/opt/hadoop/share/hadoop/common/lib/commons-math3-3.1.1.jar:/opt/hadoop/share/hadoop/common/lib/commons-collections-3.2.2.jar:/opt/hadoop/share/hadoop/common/lib/jackson-mapper-asl-1.9.13.jar:/opt/hadoop/share/hadoop/common/lib/commons-beanutils-core-1.8.0.jar:/opt/hadoop/share/hadoop/common/lib/curator-framework-2.7.1.jar:/opt/hadoop/share/hadoop/common/lib/guava-11.0.2.jar:/opt/hadoop/share/hadoop/common/lib/commons-digester-1.8.jar:/opt/hadoop/share/hadoop/common/lib/htrace-core-3.1.0-incubating.jar:/opt/hadoop/share/hadoop/common/lib/jersey-server-1.9.jar:/opt/hadoop/share/hadoop/common/lib/commons-httpclient-3.1.jar:/opt/hadoop/share/hadoop/common/lib/junit-4.11.jar:/opt/hadoop/share/hadoop/common/lib/slf4j-log4j12-1.7.10.jar:/opt/hadoop/share/hadoop/common/lib/api-asn1-api-1.0.0-M20.jar:/opt/hadoop/share/hadoop/common/lib/log4j-1.2.17.jar:/opt/hadoop/share/hadoop/common/lib/commons-logging-1.1.3.jar:/opt/hadoop/share/hadoop/common/lib/hadoop-auth-2.7.7.jar:/opt/hadoop/share/hadoop/common/hadoop-common-2.7.7-tests.jar:/opt/hadoop/share/hadoop/common/hadoop-common-2.7.7.jar:/opt/hadoop/share/hadoop/common/hadoop-nfs-2.7.7.jar:/opt/hadoop/share/hadoop/hdfs:/opt/hadoop/share/hadoop/hdfs/lib/protobuf-java-2.5.0.jar:/opt/hadoop/share/hadoop/hdfs/lib/netty-all-4.0.23.Final.jar:/opt/hadoop/share/hadoop/hdfs/lib/commons-lang-2.6.jar:/opt/hadoop/share/hadoop/hdfs/lib/asm-3.2.jar:/opt/hadoop/share/hadoop/hdfs/lib/jsr305-3.0.0.jar:/opt/hadoop/share/hadoop/hdfs/lib/jetty-util-6.1.26.jar:/opt/hadoop/share/hadoop/hdfs/lib/servlet-api-2.5.jar:/opt/hadoop/share/hadoop/hdfs/lib/xml-apis-1.3.04.jar:/opt/hadoop/share/hadoop/hdfs/lib/commons-cli-1.2.jar:/opt/hadoop/share/hadoop/hdfs/lib/jersey-core-1.9.jar:/opt/hadoop/share/hadoop/hdfs/lib/jetty-6.1.26.jar:/opt/hadoop/share/hadoop/hdfs/lib/commons-codec-1.4.jar:/opt/hadoop/share/hadoop/hdfs/lib/jackson-core-asl-1.9.13.jar:/opt/hadoop/share/hadoop/hdfs/lib/netty-3.6.2.Final.jar:/opt/hadoop/share/hadoop/hdfs/lib/leveldbjni-all-1.8.jar:/opt/hadoop/share/hadoop/hdfs/lib/xmlenc-0.52.jar:/opt/hadoop/share/hadoop/hdfs/lib/commons-io-2.4.jar:/opt/hadoop/share/hadoop/hdfs/lib/jackson-mapper-asl-1.9.13.jar:/opt/hadoop/share/hadoop/hdfs/lib/guava-11.0.2.jar:/opt/hadoop/share/hadoop/hdfs/lib/htrace-core-3.1.0-incubating.jar:/opt/hadoop/share/hadoop/hdfs/lib/jersey-server-1.9.jar:/opt/hadoop/share/hadoop/hdfs/lib/xercesImpl-2.9.1.jar:/opt/hadoop/share/hadoop/hdfs/lib/log4j-1.2.17.jar:/opt/hadoop/share/hadoop/hdfs/lib/commons-daemon-1.0.13.jar:/opt/hadoop/share/hadoop/hdfs/lib/commons-logging-1.1.3.jar:/opt/hadoop/share/hadoop/hdfs/hadoop-hdfs-2.7.7-tests.jar:/opt/hadoop/share/hadoop/hdfs/hadoop-hdfs-nfs-2.7.7.jar:/opt/hadoop/share/hadoop/hdfs/hadoop-hdfs-2.7.7.jar:/opt/hadoop/share/hadoop/yarn/lib/protobuf-java-2.5.0.jar:/opt/hadoop/share/hadoop/yarn/lib/commons-lang-2.6.jar:/opt/hadoop/share/hadoop/yarn/lib/zookeeper-3.4.6.jar:/opt/hadoop/share/hadoop/yarn/lib/asm-3.2.jar:/opt/hadoop/share/hadoop/yarn/lib/jaxb-api-2.2.2.jar:/opt/hadoop/share/hadoop/yarn/lib/jsr305-3.0.0.jar:/opt/hadoop/share/hadoop/yarn/lib/jetty-util-6.1.26.jar:/opt/hadoop/share/hadoop/yarn/lib/servlet-api-2.5.jar:/opt/hadoop/share/hadoop/yarn/lib/javax.inject-1.jar:/opt/hadoop/share/hadoop/yarn/lib/commons-cli-1.2.jar:/opt/hadoop/share/hadoop/yarn/lib/commons-compress-1.4.1.jar:/opt/hadoop/share/hadoop/yarn/lib/jersey-core-1.9.jar:/opt/hadoop/share/hadoop/yarn/lib/activation-1.1.jar:/opt/hadoop/share/hadoop/yarn/lib/jetty-6.1.26.jar:/opt/hadoop/share/hadoop/yarn/lib/jersey-json-1.9.jar:/opt/hadoop/share/hadoop/yarn/lib/commons-codec-1.4.jar:/opt/hadoop/share/hadoop/yarn/lib/jackson-jaxrs-1.9.13.jar:/opt/hadoop/share/hadoop/yarn/lib/jersey-guice-1.9.jar:/opt/hadoop/share/hadoop/yarn/lib/guice-servlet-3.0.jar:/opt/hadoop/share/hadoop/yarn/lib/jackson-core-asl-1.9.13.jar:/opt/hadoop/share/hadoop/yarn/lib/guice-3.0.jar:/opt/hadoop/share/hadoop/yarn/lib/aopalliance-1.0.jar:/opt/hadoop/share/hadoop/yarn/lib/jettison-1.1.jar:/opt/hadoop/share/hadoop/yarn/lib/jaxb-impl-2.2.3-1.jar:/opt/hadoop/share/hadoop/yarn/lib/stax-api-1.0-2.jar:/opt/hadoop/share/hadoop/yarn/lib/netty-3.6.2.Final.jar:/opt/hadoop/share/hadoop/yarn/lib/xz-1.0.jar:/opt/hadoop/share/hadoop/yarn/lib/leveldbjni-all-1.8.jar:/opt/hadoop/share/hadoop/yarn/lib/jackson-xc-1.9.13.jar:/opt/hadoop/share/hadoop/yarn/lib/commons-io-2.4.jar:/opt/hadoop/share/hadoop/yarn/lib/commons-collections-3.2.2.jar:/opt/hadoop/share/hadoop/yarn/lib/zookeeper-3.4.6-tests.jar:/opt/hadoop/share/hadoop/yarn/lib/jackson-mapper-asl-1.9.13.jar:/opt/hadoop/share/hadoop/yarn/lib/guava-11.0.2.jar:/opt/hadoop/share/hadoop/yarn/lib/jersey-server-1.9.jar:/opt/hadoop/share/hadoop/yarn/lib/jersey-client-1.9.jar:/opt/hadoop/share/hadoop/yarn/lib/log4j-1.2.17.jar:/opt/hadoop/share/hadoop/yarn/lib/commons-logging-1.1.3.jar:/opt/hadoop/share/hadoop/yarn/hadoop-yarn-api-2.7.7.jar:/opt/hadoop/share/hadoop/yarn/hadoop-yarn-server-tests-2.7.7.jar:/opt/hadoop/share/hadoop/yarn/hadoop-yarn-common-2.7.7.jar:/opt/hadoop/share/hadoop/yarn/hadoop-yarn-applications-distributedshell-2.7.7.jar:/opt/hadoop/share/hadoop/yarn/hadoop-yarn-server-web-proxy-2.7.7.jar:/opt/hadoop/share/hadoop/yarn/hadoop-yarn-server-applicationhistoryservice-2.7.7.jar:/opt/hadoop/share/hadoop/yarn/hadoop-yarn-server-sharedcachemanager-2.7.7.jar:/opt/hadoop/share/hadoop/yarn/hadoop-yarn-server-common-2.7.7.jar:/opt/hadoop/share/hadoop/yarn/hadoop-yarn-client-2.7.7.jar:/opt/hadoop/share/hadoop/yarn/hadoop-yarn-applications-unmanaged-am-launcher-2.7.7.jar:/opt/hadoop/share/hadoop/yarn/hadoop-yarn-registry-2.7.7.jar:/opt/hadoop/share/hadoop/yarn/hadoop-yarn-server-resourcemanager-2.7.7.jar:/opt/hadoop/share/hadoop/yarn/hadoop-yarn-server-nodemanager-2.7.7.jar:/opt/hadoop/share/hadoop/mapreduce/lib/protobuf-java-2.5.0.jar:/opt/hadoop/share/hadoop/mapreduce/lib/paranamer-2.3.jar:/opt/hadoop/share/hadoop/mapreduce/lib/asm-3.2.jar:/opt/hadoop/share/hadoop/mapreduce/lib/hadoop-annotations-2.7.7.jar:/opt/hadoop/share/hadoop/mapreduce/lib/snappy-java-1.0.4.1.jar:/opt/hadoop/share/hadoop/mapreduce/lib/javax.inject-1.jar:/opt/hadoop/share/hadoop/mapreduce/lib/avro-1.7.4.jar:/opt/hadoop/share/hadoop/mapreduce/lib/commons-compress-1.4.1.jar:/opt/hadoop/share/hadoop/mapreduce/lib/jersey-core-1.9.jar:/opt/hadoop/share/hadoop/mapreduce/lib/hamcrest-core-1.3.jar:/opt/hadoop/share/hadoop/mapreduce/lib/jersey-guice-1.9.jar:/opt/hadoop/share/hadoop/mapreduce/lib/guice-servlet-3.0.jar:/opt/hadoop/share/hadoop/mapreduce/lib/jackson-core-asl-1.9.13.jar:/opt/hadoop/share/hadoop/mapreduce/lib/guice-3.0.jar:/opt/hadoop/share/hadoop/mapreduce/lib/aopalliance-1.0.jar:/opt/hadoop/share/hadoop/mapreduce/lib/netty-3.6.2.Final.jar:/opt/hadoop/share/hadoop/mapreduce/lib/xz-1.0.jar:/opt/hadoop/share/hadoop/mapreduce/lib/leveldbjni-all-1.8.jar:/opt/hadoop/share/hadoop/mapreduce/lib/commons-io-2.4.jar:/opt/hadoop/share/hadoop/mapreduce/lib/jackson-mapper-asl-1.9.13.jar:/opt/hadoop/share/hadoop/mapreduce/lib/jersey-server-1.9.jar:/opt/hadoop/share/hadoop/mapreduce/lib/junit-4.11.jar:/opt/hadoop/share/hadoop/mapreduce/lib/log4j-1.2.17.jar:/opt/hadoop/share/hadoop/mapreduce/hadoop-mapreduce-client-jobclient-2.7.7-tests.jar:/opt/hadoop/share/hadoop/mapreduce/hadoop-mapreduce-client-jobclient-2.7.7.jar:/opt/hadoop/share/hadoop/mapreduce/hadoop-mapreduce-client-hs-2.7.7.jar:/opt/hadoop/share/hadoop/mapreduce/hadoop-mapreduce-client-core-2.7.7.jar:/opt/hadoop/share/hadoop/mapreduce/hadoop-mapreduce-client-common-2.7.7.jar:/opt/hadoop/share/hadoop/mapreduce/hadoop-mapreduce-client-hs-plugins-2.7.7.jar:/opt/hadoop/share/hadoop/mapreduce/hadoop-mapreduce-client-shuffle-2.7.7.jar:/opt/hadoop/share/hadoop/mapreduce/hadoop-mapreduce-client-app-2.7.7.jar:/opt/hadoop/share/hadoop/mapreduce/hadoop-mapreduce-examples-2.7.7.jar:/opt/hadoop/contrib/capacity-scheduler/*.jar:/opt/hadoop/contrib/capacity-scheduler/*.jar
+
+RUN pip install \
+    nvidia-pyindex && \
+    pip install \
+    nvidia-nsys-cli \
+    && rm -f /root/.bashrc
+
+COPY --from=DEVEL /opt/bladedisc /opt/bladedisc
+RUN pip install --no-cache-dir \
+    /opt/bladedisc/blade_disc*.whl
+
+ENV TENSORFLOW_DISTRO=DEEPREC
+COPY --from=DEVEL /opt/tensorflow /opt/tensorflow
+RUN pip install --no-cache-dir \
+    /opt/tensorflow/tensorflow-*.whl && \
+    pip install numpy==1.16.6 || true && \
+    mkdir -p /usr/local/lib/python3.6/dist-packages/tensorflow_core/include/third_party/gpus/cuda/ && \
+    ln -sf /usr/local/cuda/include \
+    /usr/local/lib/python3.6/dist-packages/tensorflow_core/include/third_party/gpus/cuda/include && \
+    pip install nvtx-plugins

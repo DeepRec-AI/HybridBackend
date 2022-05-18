@@ -24,7 +24,7 @@ recommender systems on heterogeneous cluster.
 
 Linux Distro | CUDA | Python | Tensorflow | URL
 ------------ | ---- | ------ | ---------- | ------------
-Ubuntu 18.04 | 11.4 | 3.6    | 1.15.5     | registry.cn-shanghai.aliyuncs.com/pai-dlc/hybridbackend:0.6-tf1.15-py3.6-cu114-ubuntu18.04
+Ubuntu 18.04 | 11.6 | 3.6    | 1.15.5     | registry.cn-shanghai.aliyuncs.com/pai-dlc/hybridbackend:0.6-tf1.15-py3.6-cu116-ubuntu18.04
 
 See [PAI DLC](https://www.aliyun.com/activity/bigdata/pai-dlc) for more
 information.
@@ -33,7 +33,7 @@ information.
 
 GLIBC    | CUDA | Python | Tensorflow      | Command
 -------- | ---- | ------ | --------------- | ------------
-`>= 2.7` | 11.4 | 3.6    | `>=1.15, < 2.0` | `pip install hybridbackend-cu114`
+`>= 2.7` | 11.6 | 3.6    | `>=1.15, < 2.0` | `pip install hybridbackend-cu116`
 `>= 2.4` | -    | 3.6    | `>=1.15, < 2.0` | `pip install hybridbackend-cpu`
 `>= 2.4` | -    | 3.6    | `>=1.14, < 1.15` | `pip install hybridbackend-cpu-legacy`
 
@@ -78,11 +78,12 @@ registered adopters in advance.
 - Please cite HybridBackend in your publications if it helps:
 
   ```text
-  @article{zhang2022picasso,
+  @inproceedings{zhang2022picasso,
     title={PICASSO: Unleashing the Potential of GPU-centric Training for Wide-and-deep Recommender Systems},
     author={Zhang, Yuanxing and Chen, Langshi and Yang, Siran and Yuan, Man and Yi, Huimin and Zhang, Jie and Wang, Jiamang and Dong, Jianbo and Xu, Yunlong and Song, Yue and others},
-    journal={arXiv preprint arXiv:2204.04903},
-    year={2022}
+    booktitle={2022 IEEE 38th International Conference on Data Engineering (ICDE)},
+    year={2022},
+    organization={IEEE}
   }
   ```
 
