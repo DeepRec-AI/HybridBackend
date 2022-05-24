@@ -39,6 +39,8 @@ _ = (
   .register('grad_buckets', 1)
   .register('batch_size', -1)
   .register('model_dir', None)
+  .register('keep_checkpoint_max', None)
+  .register('keep_checkpoint_every_n_hours', None)
   .register('mode', None))
 
 

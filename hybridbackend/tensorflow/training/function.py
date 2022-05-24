@@ -34,7 +34,9 @@ from tensorflow.python.framework import ops
 from tensorflow.python.framework import random_seed
 from tensorflow.python.keras.backend import reset_uids as reset_keras_uids
 from tensorflow.python.keras.engine import base_layer
+from tensorflow.python.layers import base
 from tensorflow.python.ops import variable_scope as vs
+from tensorflow.python.training import saver
 from tensorflow.python.training import training
 
 from hybridbackend.tensorflow.framework.context import Context
@@ -74,31 +76,52 @@ class PatchTensorflowAPI(object):  # pylint: disable=useless-object-inheritance
     with PatchTensorflowAPI._lock:
       PatchTensorflowAPI._stack_depth += 1
       if PatchTensorflowAPI._stack_depth <= 1:
+
         def decorate_add_weight(fn):
           def decorated(layer, name, shape, **kwargs):
             kwargs['getter'] = vs.get_variable
-            return fn(layer, name, shape, **kwargs)
+            if isinstance(layer, base.Layer):
+              return fn(layer, name, shape, **kwargs)
+            with vs.variable_scope(layer._name):  # pylint: disable=protected-access
+              return fn(layer, name, shape, **kwargs)
           return decorated
         self._prev_add_weight = base_layer.Layer.add_weight
         base_layer.Layer.add_weight = decorate_add_weight(self._prev_add_weight)
-
         self._prev_optimizers = {}
-        for c in training.__dict__.values():
+
+        def decorate_saver_init(fn):
+          def decorated(cls, *args, **kwargs):
+            keep_checkpoint_max = Context.get().options.keep_checkpoint_max
+            keep_checkpoint_every_n_hours = \
+              Context.get().options.keep_checkpoint_every_n_hours
+            if keep_checkpoint_max is not None:
+              kwargs['max_to_keep'] = keep_checkpoint_max
+            if keep_checkpoint_every_n_hours is not None:
+              kwargs['keep_checkpoint_every_n_hours'] = \
+                keep_checkpoint_every_n_hours
+            kwargs['save_relative_paths'] = True
+            fn(cls, *args, **kwargs)
+          return decorated
+        self._prev_saver_init = saver.Saver.__init__
+        saver.Saver.__init__ = decorate_saver_init(self._prev_saver_init)
+
+        for k, c in training.__dict__.items():
           if (isinstance(c, type)
               and issubclass(c, training.Optimizer)
               and c not in (
                 training.Optimizer,
                 training.SyncReplicasOptimizer)):
-            self._prev_optimizers[c.__name__] = c
+            self._prev_optimizers[k] = c
             wrapped = wraps_optimizer(c)
-            setattr(training, c.__name__, wrapped)
-            setattr(train_v1, c.__name__, wrapped)
+            setattr(training, k, wrapped)
+            setattr(train_v1, k, wrapped)
       return self
 
   def __exit__(self, exc_type, exc_val, exc_tb):
     with PatchTensorflowAPI._lock:
       if PatchTensorflowAPI._stack_depth <= 1:
         base_layer.Layer.add_weight = self._prev_add_weight
+        saver.Saver.__init__ = self._prev_saver_init
 
         for c, opt in self._prev_optimizers.items():
           setattr(training, c, opt)
