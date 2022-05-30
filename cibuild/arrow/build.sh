@@ -5,6 +5,8 @@ set -eo pipefail
 HERE=$(dirname $0)
 ARROW_DIST=$1
 
+export MAKEFLAGS=-j$(nproc)
+
 if [[ -z "$ARROW_USE_CXX11_ABI" ]]; then
   export ARROW_USE_CXX11_ABI=0
 fi
