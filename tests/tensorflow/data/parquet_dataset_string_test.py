@@ -84,7 +84,7 @@ class ParquetDatasetStringTest(unittest.TestCase):
           expected_splits.append(expected_splits[-1] + len(item))
         expected = DataFrame.Value(
           np.array(expected_values),
-          tuple([np.array(expected_splits, dtype=np.int32)]))
+          [np.array(expected_splits, dtype=np.int32)])
         actual = result['col0']
         expected_values = np.array(
           list(map(str.encode, expected.values)),
@@ -116,7 +116,7 @@ class ParquetDatasetStringTest(unittest.TestCase):
           expected_splits.append(expected_splits[-1] + len(item))
         expected = DataFrame.Value(
           np.array(expected_values),
-          tuple([np.array(expected_splits, dtype=np.int32)]))
+          [np.array(expected_splits, dtype=np.int32)])
         actual = result['col0']
         expected_values = np.array(
           list(map(str.encode, expected.values)),
@@ -147,7 +147,7 @@ class ParquetDatasetStringTest(unittest.TestCase):
           expected_splits.append(expected_splits[-1] + len(item))
         expected = DataFrame.Value(
           np.array(expected_values),
-          tuple([np.array(expected_splits, dtype=np.int32)]))
+          [np.array(expected_splits, dtype=np.int32)])
         actual = result['col0']
         expected_values = np.array(
           list(map(str.encode, expected.values)),

@@ -34,12 +34,13 @@ from hybridbackend.tensorflow.data.dataframe import DataFrame
 from hybridbackend import libhybridbackend as _lib
 
 
-def parquet_fields(filename, fields=None):
+def parquet_fields(filename, fields=None, lower=False):
   r'''Get fields from a parquet file.
 
   Args:
     filename: Path of the parquet file.
     fields: Existing field definitions or field names.
+    lower: Convert field name to lower case if not found.
 
   Returns:
     Field definitions.
@@ -58,11 +59,42 @@ def parquet_fields(filename, fields=None):
   new_fields = []
   for f in fields:
     if isinstance(f, DataFrame.Field):
+      if lower and f.name not in all_fields:
+        f = DataFrame.Field(
+          f.name.lower(),
+          dtype=f.dtype,
+          shape=f.shape,
+          ragged_rank=f.ragged_rank)
+      if f.name not in all_fields:
+        raise ValueError(
+          f'Field {f.name} is not found in the parquet file {filename}')
+      dtype = f.dtype
+      actual_dtype = np.dtype(all_fields[f.name]['dtype'])
+      if dtype is None:
+        dtype = actual_dtype
+      elif dtype != actual_dtype:
+        raise ValueError(
+          f'Field {f.name} should has dtype {actual_dtype} not {dtype}')
+      ragged_rank = f.ragged_rank
+      actual_ragged_rank = all_fields[f.name]['ragged_rank']
+      if ragged_rank is None:
+        ragged_rank = actual_ragged_rank
+      elif ragged_rank != actual_ragged_rank:
+        raise ValueError(
+          f'Field {f.name} should has ragged_rank {actual_ragged_rank} '
+          f'not {ragged_rank}')
+      f = DataFrame.Field(
+        f.name,
+        dtype=dtype,
+        ragged_rank=ragged_rank,
+        shape=f.shape)
       new_fields.append(f)
       continue
     if not isinstance(f, string):
       raise ValueError(
         f'Field {f} is not a DataFrame.Field or a string')
+    if lower and f not in all_fields:
+      f = f.lower()
     if f not in all_fields:
       raise ValueError(
         f'Field {f} is not found in the parquet file {filename}')
@@ -70,28 +102,29 @@ def parquet_fields(filename, fields=None):
       f,
       dtype=np.dtype(all_fields[f]['dtype']),
       ragged_rank=all_fields[f]['ragged_rank'],
-      shape=[None]))
+      shape=None))
   return tuple(new_fields)
 
 
-def parquet_filenames_and_fields(filenames, fields):
+def parquet_filenames_and_fields(filenames, fields, lower=False):
   r'''Check and fetch parquet filenames and fields.
 
   Args:
     filenames: List of Path of parquet file list.
     fields: Existing field definitions or field names.
+    lower: Convert field name to lower case if not found.
 
   Returns:
     Validated file names and fields.
   '''
   if isinstance(filenames, string):
     filenames = [filenames]
-    fields = parquet_fields(filenames[0], fields=fields)
+    fields = parquet_fields(filenames[0], fields, lower=lower)
   elif isinstance(filenames, (tuple, list)):
     for f in filenames:
       if not isinstance(f, string):
         raise ValueError(f'{f} in `filenames` must be a string')
-    fields = parquet_fields(filenames[0], fields=fields)
+    fields = parquet_fields(filenames[0], fields, lower=lower)
   elif isinstance(filenames, dataset_ops.Dataset):
     if filenames.output_types != dtypes.string:
       raise TypeError(
@@ -107,7 +140,10 @@ def parquet_filenames_and_fields(filenames, fields):
       raise ValueError('`fields` must be a list of `hb.data.DataFrame.Field`.')
     for f in fields:
       if not isinstance(f, DataFrame.Field):
-        raise ValueError(f'{f} must be `hb.data.DataFrame.Field`.')
+        raise ValueError(f'Field {f} must be `hb.data.DataFrame.Field`.')
+      if f.incomplete:
+        raise ValueError(
+          f'Field {f} is incomplete, please specify dtype and ragged_rank')
   elif isinstance(filenames, ops.Tensor):
     if filenames.dtype != dtypes.string:
       raise TypeError(
@@ -118,7 +154,10 @@ def parquet_filenames_and_fields(filenames, fields):
       raise ValueError('`fields` must be a list of `hb.data.DataFrame.Field`.')
     for f in fields:
       if not isinstance(f, DataFrame.Field):
-        raise ValueError(f'{f} must be `hb.data.DataFrame.Field`.')
+        raise ValueError(f'Field {f} must be `hb.data.DataFrame.Field`.')
+      if f.incomplete:
+        raise ValueError(
+          f'Field {f} is incomplete, please specify dtype and ragged_rank')
   else:
     raise ValueError(
       f'`filenames` {filenames} must be a `tf.data.Dataset` of scalar '
