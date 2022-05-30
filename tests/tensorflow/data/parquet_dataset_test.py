@@ -48,7 +48,7 @@ class ParquetDatasetTest(unittest.TestCase):
     self._filename = os.path.join(self._workspace, 'test.parquet')
     self._df = pd.DataFrame(
       np.random.randint(0, 100, size=(200, 4), dtype=np.int64),
-      columns=list('ABCD'))
+      columns=list('ABCd'))
     self._df.to_parquet(self._filename)
 
   def tearDown(self):  # pylint: disable=invalid-name
@@ -108,6 +108,27 @@ class ParquetDatasetTest(unittest.TestCase):
         end_row = (i + 1) * batch_size
         np.testing.assert_equal(result['C'], c[start_row:end_row].to_numpy())
 
+  def test_dtype_auto_detection_read_lower(self):
+    batch_size = 32
+    with tf.Graph().as_default() as graph:
+      actual_fields = ParquetDataset.read_schema(
+        self._filename, ['B', 'D'], lower=True)
+      fld = actual_fields[1].name
+      ds = ParquetDataset(
+        [self._filename],
+        batch_size=batch_size,
+        fields=actual_fields)
+      ds = ds.prefetch(4)
+      batch = make_one_shot_iterator(ds).get_next()
+
+    c = self._df[fld]
+    with tf.Session(graph=graph) as sess:
+      for i in xrange(3):
+        result = sess.run(batch)
+        start_row = i * batch_size
+        end_row = (i + 1) * batch_size
+        np.testing.assert_equal(result[fld], c[start_row:end_row].to_numpy())
+
   def test_read_from_generator(self):
     num_epochs = 2
     batch_size = 100
@@ -120,8 +141,8 @@ class ParquetDatasetTest(unittest.TestCase):
       filenames = tf.data.Dataset.from_generator(
         gen_filenames, tf.string, tf.TensorShape([]))
       fields = [
-        DataFrame.Field('A', tf.int64),
-        DataFrame.Field('C', tf.int64)]
+        DataFrame.Field('A', tf.int64, 0),
+        DataFrame.Field('C', tf.int64, 0)]
       ds = filenames.apply(read_parquet(batch_size, fields=fields))
       ds = ds.prefetch(4)
       batch = make_one_shot_iterator(ds).get_next()
@@ -144,8 +165,8 @@ class ParquetDatasetTest(unittest.TestCase):
       filenames = tf.data.Dataset.from_generator(
         gen_filenames, tf.string, tf.TensorShape([]))
       fields = [
-        DataFrame.Field('A', tf.int64),
-        DataFrame.Field('C', tf.int64)]
+        DataFrame.Field('A', tf.int64, 0),
+        DataFrame.Field('C', tf.int64, 0)]
       ds = filenames.apply(
         read_parquet(batch_size, fields=fields, num_parallel_reads=3))
       ds = ds.prefetch(4)
@@ -169,8 +190,8 @@ class ParquetDatasetTest(unittest.TestCase):
       filenames = tf.data.Dataset.from_generator(
         gen_filenames, tf.string, tf.TensorShape([]))
       fields = [
-        DataFrame.Field('A', tf.int64),
-        DataFrame.Field('C', tf.int64)]
+        DataFrame.Field('A', tf.int64, 0),
+        DataFrame.Field('C', tf.int64, 0)]
       ds = filenames.apply(
         read_parquet(batch_size, fields=fields, num_parallel_reads=AUTOTUNE))
       ds = ds.prefetch(4)

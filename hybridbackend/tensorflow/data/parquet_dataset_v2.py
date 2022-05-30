@@ -22,8 +22,6 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from six.moves import xrange  # pylint: disable=redefined-builtin
-
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.data.ops import readers
 from tensorflow.python.framework import dtypes
@@ -51,18 +49,17 @@ class DataFrameValueSpec(type_spec.BatchableTypeSpec):
     Args:
       field: The field definition.
     '''
+    if field.incomplete:
+      raise ValueError(
+        f'Field {field} is incomplete, please specify dtype and ragged_rank')
     self._field = field
-    self._specs = [tensor_spec.TensorSpec(field.shape, dtype=field.dtype)]
-    self._specs += [
-      tensor_spec.TensorSpec(field.shape, dtype=dtypes.int32)
-      for _ in xrange(field.ragged_rank)]
 
   def _serialize(self):
     return (self._field.dtype, self._field.ragged_rank)
 
   @property
   def _component_specs(self):
-    return self._specs
+    return self._field.output_specs
 
   def _to_components(self, value):
     if isinstance(value, DataFrame.Value):
@@ -152,17 +149,18 @@ class ParquetDatasetV2(dataset_ops.DatasetV2):  # pylint: disable=abstract-metho
   VERSION = 2002
 
   @classmethod
-  def read_schema(cls, filename, fields=None):
+  def read_schema(cls, filename, fields=None, lower=False):
     r'''Read schema from a parquet file.
 
     Args:
       filename: Path of the parquet file.
       fields: Existing field definitions or field names.
+      lower: Convert field name to lower case if not found.
 
     Returns:
       Field definition list.
     '''
-    return parquet_fields(filename, fields=fields)
+    return parquet_fields(filename, fields, lower=lower)
 
   def __init__(
       self, filenames,
