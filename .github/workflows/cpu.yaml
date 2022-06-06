@@ -35,7 +35,7 @@ jobs:
         kubectl exec -it ${PODNAME} -- twine check /opt/hybridbackend/*.whl
     - name: Install
       run: |-
-        kubectl exec -it ${PODNAME} -- sh -c 'cp -rf tests /opt/hybridbackend/ && PYTHONPATH= pip install /opt/hybridbackend/*.whl'
+        kubectl exec -it ${PODNAME} -- sh -c 'mkdir -p /opt/hybridbackend/ && cp -rf tests /opt/hybridbackend/ && PYTHONPATH= pip install /opt/hybridbackend/*.whl'
     - name: Test
       run: |-
         kubectl exec -it ${PODNAME} -- sh -c 'PYTHONPATH=/opt/hybridbackend TEST_ALLOWS=cpu make test'

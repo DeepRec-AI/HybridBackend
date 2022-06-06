@@ -67,6 +67,8 @@ class DataFrame(object):  # pylint: disable=useless-object-inheritance
           raise ValueError(
             f'Field {name} is a nested list ({ragged_rank}) '
             f'with shape {shape}')
+      else:
+        shape = tensor_shape.TensorShape({})
       self._shape = shape
 
     @property
@@ -101,10 +103,7 @@ class DataFrame(object):  # pylint: disable=useless-object-inheritance
             dtypestr = f'list^{self._ragged_rank}<{dtypestr}>'
           elif self._ragged_rank > 0:
             dtypestr = f'list<{dtypestr}>'
-      if self._shape is None:
-        shapestr = 'unknown'
-      else:
-        shapestr = str(self._shape)
+      shapestr = str(self._shape)
       return f'{self._name} (dtype={dtypestr}, shape={shapestr})'
 
     def map(self, func, rank=None):
@@ -133,17 +132,13 @@ class DataFrame(object):  # pylint: disable=useless-object-inheritance
 
     @property
     def output_shapes(self):
-      if self._shape is None:
-        return self.map(lambda _: tensor_shape.vector(None))
       return self.map(
         lambda i: tensor_shape.vector(None).concatenate(self._shape) if i == 0
         else tensor_shape.vector(None))
 
     @property
     def output_specs(self):
-      shape = tensor_shape.vector(None)
-      if self._shape is not None:
-        shape = shape.concatenate(self._shape)
+      shape = tensor_shape.vector(None).concatenate(self._shape)
       specs = [tensor_spec.TensorSpec(shape, dtype=self._dtype)]
       specs += [
         tensor_spec.TensorSpec([None], dtype=dtypes.int32)

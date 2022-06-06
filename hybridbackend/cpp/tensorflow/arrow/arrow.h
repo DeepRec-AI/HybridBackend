@@ -93,7 +93,8 @@ Status MakeDataTypeAndRaggedRankFromArrowDataType(
     int32* ragged_rank);
 
 Status MakeTensorsFromArrowArray(
-    DataType type, int32 ragged_rank,
+    const DataType type, const int32 ragged_rank,
+    const PartialTensorShape& shape,
     const std::shared_ptr<::arrow::Array>& arrow_array,
     std::vector<Tensor>* output_tensors);
 

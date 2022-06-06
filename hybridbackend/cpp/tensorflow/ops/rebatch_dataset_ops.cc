@@ -234,7 +234,13 @@ void RecalculateSplit(Tensor* split, int32 value) {
     sdata[i] += value;
   }
   if (offset < ssize) {
-    auto rslice = split->Slice(offset, ssize);
+    const auto input_shape = split->shape();
+    int64 input_base_elems = 1;
+    if (TF_PREDICT_FALSE(input_shape.dims() > 1)) {
+      input_base_elems = input_shape.num_elements() / input_shape.dim_size(0);
+    }
+    auto rslice =
+        split->Slice(offset / input_base_elems, ssize / input_base_elems);
     rslice.flat<int32>() += rslice.flat<int32>().constant(value);
   }
 }
@@ -313,8 +319,14 @@ class RebatchTabularDatasetOp::Dataset::Iterator
     for (size_t fid = 0; fid < field_ranks_.size(); ++fid) {
       const int64 rank = field_ranks_[fid];
       if (rank == 0) {
-        output_tensors->push_back(
-            input_tensors[cur].Slice(row_start, row_limit));
+        const auto input_shape = input_tensors[cur].shape();
+        int64 input_base_elems = 1;
+        if (TF_PREDICT_FALSE(input_shape.dims() > 1)) {
+          input_base_elems =
+              input_shape.num_elements() / input_shape.dim_size(0);
+        }
+        output_tensors->push_back(input_tensors[cur].Slice(
+            row_start / input_base_elems, row_limit / input_base_elems));
         cur += (rank + 1);
         continue;
       }
@@ -322,7 +334,14 @@ class RebatchTabularDatasetOp::Dataset::Iterator
       int64 start = row_start;
       int64 limit = row_limit;
       for (size_t i = 1; i < rank + 1; ++i) {
-        auto s = input_tensors[cur + i].Slice(start, limit + 1);
+        const auto input_shape = input_tensors[cur + i].shape();
+        int64 input_base_elems = 1;
+        if (TF_PREDICT_FALSE(input_shape.dims() > 1)) {
+          input_base_elems =
+              input_shape.num_elements() / input_shape.dim_size(0);
+        }
+        auto s = input_tensors[cur + i].Slice(start / input_base_elems,
+                                              (limit + 1) / input_base_elems);
         const int32* sdata =
             reinterpret_cast<int32*>(const_cast<char*>(s.tensor_data().data()));
         const int64 slimit = limit - start;
@@ -330,7 +349,13 @@ class RebatchTabularDatasetOp::Dataset::Iterator
         limit = sdata[slimit];
         output_tensors->push_back(std::move(s));
       }
-      output_tensors->at(cur) = input_tensors[cur].Slice(start, limit);
+      const auto input_shape = input_tensors[cur].shape();
+      int64 input_base_elems = 1;
+      if (TF_PREDICT_FALSE(input_shape.dims() > 1)) {
+        input_base_elems = input_shape.num_elements() / input_shape.dim_size(0);
+      }
+      output_tensors->at(cur) = input_tensors[cur].Slice(
+          start / input_base_elems, limit / input_base_elems);
       cur += (rank + 1);
     }
     // Recalculate splits.
@@ -394,15 +419,28 @@ class RebatchTabularDatasetOp::Dataset::Iterator
     for (size_t fid = 0; fid < field_ranks_.size(); ++fid) {
       const int64 rank = field_ranks_[fid];
       if (rank == 0) {
-        tensor_queues_[cur].push_back(
-            input_tensors[cur].Slice(row_start, row_limit));
+        const auto input_shape = input_tensors[cur].shape();
+        int64 input_base_elems = 1;
+        if (TF_PREDICT_FALSE(input_shape.dims() > 1)) {
+          input_base_elems =
+              input_shape.num_elements() / input_shape.dim_size(0);
+        }
+        tensor_queues_[cur].push_back(input_tensors[cur].Slice(
+            row_start / input_base_elems, row_limit / input_base_elems));
         cur += (rank + 1);
         continue;
       }
       int64 start = row_start;
       int64 limit = row_limit;
       for (size_t i = 1; i < rank + 1; ++i) {
-        auto sliced = input_tensors[cur + i].Slice(start, limit + 1);
+        const auto input_shape = input_tensors[cur + i].shape();
+        int64 input_base_elems = 1;
+        if (TF_PREDICT_FALSE(input_shape.dims() > 1)) {
+          input_base_elems =
+              input_shape.num_elements() / input_shape.dim_size(0);
+        }
+        auto sliced = input_tensors[cur + i].Slice(
+            start / input_base_elems, (limit + 1) / input_base_elems);
         int32* sdata = reinterpret_cast<int32*>(
             const_cast<char*>(sliced.tensor_data().data()));
         const int64 slimit = limit - start;
@@ -410,7 +448,13 @@ class RebatchTabularDatasetOp::Dataset::Iterator
         limit = sdata[slimit];
         tensor_queues_[cur + i].push_back(std::move(sliced));
       }
-      tensor_queues_[cur].push_back(input_tensors[cur].Slice(start, limit));
+      const auto input_shape = input_tensors[cur].shape();
+      int64 input_base_elems = 1;
+      if (TF_PREDICT_FALSE(input_shape.dims() > 1)) {
+        input_base_elems = input_shape.num_elements() / input_shape.dim_size(0);
+      }
+      tensor_queues_[cur].push_back(input_tensors[cur].Slice(
+          start / input_base_elems, limit / input_base_elems));
       cur += (rank + 1);
     }
     queue_batch_size_ += (row_limit - row_start);
@@ -505,8 +549,14 @@ class RebatchTabularDatasetOp::Dataset::Iterator
               const_cast<char*>(t.tensor_data().data()));
           memcpy(sdata + tstart, tdata + 1, t.TotalBytes() - sizeof(int32));
           const int32 tsize = t.NumElements() - 1;
-          auto tpart =
-              output_tensors->at(cur + i).Slice(tstart, tstart + tsize);
+          const auto output_shape = output_tensors->at(cur + i).shape();
+          int64 input_base_elems = 1;
+          if (TF_PREDICT_FALSE(output_shape.dims() > 1)) {
+            input_base_elems =
+                output_shape.num_elements() / output_shape.dim_size(0);
+          }
+          auto tpart = output_tensors->at(cur + i).Slice(
+              tstart / input_base_elems, (tstart + tsize) / input_base_elems);
           RecalculateSplit(&tpart, sdata[tstart - 1] - tdata[0]);
           tstart += tsize;
         }

@@ -33,6 +33,7 @@ class ParquetBatchReader::Impl {
        const std::vector<string>& field_names,
        const DataTypeVector& field_dtypes,
        const std::vector<int32>& field_ragged_ranks,
+       const std::vector<PartialTensorShape>& field_shapes,
        const int64 partition_count, const int64 partition_index,
        const bool drop_remainder)
       : filename_(filename),
@@ -40,6 +41,7 @@ class ParquetBatchReader::Impl {
         field_names_(field_names),
         field_dtypes_(field_dtypes),
         field_ragged_ranks_(field_ragged_ranks),
+        field_shapes_(field_shapes),
         partition_count_(partition_count),
         partition_index_(partition_index),
         drop_remainder_(drop_remainder) {}
@@ -126,7 +128,8 @@ class ParquetBatchReader::Impl {
     auto arrays = batch->columns();
     for (size_t i = 0; i < arrays.size(); ++i) {
       TF_RETURN_IF_ERROR(MakeTensorsFromArrowArray(
-          field_dtypes_[i], field_ragged_ranks_[i], arrays[i], output_tensors));
+          field_dtypes_[i], field_ragged_ranks_[i], field_shapes_[i], arrays[i],
+          output_tensors));
     }
 
     return Status::OK();
@@ -141,6 +144,7 @@ class ParquetBatchReader::Impl {
   std::vector<string> field_names_;
   DataTypeVector field_dtypes_;
   std::vector<int32> field_ragged_ranks_;
+  std::vector<PartialTensorShape> field_shapes_;
   int64 partition_count_;
   int64 partition_index_;
   bool drop_remainder_;
@@ -156,11 +160,13 @@ class ParquetBatchReader::Impl {
 ParquetBatchReader::ParquetBatchReader(
     const string& filename, const int64 batch_size,
     const std::vector<string>& field_names, const DataTypeVector& field_dtypes,
-    const std::vector<int32>& field_ragged_ranks, const int64 partition_count,
-    const int64 partition_index, const bool drop_remainder)
+    const std::vector<int32>& field_ragged_ranks,
+    const std::vector<PartialTensorShape>& field_shapes,
+    const int64 partition_count, const int64 partition_index,
+    const bool drop_remainder)
     : pimpl_(new ParquetBatchReader::Impl(
           filename, batch_size, field_names, field_dtypes, field_ragged_ranks,
-          partition_count, partition_index, drop_remainder)) {}
+          field_shapes, partition_count, partition_index, drop_remainder)) {}
 
 Status ParquetBatchReader::Open() { return pimpl_->Open(); }
 

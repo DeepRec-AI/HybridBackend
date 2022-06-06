@@ -53,8 +53,7 @@ class ParquetDatasetRebatchTest(unittest.TestCase):
       b = np.random.randint(
         br, er, size=(np.random.randint(bseq, eseq),), dtype=np.int64)
       c = np.random.randint(br, er, dtype=np.int64)
-      d = np.random.randint(
-        br, er, size=(np.random.randint(bseq, eseq),), dtype=np.int64)
+      d = np.random.randint(br, er, size=(4,), dtype=np.int64)
       e = np.array(list(map(
         str,
         np.random.randint(
@@ -235,6 +234,34 @@ class ParquetDatasetRebatchTest(unittest.TestCase):
         np.testing.assert_allclose(actual.values, expected.values)
         np.testing.assert_equal(
           actual.nested_row_splits, expected.nested_row_splits)
+
+  def test_ragged_with_shape(self):
+    micro_batch_size = 20
+    batch_size = 32
+    with tf.Graph().as_default() as graph:
+      ds = ParquetDataset(
+        self._filename,
+        micro_batch_size,
+        fields=[DataFrame.Field('D', shape=[4])])
+      ds = ds.apply(rebatch(batch_size))
+      ds = ds.prefetch(4)
+      batch = make_one_shot_iterator(ds).get_next()
+
+    d = self._df['D']
+    with tf.Session(graph=graph) as sess:
+      for i in xrange(3):
+        result = sess.run(batch)
+        start_row = i * batch_size
+        end_row = (i + 1) * batch_size
+        expected_items = d[start_row:end_row].to_numpy().tolist()
+        expected_values = []
+        expected_splits = [0]
+        for item in expected_items:
+          expected_values.extend(item)
+          expected_splits.append(expected_splits[-1] + len(item))
+        expected = np.reshape(np.array(expected_values), (-1, 4))
+        actual = result['D']
+        np.testing.assert_allclose(actual.values, expected)
 
 
 class ParquetDatasetSequenceRebatchTest(unittest.TestCase):

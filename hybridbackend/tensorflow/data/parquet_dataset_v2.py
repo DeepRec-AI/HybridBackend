@@ -123,6 +123,7 @@ class _ParquetDatasetV2(dataset_ops.DatasetSource):  # pylint: disable=abstract-
     self._field_dtypes = nest.flatten({f.name: f.dtype for f in self._fields})
     self._field_ragged_ranks = nest.flatten(
       {f.name: f.ragged_rank for f in self._fields})
+    self._field_shapes = nest.flatten({f.name: f.shape for f in self._fields})
     self._partition_count = partition_count
     self._partition_index = partition_index
     self._drop_remainder = drop_remainder
@@ -133,6 +134,7 @@ class _ParquetDatasetV2(dataset_ops.DatasetSource):  # pylint: disable=abstract-
       field_names=self._field_names,
       field_dtypes=self._field_dtypes,
       field_ragged_ranks=self._field_ragged_ranks,
+      field_shapes=self._field_shapes,
       partition_count=self._partition_count,
       partition_index=self._partition_index,
       drop_remainder=self._drop_remainder)
