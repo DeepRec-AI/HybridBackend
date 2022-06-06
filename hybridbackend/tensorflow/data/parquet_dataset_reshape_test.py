@@ -44,9 +44,9 @@ class ParquetDatasetReshapeTest(unittest.TestCase):
         [
           np.random.randint(
             0, 100,
-            size=(np.random.randint(1, 5),),
+            size=(4,) if icol == 0 else (np.random.randint(1, 5),),
             dtype=np.int64)
-          for _ in xrange(num_cols)]
+          for icol in xrange(num_cols)]
         for _ in xrange(100)], dtype=object),
       columns=[f'col{c}' for c in xrange(num_cols)])
     self._df.to_parquet(self._filename)
@@ -62,8 +62,8 @@ class ParquetDatasetReshapeTest(unittest.TestCase):
         [self._filename],
         batch_size=batch_size,
         fields=[
-          hb.data.DataFrame.Field('col2', shape=[100]),
-          hb.data.DataFrame.Field('col0', shape=[100])])
+          hb.data.DataFrame.Field('col2'),
+          hb.data.DataFrame.Field('col0', shape=[4])])
       ds = ds.prefetch(4)
       batch = hb.data.make_one_shot_iterator(ds).get_next()
       batch = hb.data.DataFrame.to_sparse(batch)
@@ -81,6 +81,7 @@ class ParquetDatasetReshapeTest(unittest.TestCase):
           expected_values.extend(item)
           expected_splits.append(expected_splits[-1] + len(item))
         expected = np.array(expected_values)
+        expected = np.reshape(expected, (batch_size, 4))
         actual = result['col0']
         np.testing.assert_allclose(actual, expected)
 
