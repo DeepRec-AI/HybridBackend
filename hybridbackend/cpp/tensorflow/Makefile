@@ -1,5 +1,14 @@
 TENSORFLOW_SRC := hybridbackend/cpp/tensorflow/
 
+ifeq ($(HYBRIDBACKEND_WITH_BUILDINFO),ON)
+HYBRIDBACKEND_BUILD_FRAMEWORK := $(shell \
+	$(PYTHON) -c \
+	"import tensorflow as tf; print('tensorflow-%s' % tf.__git_version__)" \
+	2>/dev/null)
+CFLAGS := $(CFLAGS) \
+	-DHYBRIDBACKEND_BUILD_FRAMEWORK="\"$(HYBRIDBACKEND_BUILD_FRAMEWORK)\""
+endif
+
 TENSORFLOW_CFLAGS := \
 	-DEIGEN_MPL2_ONLY \
 	-DEIGEN_MAX_ALIGN_BYTES=64 \

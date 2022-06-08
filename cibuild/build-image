@@ -42,8 +42,12 @@ mkdir -p build
 
 sed "s|{{baseimage}}|${DOCKERIMAGE}|g" dockerfiles/Dockerfile.jinja2 \
 > build/Dockerfile.${TAG}
-sudo docker build -t ${REPO}:${TAG} \
--f build/Dockerfile.${TAG} $@ .
+
+DOCKER_BUILDKIT=1 docker build \
+--build-arg BUILDKIT_INLINE_CACHE=1 \
+-t ${REPO}:${TAG} \
+-f build/Dockerfile.${TAG} \
+$@ .
 
 cd -
 

@@ -26,9 +26,17 @@ limitations under the License.
 
 namespace {
 std::string make_buildinfo() {
-  std::string message = "hybridbackend buildinfo";
+  std::string message = "HybridBackend";
 #if HYBRIDBACKEND_BUILDINFO
-  message += " commit=" HYBRIDBACKEND_BUILD_COMMIT "";
+  message += " " HYBRIDBACKEND_BUILD_VERSION "-" HYBRIDBACKEND_BUILD_COMMIT "";
+  message += " glibc=" HYBRIDBACKEND_BUILD_GLIBC "";
+  message += "; cxx=" HYBRIDBACKEND_BUILD_CXX "";
+  message += "; cxx11_abi_flag=" HYBRIDBACKEND_BUILD_CXX11_ABI "";
+#if HYBRIDBACKEND_CUDA
+  message += "; gpu=" HYBRIDBACKEND_BUILD_GPU "";
+  message += "; nvcc=" HYBRIDBACKEND_BUILD_NVCC "";
+#endif
+  message += "; framework=" HYBRIDBACKEND_BUILD_FRAMEWORK "";
 #endif
   return message;
 }
