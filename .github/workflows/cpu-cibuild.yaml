@@ -36,7 +36,7 @@ jobs:
         kubectl exec -it ${PODNAME} -- sh -c 'make -j32 HYBRIDBACKEND_WHEEL_ALIAS=-cpu-nightly HYBRIDBACKEND_WHEEL_BUILD=rc${{ github.run_id }}'
     - name: Install
       run: |-
-        kubectl exec -it ${PODNAME} -- sh -c 'cp -rf tests /opt/hybridbackend/ && PYTHONPATH= pip install cibuild/dist/*.whl'
+        kubectl exec -it ${PODNAME} -- sh -c 'mkdir -p /opt/hybridbackend/ && cp -rf tests /opt/hybridbackend/ && PYTHONPATH= pip install cibuild/dist/*.whl'
     - name: Test
       run: |-
         kubectl exec -it ${PODNAME} -- sh -c 'PYTHONPATH=/opt/hybridbackend TEST_ALLOWS=cpu make test'

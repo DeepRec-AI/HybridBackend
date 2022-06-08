@@ -36,6 +36,7 @@ REGISTER_OP("ParquetTabularDataset")
     .Attr("field_names: list(string) >= 1")
     .Attr("field_dtypes: list(type) >= 1")
     .Attr("field_ragged_ranks: list(int) >= 1")
+    .Attr("field_shapes: list(shape) >= 1")
     .Attr("partition_count: int = 1")
     .Attr("partition_index: int = 0")
     .Attr("drop_remainder: bool = false")
@@ -56,6 +57,7 @@ batch_size: Maxium number of samples in an output batch.
 field_names: List of field names to read.
 field_dtypes: List of data types for each field.
 field_ragged_ranks: List of ragged rank for each field.
+field_shapes: List of shapes for each field.
 partition_count: Count of row group partitions.
 partition_index: Index of row group partitions.
 drop_remainder: If True, only keep batches with exactly `batch_size` samples.
@@ -72,6 +74,7 @@ class ParquetTabularDatasetOp : public DatasetOpKernel {
     OP_REQUIRES_OK(ctx, ctx->GetAttr("field_dtypes", &field_dtypes_));
     OP_REQUIRES_OK(ctx,
                    ctx->GetAttr("field_ragged_ranks", &field_ragged_ranks_));
+    OP_REQUIRES_OK(ctx, ctx->GetAttr("field_shapes", &field_shapes_));
     OP_REQUIRES_OK(ctx, ctx->GetAttr("partition_count", &partition_count_));
     OP_REQUIRES_OK(ctx, ctx->GetAttr("partition_index", &partition_index_));
     OP_REQUIRES_OK(ctx, ctx->GetAttr("drop_remainder", &drop_remainder_));
@@ -85,6 +88,7 @@ class ParquetTabularDatasetOp : public DatasetOpKernel {
   std::vector<string> field_names_;
   DataTypeVector field_dtypes_;
   std::vector<int32> field_ragged_ranks_;
+  std::vector<PartialTensorShape> field_shapes_;
   int64 partition_count_;
   int64 partition_index_;
   bool drop_remainder_;
@@ -96,6 +100,7 @@ class ParquetTabularDatasetOp::Dataset : public DatasetBase {
           const std::vector<string>& field_names,
           const DataTypeVector& field_dtypes,
           const std::vector<int32>& field_ragged_ranks,
+          const std::vector<PartialTensorShape>& field_shapes,
           const int64 partition_count, const int64 partition_index,
           const bool drop_remainder)
       : DatasetBase(DatasetContext(ctx)),
@@ -104,25 +109,26 @@ class ParquetTabularDatasetOp::Dataset : public DatasetBase {
         field_names_(std::move(field_names)),
         field_dtypes_(std::move(field_dtypes)),
         field_ragged_ranks_(std::move(field_ragged_ranks)),
+        field_shapes_(std::move(field_shapes)),
         partition_count_(partition_count),
         partition_index_(partition_index),
         drop_remainder_(drop_remainder) {
+    const int64 actual_batch_size(drop_remainder ? batch_size : -1);
     int64 num_outputs = field_names.size();
     for (int64 i = 0; i < field_names.size(); ++i) {
       output_dtypes_.push_back(std::move(field_dtypes[i]));
+      output_shapes_.push_back(PartialTensorShape({actual_batch_size})
+                                   .Concatenate(field_shapes_[i]));
       for (int64 j = 0; j < field_ragged_ranks_[i]; ++j) {
         output_dtypes_.push_back(DT_INT32);
+        output_shapes_.push_back(PartialTensorShape({actual_batch_size}));
       }
       num_outputs += field_ragged_ranks_[i];
-    }
-    int64 actual_batch_size(drop_remainder ? batch_size : -1);
-    for (size_t i = 0; i < num_outputs; ++i) {
-      output_shapes_.push_back(PartialTensorShape({actual_batch_size}));
     }
 
     reader_ = absl::make_unique<ParquetBatchReader>(
         filename_, batch_size_, field_names_, field_dtypes_,
-        field_ragged_ranks_, partition_count_, partition_index_,
+        field_ragged_ranks_, field_shapes_, partition_count_, partition_index_,
         drop_remainder_);
   }
 
@@ -160,6 +166,8 @@ class ParquetTabularDatasetOp::Dataset : public DatasetBase {
     b->BuildAttrValue(field_dtypes_, &field_dtypes);
     AttrValue field_ragged_ranks;
     b->BuildAttrValue(field_ragged_ranks_, &field_ragged_ranks);
+    AttrValue field_shapes;
+    b->BuildAttrValue(field_ragged_ranks_, &field_shapes);
     AttrValue partition_count;
     b->BuildAttrValue(partition_count_, &partition_count);
     AttrValue partition_index;
@@ -171,6 +179,7 @@ class ParquetTabularDatasetOp::Dataset : public DatasetBase {
                       {{"field_names", field_names},
                        {"field_dtypes", field_dtypes},
                        {"field_ragged_ranks", field_ragged_ranks},
+                       {"field_shapes", field_shapes},
                        {"partition_count", partition_count},
                        {"partition_index", partition_index},
                        {"drop_remainder", drop_remainder}},
@@ -185,6 +194,7 @@ class ParquetTabularDatasetOp::Dataset : public DatasetBase {
   const std::vector<string> field_names_;
   const DataTypeVector field_dtypes_;
   const std::vector<int32> field_ragged_ranks_;
+  const std::vector<PartialTensorShape> field_shapes_;
   const int64 partition_count_;
   const int64 partition_index_;
   const bool drop_remainder_;
@@ -203,9 +213,10 @@ void ParquetTabularDatasetOp::MakeDataset(OpKernelContext* ctx,
   OP_REQUIRES(ctx, batch_size > 0,
               errors::InvalidArgument("batch_size must be greater than zero."));
 
-  Dataset* ds = new Dataset(
-      ctx, filename, batch_size, field_names_, field_dtypes_,
-      field_ragged_ranks_, partition_count_, partition_index_, drop_remainder_);
+  Dataset* ds =
+      new Dataset(ctx, filename, batch_size, field_names_, field_dtypes_,
+                  field_ragged_ranks_, field_shapes_, partition_count_,
+                  partition_index_, drop_remainder_);
   OP_REQUIRES_OK(ctx, ds->Open());
   *output = ds;
 }
