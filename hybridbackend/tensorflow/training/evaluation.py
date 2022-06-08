@@ -108,16 +108,14 @@ class PatchTensorflowAPIForEval(object):  # pylint: disable=useless-object-inher
           r'''wraps create slot var to eliminate out scope
           '''
           def wrapped_create_slot_var(
-              primary, val, current_scope, validate_shape,
-              shape, dtype, slot_config):
+              primary, *args, **kwargs):
             variable_scope_name = vs.get_variable_scope()._name  # pylint: disable=protected-access
             if (not isinstance(primary, variables.Variable)
                 and self._namescope in variable_scope_name):
               vs.get_variable_scope()._name = variable_scope_name.replace(  # pylint: disable=protected-access
                 self._namescope, '')
             return create_slot_var_fn(
-              primary, val, current_scope, validate_shape,
-              shape, dtype, slot_config)
+              primary, *args, **kwargs)
           return wrapped_create_slot_var
         self._prev_create_slot_var = slot_creator._create_slot_var  # pylint: disable=protected-access
         slot_creator._create_slot_var = wraps_create_slot_var(  # pylint: disable=protected-access

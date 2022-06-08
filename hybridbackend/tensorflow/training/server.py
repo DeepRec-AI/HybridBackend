@@ -35,7 +35,8 @@ from hybridbackend.tensorflow.training.function import configure
 from hybridbackend.tensorflow.training.evaluation import EvaluationHook
 
 
-def wraps_monitored_session(cls):
+def wraps_monitored_session(
+    cls, keep_checkpoint_max=5, keep_checkpoint_every_n_hours=10000.0):
   r'''Decorator to create wrapped monitored session.
   '''
   class _WrappedMonitoredSession(cls):
@@ -44,17 +45,21 @@ def wraps_monitored_session(cls):
     def __init__(self, session_creator=None, hooks=None, **kwargs):
       r'''Creates a new WrappedMonitoredSession.
       '''
-      for h in hooks:
-        if isinstance(h, basic_session_run_hooks.CheckpointSaverHook):
-          h._listeners += Context.get().saving_listeners
-      with ops.device('/cpu:0'):
-        super(cls, self).__init__(  # pylint: disable=bad-super-call
-          session_creator, hooks, should_recover=True, **kwargs)
+      with context_scope(
+          keep_checkpoint_max=keep_checkpoint_max,
+          keep_checkpoint_every_n_hours=keep_checkpoint_every_n_hours):
+        for h in hooks:
+          if isinstance(h, basic_session_run_hooks.CheckpointSaverHook):
+            h._listeners += Context.get().saving_listeners
+        with ops.device('/cpu:0'):
+          super(cls, self).__init__(  # pylint: disable=bad-super-call
+            session_creator, hooks, should_recover=True, **kwargs)
+
+    def _make_callable_from_options(self, callable_options):
+      return self._sess._sess._sess._sess._make_callable_from_options(  # pylint: disable=protected-access
+        callable_options)
+
   return _WrappedMonitoredSession
-
-
-WrappedMonitoredSession = wraps_monitored_session(
-  _monitored_session.MonitoredSession)
 
 
 def wraps_server(cls):
@@ -145,7 +150,11 @@ def wraps_server(cls):
       with ops.device(device_function), context_scope(
           model_dir=checkpoint_dir):
         prev_monitored_session = _monitored_session.MonitoredSession
-        _monitored_session.MonitoredSession = WrappedMonitoredSession
+        _monitored_session.MonitoredSession = wraps_monitored_session(
+          prev_monitored_session,
+          keep_checkpoint_max=kwargs.pop('keep_checkpoint_max', 5),
+          keep_checkpoint_every_n_hours=kwargs.pop(
+            'keep_checkpoint_every_n_hours', 10000.0))
         sess = _monitored_session.MonitoredTrainingSession(
           master=self.target, is_chief=True, **kwargs)
         _monitored_session.MonitoredSession = prev_monitored_session

@@ -21,12 +21,15 @@ from __future__ import division
 from __future__ import print_function
 
 import sys
+import threading
 
 from tensorflow.python.feature_column import feature_column as fc_old
 from tensorflow.python.feature_column import feature_column_v2 as fc
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import sparse_tensor as sparse_tensor_lib
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import check_ops
 
 from hybridbackend.tensorflow.feature_column.embedding_backend import \
   EmbeddingBackend
@@ -34,6 +37,54 @@ from hybridbackend.tensorflow.feature_column.embedding_lookup import \
   EmbeddingLookup
 from hybridbackend.tensorflow.framework.context import Context
 from hybridbackend.tensorflow.framework.ops import GraphKeys
+
+
+class PatchEmbeddingColumn(object):  # pylint: disable=useless-object-inheritance
+  r'''Context manager that patches fc.EmbeddingColumn.
+  '''
+  _lock = threading.Lock()
+  _stack_depth = 0
+
+  def __enter__(self):
+    with PatchEmbeddingColumn._lock:
+      PatchEmbeddingColumn._stack_depth += 1
+      if PatchEmbeddingColumn._stack_depth <= 1:
+
+        def decorate_get_raw_feature(fn):  # pylint: disable=unused-argument
+          r'''w/o expanding dims when rank equals one.
+          '''
+          def decorated(col, key):
+            raw_feature = col._features[key]  # pylint: disable=protected-access
+            feature_tensor = \
+              sparse_tensor_lib.convert_to_tensor_or_sparse_tensor(raw_feature)
+            rank = feature_tensor.get_shape().ndims
+            if rank is not None:
+              if rank == 0:
+                raise ValueError(
+                  f'Feature (key: {key}) cannot have rank 0.'
+                  f'Given: {feature_tensor}')
+              return feature_tensor
+            # Handle dynamic rank.
+            with ops.control_dependencies([
+                check_ops.assert_positive(
+                  array_ops.rank(feature_tensor),
+                  message=f'Feature (key: {key}) cannot have rank 0.'
+                          f'Given: {feature_tensor}')]):
+              return feature_tensor
+          return decorated
+        self._prev_get_raw_feature = \
+          fc.FeatureTransformationCache._get_raw_feature_as_tensor
+        fc.FeatureTransformationCache._get_raw_feature_as_tensor = \
+          decorate_get_raw_feature(self._prev_get_raw_feature)
+
+      return self
+
+  def __exit__(self, exc_type, exc_val, exc_tb):
+    with PatchEmbeddingColumn._lock:
+      if PatchEmbeddingColumn._stack_depth <= 1:
+        fc.FeatureTransformationCache._get_raw_feature_as_tensor = \
+          self._prev_get_raw_feature
+      PatchEmbeddingColumn._stack_depth -= 1
 
 
 def _get_sparse_tensors(
@@ -57,8 +108,9 @@ def _get_sparse_tensors(
       Context.get().options.emb_num_buckets_max[
         categorical_column.name])
     if categorical_column.number_buckets >= dynamic_bucketing:
-      return fc.CategoricalColumn.IdWeightPair(
-        transformation_cache.get(categorical_column.key, state_manager), None)
+      with PatchEmbeddingColumn():
+        return fc.CategoricalColumn.IdWeightPair(
+          transformation_cache.get(categorical_column.key, state_manager), None)
 
   return categorical_column.get_sparse_tensors(
     transformation_cache, state_manager)
