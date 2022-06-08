@@ -31,6 +31,7 @@ class ParquetBatchReader {
                      const std::vector<string>& field_names,
                      const DataTypeVector& field_dtypes,
                      const std::vector<int32>& field_ragged_ranks,
+                     const std::vector<PartialTensorShape>& field_shapes,
                      const int64 partition_count, const int64 partition_index,
                      const bool drop_remainder);
 
