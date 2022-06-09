@@ -20,7 +20,10 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from hybridbackend.tensorflow.ops.floormod import floormod_partition
-from hybridbackend.tensorflow.ops.floormod import floormod_shuffle
-from hybridbackend.tensorflow.ops.floormod import group_floormod_shuffle
-from hybridbackend.tensorflow.ops.segment_ops import segment_combine
+from hybridbackend.tensorflow.framework.context import Context as _ctx
+
+_ = (
+  _ctx.get().options
+  .register(
+    'op_segment_reduction_sort_ids', False,
+    env='HB_OP_SEGMENT_REDUCTION_SORT_IDS'))

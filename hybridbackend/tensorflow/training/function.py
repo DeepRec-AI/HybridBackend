@@ -31,12 +31,13 @@ from tensorflow.core.protobuf import config_pb2
 from tensorflow.python.framework import device as pydev
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import random_seed
-from tensorflow.python.keras.backend import reset_uids as reset_keras_uids
 from tensorflow.python.keras.engine import base_layer
 from tensorflow.python.layers import base
 from tensorflow.python.ops import variable_scope as vs
 from tensorflow.python.training import saver
 from tensorflow.python.training import training
+from tensorflow.python.util import deprecation
+from tensorflow.python.util import module_wrapper
 
 from hybridbackend.tensorflow.framework.context import Context
 from hybridbackend.tensorflow.framework.context import context_scope
@@ -142,7 +143,11 @@ def scope(**kwargs):
 
   with context_scope(**kwargs) as ctx, ops.device(device_function):
     with PatchTensorflowAPI():
-      yield ctx
+      with deprecation.silence():
+        prev_warning_limit = module_wrapper._PER_MODULE_WARNING_LIMIT  # pylint: disable=protected-access
+        module_wrapper._PER_MODULE_WARNING_LIMIT = 0  # pylint: disable=protected-access
+        yield ctx
+        module_wrapper._PER_MODULE_WARNING_LIMIT = prev_warning_limit  # pylint: disable=protected-access
 
 
 def function(**params):
@@ -156,28 +161,3 @@ def function(**params):
         return fn(*args, **kwargs)
     return wrapped_fn
   return decorated
-
-
-class ReuseVariables(object):  # pylint: disable=useless-object-inheritance
-  r'''Variable reusing context.
-  '''
-  def __call__(self, reuse):
-    reset_keras_uids()
-    varscope = ops.get_default_graph().get_collection_ref(('__varscope',))
-    if varscope:
-      varscope[0].variable_scopes_count.clear()
-    vs.get_variable_scope()._reuse = reuse  # pylint: disable=protected-access
-
-
-@contextlib.contextmanager
-def reuse_variables(reuse=None):
-  r'''Context manager that reuses variables.
-  '''
-  try:
-    fn = ReuseVariables()
-    prev_reuse = vs.get_variable_scope()._reuse  # pylint: disable=protected-access
-    if reuse is not None:
-      fn(reuse)
-    yield fn
-  finally:
-    vs.get_variable_scope()._reuse = prev_reuse  # pylint: disable=protected-access

@@ -25,8 +25,8 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import variable_scope as vs
 
+from hybridbackend.tensorflow.common import oplib as _ops
 from hybridbackend.tensorflow.metrics.mean import mean
-from hybridbackend.tensorflow.pywrap import _ops
 
 
 def gauc(labels,
@@ -67,5 +67,5 @@ def gauc(labels,
       0, array_ops.shape(array_ops.reshape(labels, [-1]))[0],
       dtype=dtypes.int32)
   with vs.variable_scope(name, 'gauc', (labels, predictions, indicators)):
-    aucs, counts = _ops.gauc_calc(labels, predictions, indicators)
+    aucs, counts = _ops.hb_gauc_calc(labels, predictions, indicators)
     return mean(aucs, counts, metrics_collections, updates_collections, name)

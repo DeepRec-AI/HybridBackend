@@ -26,6 +26,7 @@ Option | Environment Variable | Default Value | Comment
 `emb_device` | - | `''` | Device of embedding weights. Accepts string or a dict from column name to string.
 `emb_dtype` | - | `tf.float32` | Data type of embedding weights. Accepts dtype or a dict from column name to dtype.
 `emb_unique` | - | `False` | Whether the inputs are already unique. Accepts bool or a dict from column name to bool.
+`emb_pad` | - | `False` | Whether the results should be padded. Accepts bool or a dict from column name to bool.
 `emb_segment_rank` | - | `0` | Rank of the embedding to segment sum. Accepts int or a dict from column name to int.
 
 ### 1.3 Example: Embedding Layer using Feature Columns

@@ -30,7 +30,8 @@ from tensorflow.python.ops import variables
 from tensorflow.python.training import distribution_strategy_context
 from tensorflow.python.training import session_run_hook
 
-from hybridbackend.tensorflow.distribute.pubsub import PubSub
+from hybridbackend.tensorflow.distribute.communicator_lib import PubSub
+from hybridbackend.tensorflow.embedding.scope import embedding_scope
 from hybridbackend.tensorflow.framework.context import Context
 from hybridbackend.tensorflow.framework.ops import GraphKeys
 from hybridbackend.tensorflow.training.optimizer_lib import GradientAggregation
@@ -54,7 +55,7 @@ def wraps_optimizer(
     hb_optimizer_type: The hybridbackend optimizer type for `optimizer_type`
   '''
   if num_buckets is None:
-    num_buckets = Context.get().options.grad_buckets
+    num_buckets = Context.get().options.grad_nbuckets
   if aggregation is None:
     aggregation = (
       'apply_gradients'
@@ -154,30 +155,6 @@ def wraps_optimizer(
           self._ctx.current_device()))
       return grads_and_vars
 
-    def _accumulate_grads(self, grads_splits):
-      r'''Accumulate and compute gradients.
-
-      Args:
-        grads_splits: List of `Tensor` or list of list of tensors the same size
-          as `ys` and holding the gradients computed for each y in `ys`.
-
-      Returns:
-        Accumulated gradients.
-      '''
-      if not grads_splits or grads_splits[0] is None:
-        return None
-      if isinstance(grads_splits[0], ops.IndexedSlices):
-        tensor_values, tensor_indices = zip(
-          *[(t.values, t.indices) for t in grads_splits])
-        dense_shape = grads_splits[0].dense_shape
-        accumulated_values = array_ops.concat(tensor_values, axis=0)
-        accumulated_indices = array_ops.concat(tensor_indices, axis=0)
-        return ops.IndexedSlices(
-          accumulated_values, accumulated_indices, dense_shape)
-      if isinstance(grads_splits[0], ops.Tensor):
-        return math_ops.accumulate_n(grads_splits)
-      raise ValueError(f'{grads_splits} are not all Tensors')
-
     def _resource_apply_sparse_duplicate_indices(self, grad, handle, indices):
       r'''See base class.
       '''
@@ -259,7 +236,8 @@ def wraps_optimizer(
       if aggregation != 'compute_gradients':
         grads_and_vars = self._aggregate_gradients(grads_and_vars)
       _, self._variables = zip(*grads_and_vars)
-      return super().apply_gradients(grads_and_vars, global_step, name=name)
+      with embedding_scope(fused=Context.get().options.grad_apply_fusion):
+        return super().apply_gradients(grads_and_vars, global_step, name=name)
 
     def make_session_run_hook(self):
       r'''Creates a hook to handle hook ops such as initialization.

@@ -30,7 +30,7 @@ from tensorflow.python.ops import variable_scope as vs
 from tensorflow.python.ops import weights_broadcast_ops
 
 from hybridbackend.tensorflow.distribute.communicator import CollectiveOps
-from hybridbackend.tensorflow.distribute.communicator_pool import \
+from hybridbackend.tensorflow.distribute.communicator_lib import \
   CommunicatorPool
 
 

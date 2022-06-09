@@ -463,11 +463,11 @@ class Communicator(object):  # pylint: disable=useless-object-inheritance
           value, sizes, wire_dtype, common_shape, name, **kwargs)
 
   @abc.abstractmethod
-  def _group_alltoallv(
+  def _alltoallv_n(
       self, values, sizes, wire_dtype, common_shapes, name, **kwargs):
     pass
 
-  def group_alltoallv(
+  def alltoallv_n(
       self, values, sizes,
       wire_dtype=dtypes.float32,
       common_shapes=None,
@@ -510,7 +510,7 @@ class Communicator(object):  # pylint: disable=useless-object-inheritance
 
     with ops.name_scope(self.scope):
       with ops.device(values[0].device):
-        return self._group_alltoallv(
+        return self._alltoallv_n(
           values, sizes, wire_dtype, common_shapes, name, **kwargs)
 
   @abc.abstractmethod
@@ -554,12 +554,12 @@ class Communicator(object):  # pylint: disable=useless-object-inheritance
           values, wire_dtype, common_shape, name, **kwargs)
 
   @abc.abstractmethod
-  def _group_alltoallw(
-      self, group_values, wire_dtype, common_shapes, name, **kwargs):
+  def _alltoallw_n(
+      self, values_list, wire_dtype, common_shapes, name, **kwargs):
     pass
 
-  def group_alltoallw(
-      self, group_values,
+  def alltoallw_n(
+      self, values_list,
       wire_dtype=dtypes.float32,
       common_shapes=None,
       name=None,
@@ -576,21 +576,21 @@ class Communicator(object):  # pylint: disable=useless-object-inheritance
       received values from other devices.
     '''
     if self.size == 1:
-      return group_values
+      return values_list
     if common_shapes is None:
-      common_shapes = [{} for _ in group_values]
+      common_shapes = [{} for _ in values_list]
 
-    if len({v.device for v in sum(group_values, [])}) > 1:
+    if len({v.device for v in sum(values_list, [])}) > 1:
       raise ValueError('all inputs must be placed at same device')
-    for values in group_values:
+    for values in values_list:
       if len(values) != self.size:
         raise ValueError('Number of inputs must be same to devices')
     if common_shapes is None:
-      common_shapes = [{} for _ in group_values]
-    if not group_values:
-      return group_values
+      common_shapes = [{} for _ in values_list]
+    if not values_list:
+      return values_list
 
     with ops.name_scope(self.scope):
-      with ops.device(group_values[0][0].device):
-        return self._group_alltoallw(
-          group_values, wire_dtype, common_shapes, name, **kwargs)
+      with ops.device(values_list[0][0].device):
+        return self._alltoallw_n(
+          values_list, wire_dtype, common_shapes, name, **kwargs)

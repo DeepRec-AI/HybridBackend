@@ -32,7 +32,7 @@ from tensorflow.python.ops import weights_broadcast_ops
 from tensorflow.python.platform import tf_logging as logging
 
 from hybridbackend.tensorflow.distribute.communicator import CollectiveOps
-from hybridbackend.tensorflow.distribute.communicator_pool import \
+from hybridbackend.tensorflow.distribute.communicator_lib import \
   CommunicatorPool
 
 

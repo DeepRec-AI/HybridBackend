@@ -21,6 +21,7 @@ from __future__ import division
 from __future__ import print_function
 
 import os
+from six import string_types as string
 
 from tensorflow.python.framework import dtypes
 
@@ -74,7 +75,10 @@ class Options(object):  # pylint: disable=useless-object-inheritance
     self.__dict__['__items__'][name] = value
 
   def __str__(self):
-    return str(self.__dict__['__items__'])
+    return f'Options{self.__dict__["__items__"]}'
+
+  def __repr__(self):
+    return f'Options{self.__dict__["__items__"]}'
 
   def update(self, **opts):
     r'''Update options using key-value arguments.
@@ -176,22 +180,42 @@ class DTypeOptionBuilder(OptionBuilder):  # pylint: disable=useless-object-inher
 Options.register_builder(DTypeOptionBuilder())
 
 
-class SelectorOption(object):  # pylint: disable=useless-object-inheritance
-  r'''Option with selector.
+class DictOption(object):  # pylint: disable=useless-object-inheritance
+  r'''Option as a dict.
   '''
   def __init__(self, default, items=None):
     self.__items__ = dict(items) if items else {}
+    for k in self.__items__:
+      if not isinstance(k, string):
+        raise ValueError(f'key {k} in items must be a string')
     self.__items__['*'] = default
 
-  def __getitem__(self, name):
-    if name not in self.__items__:
-      if '*' in self.__items__:
-        return self.__items__['*']
-      raise AttributeError(name)
-    return self.__items__[name]
+  def __getitem__(self, names):
+    if isinstance(names, (list, tuple)):
+      names = list(names)
+      for n in names:
+        if not isinstance(n, string):
+          raise ValueError(f'{n} must be a string')
+    elif not isinstance(names, string):
+      raise ValueError(f'{names} must be a string')
+    else:
+      names = [names]
+    for n in names:
+      if n in self.__items__:
+        return self.__items__[n]
+    if '*' in self.__items__:
+      return self.__items__['*']
+    raise AttributeError(names)
 
   def __str__(self):
-    return str(self.__items__)
+    if len(self.__items__) == 1 and '*' in self.__items__:
+      return str(self.default)
+    return f'DictOption{self.__items__}'
+
+  def __repr__(self):
+    if len(self.__items__) == 1 and '*' in self.__items__:
+      return repr(self.default)
+    return f'DictOption{self.__items__}'
 
   @property
   def default(self):
@@ -201,28 +225,28 @@ class SelectorOption(object):  # pylint: disable=useless-object-inheritance
     return dict(self.__items__)
 
 
-class SelectorOptionBuilder(OptionBuilder):  # pylint: disable=useless-object-inheritance
-  r'''Option builder for feature column options.
+class DictOptionBuilder(OptionBuilder):  # pylint: disable=useless-object-inheritance
+  r'''Option builder for dict.
   '''
-  TYPE = SelectorOption
+  TYPE = DictOption
 
   def clone(self, value, default):
     r'''Create a new value from specific default value.
     '''
-    if isinstance(value, SelectorOption):
+    if isinstance(value, DictOption):
       return value
 
     if isinstance(value, dict):
-      return SelectorOption(default.default, dict(value))
+      return DictOption(default.default, dict(value))
 
     if (default.default is not None
         and not isinstance(value, type(default.default))):
       raise ValueError(
-        f'{value} should be hb.SelectorOption '
+        f'{value} should be hb.DictOption '
         f'or dict or {type(default.default)}')
     items = default.as_dict()
     items['*'] = value
-    return SelectorOption(value, items)
+    return DictOption(value, items)
 
   def parse(self, value, default):
     r'''Parse from value for specific default value.
@@ -230,4 +254,4 @@ class SelectorOptionBuilder(OptionBuilder):  # pylint: disable=useless-object-in
     return self.clone(Options.parse(value, default.default), default)
 
 
-Options.register_builder(SelectorOptionBuilder())
+Options.register_builder(DictOptionBuilder())

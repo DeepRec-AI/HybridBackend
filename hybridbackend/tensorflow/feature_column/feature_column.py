@@ -31,10 +31,8 @@ from tensorflow.python.framework import tensor_shape
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import check_ops
 
-from hybridbackend.tensorflow.feature_column.embedding_backend import \
-  EmbeddingBackend
-from hybridbackend.tensorflow.feature_column.embedding_lookup import \
-  EmbeddingLookup
+from hybridbackend.tensorflow.embedding.backend import EmbeddingBackend
+from hybridbackend.tensorflow.embedding.lookup import EmbeddingLookup
 from hybridbackend.tensorflow.framework.context import Context
 from hybridbackend.tensorflow.framework.ops import GraphKeys
 
@@ -94,8 +92,8 @@ def _get_sparse_tensors(
   if isinstance(categorical_column, fc.SequenceCategoricalColumn):
     categorical_column_type = type(categorical_column)
     raise ValueError(
-      f'In embedding_column: {self.name}. '
-      'categorical_column must not be of type SequenceCategoricalColumn. '
+      f'categorical_column {categorical_column.name} '
+      'must not be of type SequenceCategoricalColumn. '
       'Suggested fix A: If you wish to use DenseFeatures, use a '
       'non-sequence categorical_column_with_*. '
       'Suggested fix B: If you wish to create sequence input, use '

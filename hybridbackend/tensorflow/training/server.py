@@ -21,6 +21,7 @@ from __future__ import division
 from __future__ import print_function
 
 import os
+from six import string_types as string
 
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import control_flow_ops
@@ -31,7 +32,7 @@ from tensorflow.python.training import server_lib
 from hybridbackend.tensorflow.framework.context import Context
 from hybridbackend.tensorflow.framework.context import context_scope
 from hybridbackend.tensorflow.framework.device import device_function
-from hybridbackend.tensorflow.training.evaluation import EvaluationHook
+from hybridbackend.tensorflow.training.eval import EvaluationHook
 from hybridbackend.tensorflow.training.function import configure
 
 
@@ -110,8 +111,12 @@ def wraps_server(cls):
         eval_dir = os.path.join(
           summary_dir,
           f'eval_{ctx.rank}' if ctx.world_size > 1 else 'eval')
+      scaffold = kwargs.pop('scaffold', _monitored_session.Scaffold())
+      kwargs['scaffold'] = scaffold
       hooks = kwargs.pop('hooks', [])
       hooks.extend(ctx.training_hooks)
+      chief_only_hooks = kwargs.pop('chief_only_hooks', [])
+      chief_only_hooks.extend(ctx.training_chief_hooks)
       eval_every_n_iter = kwargs.pop('eval_every_n_iter', None)
       eval_steps = kwargs.pop('eval_steps', 100)
       eval_fn = kwargs.pop('eval_fn', None)
@@ -129,7 +134,7 @@ def wraps_server(cls):
           update_ops = []
           metrics = {}
           for metric_name, metric_val_and_update in eval_metric_ops.items():
-            if not isinstance(metric_name, str):
+            if not isinstance(metric_name, string):
               raise ValueError(f'Metric name {metric_name} should be a str')
             if (not isinstance(metric_val_and_update, (tuple, list))
                 or len(metric_val_and_update) != 2):
@@ -146,6 +151,7 @@ def wraps_server(cls):
             every_n_iter=eval_every_n_iter,
             summary_dir=eval_dir))
       kwargs['hooks'] = hooks
+      kwargs['chief_only_hooks'] = chief_only_hooks
       kwargs['config'] = configure(prototype=kwargs.pop('config', None))
       with ops.device(device_function), context_scope(
           model_dir=checkpoint_dir):
