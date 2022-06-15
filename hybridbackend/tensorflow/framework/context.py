@@ -24,19 +24,20 @@ import collections
 import contextlib
 import json
 import os
-
-from six.moves import xrange  # pylint: disable=redefined-builtin
 from six import string_types as string
+from six.moves import xrange  # pylint: disable=redefined-builtin
 
 from tensorflow.core.protobuf import config_pb2
 from tensorflow.python.client import device_lib
 from tensorflow.python.distribute import multi_worker_util
 from tensorflow.python.framework import device as pydev
 from tensorflow.python.platform import tf_logging as logging
+
 try:
   from tensorflow.python.training import device_util
 except:  # pylint: disable=bare-except
   from tensorflow.python.distribute import device_util
+
 from tensorflow.python.training import server_lib
 
 from hybridbackend.tensorflow.framework.options import Options

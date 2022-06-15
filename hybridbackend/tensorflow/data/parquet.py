@@ -20,9 +20,9 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import numpy as np
 from six import string_types as string
 
+import numpy as np
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
@@ -30,8 +30,8 @@ from tensorflow.python.framework import tensor_shape
 from tensorflow.python.ops import array_ops
 from tensorflow.python.platform import tf_logging as logging
 
-from hybridbackend.tensorflow.data.dataframe import DataFrame
 from hybridbackend import libhybridbackend as _lib
+from hybridbackend.tensorflow.data.dataframe import DataFrame
 
 
 def parquet_fields(filename, fields=None, lower=False):

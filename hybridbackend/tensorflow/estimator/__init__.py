@@ -22,6 +22,6 @@ from __future__ import print_function
 
 from tensorflow_estimator.python.estimator.model_fn import EstimatorSpec
 
-from hybridbackend.tensorflow.estimator.estimator import RunConfig
 from hybridbackend.tensorflow.estimator.estimator import Estimator
+from hybridbackend.tensorflow.estimator.estimator import RunConfig
 from hybridbackend.tensorflow.estimator.estimator import train_and_evaluate

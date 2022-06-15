@@ -21,11 +21,12 @@ from __future__ import division
 from __future__ import print_function
 
 import argparse
-import numpy as np
-import pandas as pd
 import os
 from six.moves import xrange  # pylint: disable=redefined-builtin
 import tempfile
+
+import numpy as np
+import pandas as pd
 import tensorflow as tf
 from tqdm import tqdm as tq
 

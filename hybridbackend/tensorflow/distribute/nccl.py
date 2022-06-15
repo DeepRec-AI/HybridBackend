@@ -30,7 +30,6 @@ from hybridbackend.tensorflow.distribute.communicator import Communicator
 from hybridbackend.tensorflow.distribute.pubsub import PubSub
 from hybridbackend.tensorflow.pywrap import _ops
 
-
 ops.NotDifferentiable('GetNcclId')
 
 ops.NotDifferentiable('NcclComm')

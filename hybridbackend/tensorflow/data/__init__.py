@@ -12,6 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # =============================================================================
+# isort: skip_file
 
 r'''Input pipelines.
 '''
@@ -30,6 +31,6 @@ from hybridbackend.tensorflow.data.rebatch_dataset import rebatch
 
 # HybridBackend operators must be loaded before TensorFlow operators to
 # make AWS SDK implementation correct.
-from hybridbackend.tensorflow.data.dataset_ops import make_one_shot_iterator
 from hybridbackend.tensorflow.data.dataset_ops import \
   make_initializable_iterator
+from hybridbackend.tensorflow.data.dataset_ops import make_one_shot_iterator

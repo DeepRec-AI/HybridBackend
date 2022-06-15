@@ -33,8 +33,8 @@ std::string make_buildinfo() {
   message += "; cxx=" HYBRIDBACKEND_BUILD_CXX "";
   message += "; cxx11_abi_flag=" HYBRIDBACKEND_BUILD_CXX11_ABI "";
 #if HYBRIDBACKEND_CUDA
-  message += "; gpu=" HYBRIDBACKEND_BUILD_GPU "";
-  message += "; nvcc=" HYBRIDBACKEND_BUILD_NVCC "";
+  message += "; gpu=" HYBRIDBACKEND_CUDA_GENCODE "";
+  message += "; nvcc=" HYBRIDBACKEND_CUDA_CC "";
 #endif
   message += "; framework=" HYBRIDBACKEND_BUILD_FRAMEWORK "";
 #endif

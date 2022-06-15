@@ -20,17 +20,19 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import numpy as np
 import os
+import unittest
+
+import numpy as np
 
 import hybridbackend.test as hbtest
-import unittest
 
 
 # pylint: disable=missing-docstring
 # pylint: disable=import-outside-toplevel
 def _test_get_dense_tensor(_):
   import tensorflow as tf
+
   import hybridbackend.tensorflow as hb
 
   # Inputs.
@@ -73,6 +75,7 @@ def _test_get_dense_tensor(_):
 
 def _test_get_dense_tensor_sharded(rank):
   import tensorflow as tf
+
   import hybridbackend.tensorflow as hb
 
   # Inputs.
@@ -122,6 +125,7 @@ def _test_get_dense_tensor_sharded(rank):
 
 def _test_get_dense_tensor_with_varscope(rank):
   import tensorflow as tf
+
   import hybridbackend.tensorflow as hb
 
   # Inputs.
@@ -173,6 +177,7 @@ def _test_get_dense_tensor_with_varscope(rank):
 
 def _test_embedding_column_with_optimizer(_, lr):
   import tensorflow as tf
+
   import hybridbackend.tensorflow as hb
 
   with tf.Graph().as_default():
@@ -229,6 +234,7 @@ def _test_embedding_column_with_optimizer(_, lr):
 
 def _test_get_dense_tensor_disable_concat(_):
   import tensorflow as tf
+
   import hybridbackend.tensorflow as hb
 
   with tf.Graph().as_default():
@@ -262,6 +268,7 @@ def _test_embedding_column_with_coalescing(_, lr):
   os.environ['HYBRIDBACKEND_DEFAULT_COMM'] = 'NCCL'
 
   import tensorflow as tf
+
   import hybridbackend.tensorflow as hb
 
   with tf.Graph().as_default():
@@ -319,6 +326,7 @@ def _test_embedding_column_with_function(_, lr):
   os.environ['HYBRIDBACKEND_DEFAULT_COMM'] = 'NCCL'
 
   import tensorflow as tf
+
   import hybridbackend.tensorflow as hb
 
   @hb.function(seed=42, emb_num_groups=2)
@@ -376,6 +384,7 @@ def _test_embedding_column_with_function_unique(_, lr):
   os.environ['HYBRIDBACKEND_DEFAULT_COMM'] = 'NCCL'
 
   import tensorflow as tf
+
   import hybridbackend.tensorflow as hb
 
   @hb.function(seed=42, emb_num_groups=2, emb_unique={'ad0': True})
@@ -431,6 +440,7 @@ def _test_embedding_column_with_function_unique(_, lr):
 
 def _test_get_dense_tensor_with_segment_rank(rank):
   import tensorflow as tf
+
   import hybridbackend.tensorflow as hb
 
   # Inputs.
@@ -481,6 +491,7 @@ def _test_get_dense_tensor_with_segment_rank(rank):
 
 def _test_shared_embedding_column(_, lr):
   import tensorflow as tf
+
   import hybridbackend.tensorflow as hb
 
   with tf.Graph().as_default():

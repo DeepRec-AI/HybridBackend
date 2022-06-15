@@ -24,9 +24,9 @@ from __future__ import division
 from __future__ import print_function
 
 import collections
-import numpy as np
 from six.moves import xrange  # pylint: disable=redefined-builtin
 
+import numpy as np
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor

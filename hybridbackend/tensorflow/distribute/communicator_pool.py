@@ -25,13 +25,14 @@ from six.moves import xrange  # pylint: disable=redefined-builtin
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import custom_gradient
+
 try:
   from tensorflow.python.training import device_util
 except:  # pylint: disable=bare-except
   from tensorflow.python.distribute import device_util
 
-from hybridbackend.tensorflow.framework.context import Context
 from hybridbackend.tensorflow.distribute.communicator import Communicator
+from hybridbackend.tensorflow.framework.context import Context
 
 
 class CommunicatorPool(object):  # pylint: disable=useless-object-inheritance

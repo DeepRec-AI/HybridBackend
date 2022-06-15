@@ -25,8 +25,8 @@ from __future__ import print_function
 import argparse
 import json
 import os
-import subprocess
 from six.moves import xrange  # pylint: disable=redefined-builtin
+import subprocess
 import sys
 import time
 

@@ -34,6 +34,7 @@ from tensorflow.python.training import checkpoint_management
 from tensorflow.python.training import checkpoint_utils
 from tensorflow.python.training import saver
 from tensorflow.python.util import nest
+
 try:
   from tensorflow.python.training.saving.saveable_object_util import \
     op_list_to_dict

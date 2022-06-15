@@ -22,11 +22,10 @@ from __future__ import print_function
 
 import sys as _sys
 
-from tensorflow.python.framework import dtypes as _dtypes
-
 from tensorflow.python.feature_column.feature_column_v2 import embedding_column
 from tensorflow.python.feature_column.feature_column_v2 import \
   shared_embedding_columns
+from tensorflow.python.framework import dtypes as _dtypes
 
 from hybridbackend.tensorflow.feature_column.dense_features import \
   DenseFeatures
@@ -38,7 +37,6 @@ from hybridbackend.tensorflow.feature_column.feature_column import \
   raw_categorical_column
 from hybridbackend.tensorflow.framework.context import Context as _ctx
 from hybridbackend.tensorflow.framework.options import SelectorOption as _opt
-
 
 _ = (
   _ctx.get().options

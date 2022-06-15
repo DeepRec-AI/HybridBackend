@@ -23,15 +23,14 @@ from __future__ import print_function
 from tensorflow.python.training import training as _training
 
 from hybridbackend.tensorflow.framework.context import Context as _ctx
+from hybridbackend.tensorflow.training.optimizer import \
+  wraps_optimizer as _wraps
 from hybridbackend.tensorflow.training.saver import replace_default_saver
 from hybridbackend.tensorflow.training.saver import Saver
 from hybridbackend.tensorflow.training.server import monitored_session
 from hybridbackend.tensorflow.training.server import Server
 from hybridbackend.tensorflow.training.server import wraps_server
 from hybridbackend.tensorflow.training.step_stat_hook import StepStatHook
-from hybridbackend.tensorflow.training.optimizer import wraps_optimizer as \
-  _wraps
-
 
 _ = (
   _ctx.get().options

@@ -20,6 +20,8 @@ if [[ -z "${PYTHON}" ]]; then
     export PYTHON=$(which python)
 fi
 
+echo "Lint Python files..."
+
 PYSOURCES="$@"
 if [[ -z "$PYSOURCES" ]]; then
     PYSOURCES=$(find \( -path ./cibuild -o -path ./build -o -path ./dist \) -prune -false -o -type f -name '*.py')
@@ -37,7 +39,10 @@ if [[ ! -z ${PYSOURCES} ]]; then
     --indent-size=2 \
     --statistics \
     ${PYSOURCES}
+    isort --resolve-all-configs . --check
 fi
+
+echo "Lint C/C++ files..."
 
 HEADERS=$(find \( -path ./cibuild -o -path ./build -o -path ./dist \) -prune -false -o -type f -name '*.h')
 SOURCES=$(find \( -path ./cibuild -o -path ./build -o -path ./dist \) -prune -false -o -type f -name '*.cc')
