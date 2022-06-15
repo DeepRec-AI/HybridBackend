@@ -24,13 +24,12 @@ from __future__ import print_function
 from hybridbackend.tensorflow.data.dataframe import DataFrame
 from hybridbackend.tensorflow.data.dataframe import to_sparse
 from hybridbackend.tensorflow.data.dataframe import unbatch_and_to_sparse
-from hybridbackend.tensorflow.data.parquet_dataset import ParquetDataset
-from hybridbackend.tensorflow.data.parquet_dataset import read_parquet
-from hybridbackend.tensorflow.data.rebatch_dataset import RebatchDataset
-from hybridbackend.tensorflow.data.rebatch_dataset import rebatch
+from hybridbackend.tensorflow.data.parquet.dataset import ParquetDataset
+from hybridbackend.tensorflow.data.parquet.dataset import read_parquet
+from hybridbackend.tensorflow.data.rebatch.dataset import RebatchDataset
+from hybridbackend.tensorflow.data.rebatch.dataset import rebatch
 
 # HybridBackend operators must be loaded before TensorFlow operators to
 # make AWS SDK implementation correct.
-from hybridbackend.tensorflow.data.dataset_ops import \
-  make_initializable_iterator
-from hybridbackend.tensorflow.data.dataset_ops import make_one_shot_iterator
+from hybridbackend.tensorflow.data.iterators import make_initializable_iterator
+from hybridbackend.tensorflow.data.iterators import make_one_shot_iterator

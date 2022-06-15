@@ -42,13 +42,13 @@ from tensorflow_estimator.python.estimator.export import export_lib
 from tensorflow_estimator.python.estimator.mode_keys import ModeKeys
 from tensorflow_estimator.python.estimator.training import _TrainingExecutor
 
-from hybridbackend.tensorflow.data.dataset_ops import make_one_shot_iterator
+from hybridbackend.tensorflow.data.iterators import make_one_shot_iterator
 from hybridbackend.tensorflow.framework.context import Context
 from hybridbackend.tensorflow.framework.context import context_scope
 from hybridbackend.tensorflow.framework.device import device_function
 from hybridbackend.tensorflow.saved_model.simple_save import export_all
-from hybridbackend.tensorflow.training.evaluation import eval_scope
-from hybridbackend.tensorflow.training.evaluation import EvaluationHook
+from hybridbackend.tensorflow.training.eval import eval_scope
+from hybridbackend.tensorflow.training.eval import EvaluationHook
 from hybridbackend.tensorflow.training.function import configure
 from hybridbackend.tensorflow.training.function import scope
 from hybridbackend.tensorflow.training.saver import \
@@ -92,9 +92,6 @@ def wraps_model_fn(model_fn, model_dir, config):
     '''
     with scope(mode=mode, model_dir=model_dir):
       estimator_spec = model_fn(features, labels, mode, params)
-    training_hooks = list(estimator_spec.training_hooks) or []
-    training_hooks += Context.get().training_hooks
-    estimator_spec = estimator_spec._replace(training_hooks=training_hooks)  # pylint: disable=protected-access
     if estimator_spec.scaffold.saver:
       if not isinstance(
           estimator_spec.scaffold.saver._builder,  # pylint: disable=protected-access
@@ -109,6 +106,13 @@ def wraps_model_fn(model_fn, model_dir, config):
         keep_checkpoint_every_n_hours=config.keep_checkpoint_every_n_hours,
         defer_build=True,
         save_relative_paths=True)
+    training_hooks = list(estimator_spec.training_hooks) or []
+    training_hooks += Context.get().training_hooks
+    training_chief_hooks = list(estimator_spec.training_chief_hooks) or []
+    training_chief_hooks += Context.get().training_chief_hooks
+    estimator_spec = estimator_spec._replace(  # pylint: disable=protected-access
+      training_hooks=training_hooks,
+      training_chief_hooks=training_chief_hooks)
     return estimator_spec
   return wrapped_model_fn
 
@@ -206,15 +210,15 @@ def wraps_estimator(cls):
       with _context.graph_mode(), context_scope(
           comm_pool_capacity=1,
           comm_pool_name=mode_keys.EstimatorModeKeys.EVAL,
+          mode=mode_keys.EstimatorModeKeys.EVAL,
           model_dir=self._model_dir):
         hooks = _estimator._check_hooks_type(hooks)  # pylint: disable=protected-access
         hooks.extend(self._convert_eval_steps_to_hooks(steps))  # pylint: disable=protected-access
         if not checkpoint_path:
           latest_path = checkpoint_management.latest_checkpoint(self._model_dir)  # pylint: disable=protected-access
           if not latest_path:
-            logging.info(
-              'Could not find trained model in model_dir: '
-              f'{self._model_dir}, running initialization to evaluate.')  # pylint: disable=protected-access
+            raise ValueError(
+              f'Could not find trained model in model_dir: {self._model_dir}.')  # pylint: disable=protected-access
           checkpoint_path = latest_path
 
         with ops.Graph().as_default() as g, g.device(self._device_fn):  # pylint: disable=protected-access

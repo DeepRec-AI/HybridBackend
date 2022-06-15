@@ -21,6 +21,7 @@ from __future__ import division
 from __future__ import print_function
 
 from hybridbackend.libhybridbackend import buildinfo
+from hybridbackend.tensorflow.embedding.scope import embedding_scope
 from hybridbackend.tensorflow.feature_column.dense_features import \
   dense_features
 from hybridbackend.tensorflow.framework.context import Context
@@ -32,11 +33,11 @@ from hybridbackend.tensorflow.wraps import wraps
 
 from . import data
 from . import distribute
+from . import embedding
 from . import estimator
 from . import feature_column
 from . import keras
 from . import layers
 from . import metrics
-from . import ops as math
 from . import saved_model
 from . import training as train

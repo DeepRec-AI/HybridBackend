@@ -25,17 +25,18 @@ from tensorflow.python.training import training as _training
 from hybridbackend.tensorflow.framework.context import Context as _ctx
 from hybridbackend.tensorflow.training.optimizer import \
   wraps_optimizer as _wraps
+from hybridbackend.tensorflow.training.perf import StepStatHook
 from hybridbackend.tensorflow.training.saver import replace_default_saver
 from hybridbackend.tensorflow.training.saver import Saver
 from hybridbackend.tensorflow.training.server import monitored_session
 from hybridbackend.tensorflow.training.server import Server
 from hybridbackend.tensorflow.training.server import wraps_server
-from hybridbackend.tensorflow.training.step_stat_hook import StepStatHook
 
 _ = (
   _ctx.get().options
-  .register('grad_lazy_sync', False)
-  .register('grad_buckets', 1)
+  .register('grad_lazy_sync', False, env='HB_GRAD_LAZY_SYNC')
+  .register('grad_nbuckets', 1, env='HB_GRAD_NBUCKETS')
+  .register('grad_apply_fusion', True, env='HB_GRAD_APPLY_FUSION')
   .register('batch_size', -1)
   .register('model_dir', None)
   .register('keep_checkpoint_max', None)

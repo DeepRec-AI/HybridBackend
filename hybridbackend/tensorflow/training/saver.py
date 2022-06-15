@@ -200,8 +200,7 @@ def wraps_saver_builder(cls):
           and saveable.name not in self._restoreable_saveables
           and hasattr(saveable, 'initializer')):
         return saveable.initializer.outputs
-      return super(PartialRestoreSaverBuilder, self).restore_op(
-        filename_tensor, saveable, preferred_shard)
+      return super().restore_op(filename_tensor, saveable, preferred_shard)
 
   return HybridBackendSaverBuilder
 

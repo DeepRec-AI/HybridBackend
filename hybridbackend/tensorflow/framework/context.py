@@ -32,13 +32,14 @@ from tensorflow.python.client import device_lib
 from tensorflow.python.distribute import multi_worker_util
 from tensorflow.python.framework import device as pydev
 from tensorflow.python.platform import tf_logging as logging
+from tensorflow.python.training import server_lib
 
+# pylint: disable=ungrouped-imports
 try:
   from tensorflow.python.training import device_util
 except:  # pylint: disable=bare-except
   from tensorflow.python.distribute import device_util
-
-from tensorflow.python.training import server_lib
+# pylint: enable=ungrouped-imports
 
 from hybridbackend.tensorflow.framework.options import Options
 
@@ -161,9 +162,14 @@ class Context(object):  # pylint: disable=useless-object-inheritance
     self._saving_listener_registry = {}
 
   def __str__(self):
-    task_def = f'{self._task_type}:{self._task_id}, #GPUs={self._num_gpus}'
-    cluster_def = f'local={self._local_devices}, all={self._devices}'
-    return f'Context {task_def}, {cluster_def}'
+    return (
+      f'Context{{task={self._task_type}:{self._task_id}, '
+      f'local_devices={self._local_devices}, devices={self._devices}}}')
+
+  def __repr__(self):
+    return (
+      f'Context{{task={self._task_type}:{self._task_id}, '
+      f'local_devices={self._local_devices}, devices={self._devices}}}')
 
   @property
   def options(self):

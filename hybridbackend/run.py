@@ -69,6 +69,7 @@ def _main(args):
 
   if len(gpu_id_ports) < 1:
     os.environ['CUDA_VISIBLE_DEVICES'] = ''
+    os.environ['HB_OP_OPTIMIZATION'] = 'DISABLED'
     subprocess.check_call([args.command] + args.args)
     return
 
@@ -112,6 +113,7 @@ def _main(args):
     new_tf_config['task']['index'] = task_id
     os.environ['TF_CONFIG'] = json.dumps(new_tf_config)
     os.environ['CUDA_VISIBLE_DEVICES'] = ''
+    os.environ['HB_OP_OPTIMIZATION'] = 'DISABLED'
     subprocess.check_call([args.command] + args.args)
     return
 

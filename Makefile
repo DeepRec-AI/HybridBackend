@@ -206,12 +206,12 @@ LDFLAGS := $(LDFLAGS) \
 endif
 
 COMMON_LIB := $(LIBNAME)/lib$(LIBNAME).so
--include $(LIBNAME)/cpp/common/Makefile
+-include $(LIBNAME)/common/Makefile
 CORE_DEPS := $(COMMON_LIB)
 
 ifeq ($(HYBRIDBACKEND_WITH_TENSORFLOW),ON)
 TENSORFLOW_LIB := $(LIBNAME)/tensorflow/lib$(LIBNAME)_tensorflow.so
--include $(LIBNAME)/cpp/tensorflow/Makefile
+-include $(LIBNAME)/tensorflow/Makefile
 CORE_DEPS := $(CORE_DEPS) $(TENSORFLOW_LIB)
 CFLAGS := $(CFLAGS) \
 	-DHYBRIDBACKEND_TENSORFLOW=1
