@@ -34,9 +34,8 @@ from tensorflow.python.platform import gfile
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.saved_model.model_utils import mode_keys
 from tensorflow.python.training import checkpoint_management
-from tensorflow.python.training import server_lib
 from tensorflow.python.training import monitored_session
-
+from tensorflow.python.training import server_lib
 from tensorflow_estimator.python.estimator import estimator as _estimator_lib
 from tensorflow_estimator.python.estimator import util as estimator_util
 from tensorflow_estimator.python.estimator.export import export_lib

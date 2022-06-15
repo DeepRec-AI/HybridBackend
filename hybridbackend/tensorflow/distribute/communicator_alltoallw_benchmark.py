@@ -21,6 +21,7 @@ from __future__ import division
 from __future__ import print_function
 
 import argparse
+
 import tensorflow as tf
 
 import hybridbackend.tensorflow as hb

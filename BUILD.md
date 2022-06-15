@@ -43,6 +43,27 @@ cibuild/build-image
 docker push myhost/myns/myimage:xxx-deeprec-py3.6-cu114-ubuntu18.04
 ```
 
+**NOTE**
+
+`docker-ce >= 20` is required for BuildKit support.
+
+For better debugability:
+
+1. Edit `/etc/systemd/system/multi-user.target.wants/docker.service`
+2. Under the `[Service]` tag, put those lines:
+
+```
+Environment="BUILDKIT_STEP_LOG_MAX_SIZE=1000000000"
+Environment="BUILDKIT_STEP_LOG_MAX_SPEED=10000000"
+```
+
+3. Then restart docker daemon:
+
+```bash
+systemctl daemon-reload
+systemctl restart docker.service
+```
+
 ### 1.3 Build from scratch
 
 Requirements:

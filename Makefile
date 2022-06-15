@@ -14,15 +14,17 @@ HYBRIDBACKEND_WITH_ARROW_S3 ?= ON
 HYBRIDBACKEND_WITH_SPARSEHASH ?= ON
 HYBRIDBACKEND_WITH_TENSORFLOW ?= ON
 HYBRIDBACKEND_USE_CXX11_ABI ?= 0
+HYBRIDBACKEND_DEBUG ?= OFF
 HYBRIDBACKEND_WHEEL_ALIAS ?= ""
 HYBRIDBACKEND_WHEEL_BUILD ?= ""
 HYBRIDBACKEND_WHEEL_REQUIRES ?= ""
+HYBRIDBACKEND_WHEEL_DEBUG ?= OFF
+HYBRIDBACKEND_CHECK_INSTANCE ?= OFF
 
 CXX ?= gcc
 PYTHON ?= python
 
-CFLAGS := -O3 -g \
-	-DNDEBUG \
+CFLAGS := \
 	-D_GLIBCXX_USE_CXX11_ABI=$(HYBRIDBACKEND_USE_CXX11_ABI) \
 	-I$(LIBNAME)/include \
 	-I.
@@ -38,6 +40,12 @@ CXX_CFLAGS := -std=c++11 \
 LDFLAGS := -shared \
 	-fstack-protector \
 	-fpic
+
+ifeq ($(HYBRIDBACKEND_DEBUG),ON)
+CFLAGS := $(CFLAGS) -g -O0
+else
+CFLAGS := $(CFLAGS) -g -O3 -DNDEBUG
+endif
 
 ifeq ($(OS),Darwin)
 OSX_TARGET ?= $(shell sw_vers -productVersion)
@@ -75,21 +83,17 @@ endif
 ifeq ($(HYBRIDBACKEND_WITH_CUDA),ON)
 NVCC ?= nvcc
 CUDA_HOME ?= /usr/local/cuda
-CFLAGS := $(CFLAGS) \
-	-isystem $(CUDA_HOME)/include \
-	-DHYBRIDBACKEND_CUDA=1
-ifeq ($(HYBRIDBACKEND_WITH_BUILDINFO),ON)
-HYBRIDBACKEND_BUILD_GPU := $(shell \
-	echo '$(HYBRIDBACKEND_WITH_CUDA_GENCODE)' | tr ' ' ',' \
+HYBRIDBACKEND_CUDA_GENCODE := $(shell \
+	echo $(HYBRIDBACKEND_WITH_CUDA_GENCODE) | tr ' ' ',' \
 	2>/dev/null)
-HYBRIDBACKEND_BUILD_NVCC := $(shell \
+HYBRIDBACKEND_CUDA_CC := $(shell \
 	$(NVCC) --version | tail -1 | cut -d' ' -f2 \
 	2>/dev/null)
 CFLAGS := $(CFLAGS) \
-	-DHYBRIDBACKEND_BUILD_GPU="\"$(HYBRIDBACKEND_BUILD_GPU)\"" \
-	-DHYBRIDBACKEND_BUILD_NVCC="\"$(HYBRIDBACKEND_BUILD_NVCC)\""
-endif
-
+	-isystem $(CUDA_HOME)/include \
+	-DHYBRIDBACKEND_CUDA=1 \
+	-DHYBRIDBACKEND_CUDA_GENCODE="\"$(HYBRIDBACKEND_CUDA_GENCODE)\"" \
+	-DHYBRIDBACKEND_CUDA_CC="\"$(HYBRIDBACKEND_CUDA_CC)\""
 NVCC_CFLAGS := --std=c++11 \
 	--expt-relaxed-constexpr \
 	--expt-extended-lambda \
@@ -113,6 +117,10 @@ LDFLAGS := $(LDFLAGS) \
 	-L$(NCCL_HOME)/lib \
 	-lnccl
 endif
+endif
+
+ifeq ($(HYBRIDBACKEND_CHECK_INSTANCE),ON)
+CFLAGS := $(CFLAGS) -DHYBRIDBACKEND_CHECK_INSTANCE=1
 endif
 
 ifneq ($(OS),Darwin)
@@ -214,6 +222,7 @@ build: $(CORE_DEPS)
 	WHEEL_ALIAS="$(HYBRIDBACKEND_WHEEL_ALIAS)" \
 	WHEEL_BUILD="$(HYBRIDBACKEND_WHEEL_BUILD)" \
 	WHEEL_REQUIRES="$(HYBRIDBACKEND_WHEEL_REQUIRES)" \
+	WHEEL_DEBUG="$(HYBRIDBACKEND_WHEEL_DEBUG)" \
 	$(PYTHON) setup.py bdist_wheel -d cibuild/dist
 	@ls cibuild/dist/*.whl
 
@@ -244,6 +253,7 @@ clean:
 	rm -fr build/
 	rm -fr *.egg-info/
 	rm -rf .pylint.d/
+	find -name *.c -exec rm -fr {} \;
 	find -name *.o -exec rm -fr {} \;
 	find -name *.d -exec rm -fr {} \;
 	find -name *.so -exec rm -fr {} \;

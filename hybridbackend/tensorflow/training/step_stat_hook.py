@@ -20,12 +20,12 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import numpy as np
 import time
 
+import numpy as np
 from tensorflow.python.framework import ops
-from tensorflow.python.training import session_run_hook
 from tensorflow.python.platform import tf_logging as logging
+from tensorflow.python.training import session_run_hook
 
 
 class StepStatHook(session_run_hook.SessionRunHook):

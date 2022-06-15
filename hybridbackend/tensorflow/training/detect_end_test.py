@@ -20,11 +20,12 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import numpy as np
 import os
+import unittest
+
+import numpy as np
 
 import hybridbackend.test as hbtest
-import unittest
 
 
 # pylint: disable=missing-docstring
@@ -33,6 +34,7 @@ def _test_single(_):
   '''
   # pylint: disable=import-outside-toplevel
   import tensorflow as tf
+
   import hybridbackend.tensorflow as hb
 
   batch_size = 10
@@ -56,6 +58,7 @@ def _test_distributed(rank):
   '''
   # pylint: disable=import-outside-toplevel
   import tensorflow as tf
+
   import hybridbackend.tensorflow as hb
 
   batch_size = 10

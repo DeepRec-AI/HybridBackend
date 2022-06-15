@@ -21,20 +21,19 @@ from __future__ import division
 from __future__ import print_function
 
 import contextlib
-import numpy as np
 import six
 import threading
 
 from google.protobuf import message
-
-from tensorflow.core.protobuf import config_pb2
+import numpy as np
 from tensorflow.core.framework import summary_pb2
+from tensorflow.core.protobuf import config_pb2
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import state_ops
-from tensorflow.python.ops import variables
 from tensorflow.python.ops import variable_scope as vs
+from tensorflow.python.ops import variables
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.saved_model.model_utils import mode_keys
 from tensorflow.python.summary import summary as core_summary

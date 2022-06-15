@@ -20,6 +20,6 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from hybridbackend.tensorflow.metrics.auc import auc
 from hybridbackend.tensorflow.metrics.accuracy import accuracy
+from hybridbackend.tensorflow.metrics.auc import auc
 from hybridbackend.tensorflow.metrics.gauc import gauc

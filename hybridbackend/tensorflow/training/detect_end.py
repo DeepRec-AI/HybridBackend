@@ -29,10 +29,10 @@ from tensorflow.python.ops import math_ops
 from tensorflow.python.saved_model.model_utils import mode_keys
 from tensorflow.python.training import session_run_hook
 
-from hybridbackend.tensorflow.framework.context import Context
 from hybridbackend.tensorflow.distribute.communicator import CollectiveOps
 from hybridbackend.tensorflow.distribute.communicator_pool import \
   CommunicatorPool
+from hybridbackend.tensorflow.framework.context import Context
 from hybridbackend.tensorflow.training.detect_end_dataset import \
   DetectEndDataset
 

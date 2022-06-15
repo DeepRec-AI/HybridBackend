@@ -20,18 +20,20 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import numpy as np
 import os
 from six.moves import xrange  # pylint: disable=redefined-builtin
+import unittest
+
+import numpy as np
 
 import hybridbackend.test as hbtest
-import unittest
 
 
 # pylint: disable=missing-docstring
 def _test_simple_allreduce(rank, a, b):
   # pylint: disable=import-outside-toplevel
   import tensorflow as tf
+
   import hybridbackend.tensorflow as hb
 
   with tf.Graph().as_default():
@@ -46,6 +48,7 @@ def _test_simple_allreduce(rank, a, b):
 def _test_simple_allreduce_max(rank, a, b):
   # pylint: disable=import-outside-toplevel
   import tensorflow as tf
+
   import hybridbackend.tensorflow as hb
 
   with tf.Graph().as_default():
@@ -60,6 +63,7 @@ def _test_simple_allreduce_max(rank, a, b):
 def _test_simple_allreduce_multicomm(rank, a, b, ncomms):
   # pylint: disable=import-outside-toplevel
   import tensorflow as tf
+
   import hybridbackend.tensorflow as hb
 
   with tf.Graph().as_default():

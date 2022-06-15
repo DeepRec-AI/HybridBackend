@@ -20,13 +20,14 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import numpy as np
 import os
+import unittest
+
+import numpy as np
 import tensorflow as tf
 
 import hybridbackend.tensorflow as hb
 import hybridbackend.test as hbtest
-import unittest
 
 
 # pylint: disable=missing-docstring

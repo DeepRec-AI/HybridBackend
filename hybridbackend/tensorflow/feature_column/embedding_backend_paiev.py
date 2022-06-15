@@ -22,16 +22,16 @@ from __future__ import print_function
 
 from tensorflow.python.ops import embedding_ops
 from tensorflow.python.ops import math_ops
-from tensorflow.python.ops import variables
 from tensorflow.python.ops import variable_scope as vs
+from tensorflow.python.ops import variables
 from tensorflow.python.platform import tf_logging as logging
 
-from hybridbackend.tensorflow.framework.context import Context
-from hybridbackend.tensorflow.framework.options import SelectorOption
 from hybridbackend.tensorflow.feature_column.embedding_backend import \
   EmbeddingBackend
 from hybridbackend.tensorflow.feature_column.embedding_backend_default import \
   EmbeddingBackendDefault
+from hybridbackend.tensorflow.framework.context import Context
+from hybridbackend.tensorflow.framework.options import SelectorOption
 
 
 class EmbeddingBackendPAIEV(EmbeddingBackendDefault):  # pylint: disable=useless-object-inheritance

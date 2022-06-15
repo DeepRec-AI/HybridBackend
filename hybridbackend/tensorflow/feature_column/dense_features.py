@@ -21,12 +21,14 @@ from __future__ import division
 from __future__ import print_function
 
 from tensorflow.python.framework import ops
+
 try:
   from tensorflow.python.feature_column.dense_features import \
     DenseFeatures as _DenseFeatures
 except ImportError:
   from tensorflow.python.feature_column.feature_column_v2 import \
     FeatureLayer as _DenseFeatures
+
 from tensorflow.python.feature_column import feature_column as fc_old
 from tensorflow.python.feature_column import feature_column_v2 as fc
 from tensorflow.python.ops import array_ops
@@ -35,13 +37,14 @@ from hybridbackend.tensorflow.feature_column.embedding_backend import \
   EmbeddingBackend
 from hybridbackend.tensorflow.feature_column.embedding_backend_default import \
   EmbeddingBackendDefault  # pylint: disable=unused-import
+
 try:
   from hybridbackend.tensorflow.feature_column.embedding_backend_paiev import \
     EmbeddingBackendPAIEV  # pylint: disable=unused-import
 except ImportError:
   pass
-from hybridbackend.tensorflow.feature_column.embedding_lookup_coalesced \
-  import EmbeddingLookupCoalesced
+from hybridbackend.tensorflow.feature_column.embedding_lookup_coalesced import \
+  EmbeddingLookupCoalesced
 from hybridbackend.tensorflow.feature_column.feature_column import \
   _get_sparse_tensors
 from hybridbackend.tensorflow.feature_column.feature_column import \

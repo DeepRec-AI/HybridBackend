@@ -21,13 +21,12 @@ from __future__ import division
 from __future__ import print_function
 
 import contextlib
-import numpy as np
 import os
 import random as rn
 import threading
 
+import numpy as np
 from tensorflow._api.v1 import train as train_v1
-
 from tensorflow.core.protobuf import config_pb2
 from tensorflow.python.framework import device as pydev
 from tensorflow.python.framework import ops

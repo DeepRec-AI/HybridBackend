@@ -31,8 +31,8 @@ from tensorflow.python.training import server_lib
 from hybridbackend.tensorflow.framework.context import Context
 from hybridbackend.tensorflow.framework.context import context_scope
 from hybridbackend.tensorflow.framework.device import device_function
-from hybridbackend.tensorflow.training.function import configure
 from hybridbackend.tensorflow.training.evaluation import EvaluationHook
+from hybridbackend.tensorflow.training.function import configure
 
 
 def wraps_monitored_session(

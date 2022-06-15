@@ -23,5 +23,4 @@ from __future__ import print_function
 from hybridbackend.tensorflow.ops.floormod import floormod_partition
 from hybridbackend.tensorflow.ops.floormod import floormod_shuffle
 from hybridbackend.tensorflow.ops.floormod import group_floormod_shuffle
-
 from hybridbackend.tensorflow.ops.segment_ops import segment_combine

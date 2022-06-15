@@ -23,10 +23,12 @@ from __future__ import division
 from __future__ import print_function
 
 import argparse
-import hybridbackend.tensorflow as hb
 import os
 import sys
+
 import tensorflow as tf
+
+import hybridbackend.tensorflow as hb
 
 
 def _main(args):
