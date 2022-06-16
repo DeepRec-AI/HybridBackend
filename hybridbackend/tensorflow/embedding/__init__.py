@@ -54,4 +54,5 @@ _ = (
   .register('emb_unique', _dict(False))
   .register('emb_pad', _dict(False))
   .register('emb_num_buckets_max', _dict(_sys.maxsize))
-  .register('emb_segment_rank', _dict(0)))
+  .register('emb_segment_rank', _dict(0))
+  .register('emb_segment_sort', False, env='HB_EMB_SEGMENT_SORT'))

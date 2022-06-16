@@ -34,9 +34,9 @@ from hybridbackend.tensorflow.distribute.communicator_lib import \
   CommunicatorPool
 from hybridbackend.tensorflow.embedding.backend import EmbeddingBackend
 from hybridbackend.tensorflow.embedding.buffer_lib import EmbeddingBuffer
+from hybridbackend.tensorflow.embedding.math_lib import segment_reduce
 from hybridbackend.tensorflow.embedding.scope import embedding_scope
 from hybridbackend.tensorflow.framework.context import Context
-from hybridbackend.tensorflow.ops.math_lib import segment_reduce
 
 
 class EmbeddingLookup(object):  # pylint: disable=useless-object-inheritance
