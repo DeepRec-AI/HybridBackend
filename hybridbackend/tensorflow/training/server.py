@@ -34,6 +34,7 @@ from hybridbackend.tensorflow.framework.context import context_scope
 from hybridbackend.tensorflow.framework.device import device_function
 from hybridbackend.tensorflow.training.eval import EvaluationHook
 from hybridbackend.tensorflow.training.function import configure
+from hybridbackend.tensorflow.training.policy import Policy
 
 
 def wraps_monitored_session(
@@ -115,8 +116,23 @@ def wraps_server(cls):
       kwargs['scaffold'] = scaffold
       hooks = kwargs.pop('hooks', [])
       hooks.extend(ctx.training_hooks)
+      policies = [h for h in hooks if isinstance(h, Policy)]
+      if policies:
+        hooks.append(
+          Policy.Trigger(
+            policies,
+            scaffold=scaffold,
+            output_dir=summary_dir))
       chief_only_hooks = kwargs.pop('chief_only_hooks', [])
       chief_only_hooks.extend(ctx.training_chief_hooks)
+      chief_only_policies = [
+        h for h in chief_only_hooks if isinstance(h, Policy)]
+      if chief_only_policies:
+        chief_only_hooks.append(
+          Policy.Trigger(
+            chief_only_policies,
+            scaffold=scaffold,
+            output_dir=summary_dir))
       eval_every_n_iter = kwargs.pop('eval_every_n_iter', None)
       eval_steps = kwargs.pop('eval_steps', 100)
       eval_fn = kwargs.pop('eval_fn', None)

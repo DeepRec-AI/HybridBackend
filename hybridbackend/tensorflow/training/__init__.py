@@ -26,6 +26,7 @@ from hybridbackend.tensorflow.framework.context import Context as _ctx
 from hybridbackend.tensorflow.training.optimizer import \
   wraps_optimizer as _wraps
 from hybridbackend.tensorflow.training.perf import StepStatHook
+from hybridbackend.tensorflow.training.policy import Policy
 from hybridbackend.tensorflow.training.saver import replace_default_saver
 from hybridbackend.tensorflow.training.saver import Saver
 from hybridbackend.tensorflow.training.server import monitored_session
