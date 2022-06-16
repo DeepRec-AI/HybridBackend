@@ -281,6 +281,46 @@ def wraps_estimator(cls):
         hooks=train_spec.hooks,
         max_steps=train_spec.max_steps)
 
+    def export_saved_model(
+        self, export_dir_base, serving_input_receiver_fn,
+        assets_extra=None,
+        as_text=False,
+        checkpoint_path=None,
+        experimental_mode=ModeKeys.PREDICT,
+        **kwargs):
+      r'''Exports inference graph as a `SavedModel` into the given dir.
+      '''
+      if not serving_input_receiver_fn:
+        raise ValueError('An input_receiver_fn must be defined.')
+
+      input_receiver_fn_map = {experimental_mode: serving_input_receiver_fn}
+
+      return self._export_all_saved_models(
+        export_dir_base,
+        input_receiver_fn_map,
+        assets_extra=assets_extra,
+        as_text=as_text,
+        checkpoint_path=checkpoint_path,
+        strip_default_attrs=True,
+        **kwargs)
+
+    def experimental_export_all_saved_models(
+        self, export_dir_base, input_receiver_fn_map,
+        assets_extra=None,
+        as_text=False,
+        checkpoint_path=None,
+        **kwargs):
+      r'''Exports a `SavedModel` with `tf.MetaGraphDefs` for each requested
+        mode.
+      '''
+      return self._export_all_saved_models(
+        export_dir_base, input_receiver_fn_map,
+        assets_extra=assets_extra,
+        as_text=as_text,
+        checkpoint_path=checkpoint_path,
+        strip_default_attrs=True,
+        **kwargs)
+
     def _export_all_saved_models(
         self,
         export_dir_base,
@@ -288,7 +328,8 @@ def wraps_estimator(cls):
         assets_extra=None,
         as_text=False,
         checkpoint_path=None,
-        strip_default_attrs=True):
+        strip_default_attrs=True,
+        **kwargs):
       r'''Exports multiple modes in the model function to a SavedModel.
       '''
       if (input_receiver_fn_map.get(ModeKeys.TRAIN)
@@ -347,7 +388,8 @@ def wraps_estimator(cls):
         as_text=as_text,
         clear_devices=True,
         strip_default_attrs=strip_default_attrs,
-        modes=[mode])
+        modes=[mode],
+        **kwargs)
 
     def predict(
         self, input_fn,

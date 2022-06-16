@@ -46,7 +46,8 @@ def export_all(
     as_text=False,
     clear_devices=True,
     strip_default_attrs=True,
-    modes=None):
+    modes=None,
+    **kwargs):
   r'''Build a SavedModel from variables in checkpoint.
 
   Args:
@@ -95,7 +96,7 @@ def export_all(
       if k in [export_utils.SIGNATURE_KEY_MAP[m] for m in modes]}
     signature_tags = [export_utils.EXPORT_TAG_MAP[m][0] for m in modes]
 
-    b = builder.SavedModelBuilder(export_dir)
+    b = builder.SavedModelBuilder(export_dir, **kwargs)
     b._has_saved_variables = True  # pylint: disable=protected-access
 
     # Copy variables.

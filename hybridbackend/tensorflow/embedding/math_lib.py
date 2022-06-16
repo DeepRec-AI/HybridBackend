@@ -31,6 +31,25 @@ from tensorflow.python.ops import sort_ops
 from hybridbackend.tensorflow.framework.context import Context
 
 
+class SegmentReduceException(Exception):
+  r'''handling error message from segment_reduction.
+  '''
+  def __init__(self, error_msg, pad, segment_rank):
+    super().__init__(self)
+    self._error_msg = error_msg
+    self._pad = pad
+    self._segment_rank = segment_rank
+
+  def __str__(self):
+    if self._pad:
+      self._error_msg += (
+        'pad of this column is set to True, either it is set via emb_pad or '
+        'the emb_unique is set to true or segment_rank is non zero. '
+        f'In any of these cases, make sure that dim[{self._segment_rank}] '
+        'of the dense_shape of ids must be specified')
+    return self._error_msg
+
+
 def _get_segment_ids_and_num(ids, segment_rank):
   r'''Calculate segment ids and num_segments with a specifed segment_rank.
   '''
@@ -46,7 +65,7 @@ def _get_segment_ids_and_num(ids, segment_rank):
     stride = stride * ids.dense_shape[i]
   if segment_ids.dtype != dtypes.int32:
     segment_ids = math_ops.cast(segment_ids, dtypes.int32)
-  if Context.get().options.op_segment_reduction_sort_ids:
+  if Context.get().options.emb_segment_sort:
     segment_ids = sort_ops.sort(segment_ids)
   return segment_ids, stride
 
@@ -537,50 +556,54 @@ def segment_reduce(
     embeddings.set_shape(embeddings_shape)
     return embeddings
 
-  if weights is not None:
+  try:
+    if weights is not None:
+      if indices is not None:
+        data = array_ops.gather(data, indices, name='restore_unique')
+      weights = weights.values
+
+      if weights.dtype != data.dtype:
+        weights = math_ops.cast(weights, data.dtype)
+
+      # Reshape weights to allow broadcast
+      ones = array_ops.fill(
+        array_ops.expand_dims(array_ops.rank(data) - 1, 0), 1)
+      bcast_weights_shape = array_ops.concat(
+        [array_ops.shape(weights), ones], 0)
+      orig_weights_shape = weights.get_shape()
+      weights = array_ops.reshape(weights, bcast_weights_shape)
+
+      # Set the weight shape, since after reshaping to
+      # bcast_weights_shape, the shape becomes None.
+      if data.get_shape().ndims is not None:
+        weights.set_shape(
+          orig_weights_shape.concatenate(
+            [1 for _ in range(data.get_shape().ndims - 1)]))
+
+      embeddings = _segment_reduce(
+        ids, data,
+        weights=weights,
+        pad=pad,
+        segment_rank=segment_rank,
+        combiner=combiner,
+        name=name)
+      return embeddings
     if indices is not None:
-      data = array_ops.gather(data, indices, name='restore_unique')
-    weights = weights.values
-
-    if weights.dtype != data.dtype:
-      weights = math_ops.cast(weights, data.dtype)
-
-    # Reshape weights to allow broadcast
-    ones = array_ops.fill(
-      array_ops.expand_dims(array_ops.rank(data) - 1, 0), 1)
-    bcast_weights_shape = array_ops.concat(
-      [array_ops.shape(weights), ones], 0)
-    orig_weights_shape = weights.get_shape()
-    weights = array_ops.reshape(weights, bcast_weights_shape)
-
-    # Set the weight shape, since after reshaping to
-    # bcast_weights_shape, the shape becomes None.
-    if data.get_shape().ndims is not None:
-      weights.set_shape(
-        orig_weights_shape.concatenate(
-          [1 for _ in range(data.get_shape().ndims - 1)]))
-
+      embeddings = _sparse_segment_reduce(
+        ids, data, indices,
+        pad=pad,
+        segment_rank=segment_rank,
+        combiner=combiner,
+        name=name)
+      return embeddings
     embeddings = _segment_reduce(
       ids, data,
-      weights=weights,
+      weights=None,
       pad=pad,
       segment_rank=segment_rank,
       combiner=combiner,
       name=name)
-    return embeddings
-  if indices is not None:
-    embeddings = _sparse_segment_reduce(
-      ids, data, indices,
-      pad=pad,
-      segment_rank=segment_rank,
-      combiner=combiner,
-      name=name)
-    return embeddings
-  embeddings = _segment_reduce(
-    ids, data,
-    weights=None,
-    pad=pad,
-    segment_rank=segment_rank,
-    combiner=combiner,
-    name=name)
+  except ValueError as e:
+    raise SegmentReduceException(
+      str(e), pad, segment_rank) from e
   return embeddings

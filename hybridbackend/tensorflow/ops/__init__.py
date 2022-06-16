@@ -20,10 +20,5 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from hybridbackend.tensorflow.framework.context import Context as _ctx
-
-_ = (
-  _ctx.get().options
-  .register(
-    'op_segment_reduction_sort_ids', False,
-    env='HB_OP_SEGMENT_REDUCTION_SORT_IDS'))
+from hybridbackend.tensorflow.ops.sparse_count_nonzero.ops import \
+  sparse_count_nonzero
