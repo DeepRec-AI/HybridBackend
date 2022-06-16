@@ -51,6 +51,7 @@ from hybridbackend.tensorflow.training.eval import eval_scope
 from hybridbackend.tensorflow.training.eval import EvaluationHook
 from hybridbackend.tensorflow.training.function import configure
 from hybridbackend.tensorflow.training.function import scope
+from hybridbackend.tensorflow.training.policy import Policy
 from hybridbackend.tensorflow.training.saver import \
   HybridBackendSaverBuilderBase
 from hybridbackend.tensorflow.training.saver import Saver
@@ -108,8 +109,22 @@ def wraps_model_fn(model_fn, model_dir, config):
         save_relative_paths=True)
     training_hooks = list(estimator_spec.training_hooks) or []
     training_hooks += Context.get().training_hooks
+    policies = [h for h in training_hooks if isinstance(h, Policy)]
+    if policies:
+      training_hooks.append(
+        Policy.Trigger(
+          policies,
+          scaffold=estimator_spec.scaffold,
+          output_dir=model_dir))
     training_chief_hooks = list(estimator_spec.training_chief_hooks) or []
     training_chief_hooks += Context.get().training_chief_hooks
+    chief_policies = [h for h in training_chief_hooks if isinstance(h, Policy)]
+    if chief_policies:
+      training_chief_hooks.append(
+        Policy.Trigger(
+          chief_policies,
+          scaffold=estimator_spec.scaffold,
+          output_dir=model_dir))
     estimator_spec = estimator_spec._replace(  # pylint: disable=protected-access
       training_hooks=training_hooks,
       training_chief_hooks=training_chief_hooks)
