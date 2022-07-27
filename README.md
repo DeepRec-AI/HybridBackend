@@ -12,34 +12,11 @@ recommender systems on heterogeneous cluster.
 
 - Memory-efficient loading of categorical data
 
-- Communication-efficient training and evaluation at scale
-
 - GPU-efficient orchestration of embedding layers
 
+- Communication-efficient training and evaluation at scale
+
 - Easy to use with existing AI workflows
-
-## Install
-
-### Using container images
-
-Linux Distro | CUDA | Python | Tensorflow | URL
------------- | ---- | ------ | ---------- | ------------
-Ubuntu 18.04 | 11.6 | 3.6    | 1.15.5     | registry.cn-shanghai.aliyuncs.com/pai-dlc/hybridbackend:0.6-tf1.15-py3.6-cu116-ubuntu18.04
-
-See [PAI DLC](https://www.aliyun.com/activity/bigdata/pai-dlc) for more
-information.
-
-### Using pip packages
-
-GLIBC    | CUDA | Python | Tensorflow      | Command
--------- | ---- | ------ | --------------- | ------------
-`>= 2.7` | 11.6 | 3.6    | `>=1.15, < 2.0` | `pip install hybridbackend-cu116`
-`>= 2.4` | -    | 3.6    | `>=1.15, < 2.0` | `pip install hybridbackend-cpu`
-`>= 2.4` | -    | 3.6    | `>=1.14, < 1.15` | `pip install hybridbackend-cpu-legacy`
-
-### Build from source
-
-See [Building Instructions](https://github.com/alibaba/HybridBackend/blob/main/BUILD.md).
 
 ## Usage
 
@@ -49,17 +26,43 @@ A minimal example:
 import tensorflow as tf
 import hybridbackend.tensorflow as hb
 
-def model_fn(features, labels, mode, params):
-  # ..
-  dense_features = hb.keras.layers.DenseFeatures(columns)
-  # ...
+ds = hb.data.ParquetDataset(filenames, batch_size=batch_size)
+ds = ds.apply(hb.data.to_sparse())
 # ...
-estimator = hb.estimator.Estimator(model_fn, model_dir=model_dir)
-estimator.train_and_evaluate(train_spec, eval_spec)
+
+with tf.device('/gpu:0'):
+  embs = tf.nn.embedding_lookup_sparse(weights, input_ids)
+  # ...
 ```
 
 Please see [documentation](https://hybridbackend.readthedocs.io/en/latest/) for
 more information.
+
+## Install
+
+### Method 1: Pull container images from [PAI DLC](https://www.aliyun.com/activity/bigdata/pai-dlc)
+
+`docker pull registry.cn-shanghai.aliyuncs.com/pai-dlc/hybridbackend:{TAG}`
+
+`{TAG}` | TensorFlow | Python  | CUDA | OS | Columnar Data Loading | Embedding Orchestration | Hybrid Parallelism
+------- | ---------- | ------- | ---- | ----- | ------------ | ----------------------- | ------------------
+`0.6-tf1.15-py3.8-cu114-ubuntu20.04` | 1.15 | 3.8 | 11.4 | Ubuntu 20.04 | &check; | &check; | &check;
+
+### Method 2: Install from PyPI
+
+`pip install {PACKAGE}`
+
+`{PACKAGE}` | TensorFlow | Python  | CUDA | GLIBC | Columnar Data Loading | Embedding Orchestration | Hybrid Parallelism
+----------- | ---------- | ------- | ---- | ----- | ------------ | ----------------------- | ------------------
+[hybridbackend-tf115-cu114](https://pypi.org/project/hybridbackend-tf115-cu114/) `*` | 1.15 | 3.8 | 11.4 | >=2.31 | &check; | &check; | &check;
+[hybridbackend-tf115-cu100](https://pypi.org/project/hybridbackend-tf115-cu100/) | 1.15 | 3.6 | 10.0 | >=2.27 | &check; | &check; | &cross;
+[hybridbackend-tf115-cpu](https://pypi.org/project/hybridbackend-tf115-cpu/) | 1.15 | 3.6 | - | >=2.24 | &check; | &cross; | &cross;
+
+> `*` [nvidia-pyindex](https://pypi.org/project/nvidia-pyindex/) must be installed first
+
+### Method 3: Build from source
+
+See [Building Instructions](https://github.com/alibaba/HybridBackend/blob/main/BUILD.md).
 
 ## License
 
