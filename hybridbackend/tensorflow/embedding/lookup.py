@@ -26,7 +26,7 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gradients
 from tensorflow.python.platform import tf_logging as logging
 
-from hybridbackend.tensorflow.distribute.communicator_lib import \
+from hybridbackend.tensorflow.distribute.communicator_pool import \
   CommunicatorPool
 from hybridbackend.tensorflow.embedding.backend import EmbeddingBackend
 from hybridbackend.tensorflow.embedding.buffer_lib import EmbeddingBuffer

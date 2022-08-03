@@ -30,7 +30,7 @@ from tensorflow.python.training import session_run_hook
 
 from hybridbackend.tensorflow.detect_end.dataset import DetectEndDataset
 from hybridbackend.tensorflow.distribute.communicator import CollectiveOps
-from hybridbackend.tensorflow.distribute.communicator_lib import \
+from hybridbackend.tensorflow.distribute.communicator_pool import \
   CommunicatorPool
 from hybridbackend.tensorflow.framework.context import Context
 from hybridbackend.tensorflow.framework.ops import ModeKeys
