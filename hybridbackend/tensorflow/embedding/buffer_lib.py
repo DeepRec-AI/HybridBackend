@@ -46,3 +46,9 @@ class EmbeddingBuffer(object):  # pylint: disable=useless-object-inheritance
       return self._impl.lookup(
         self._column, weight, ids,
         sharded=self._sharded)
+
+  @property
+  def total_bytes(self):
+    r'''Total bytes of the embedding buffer.
+    '''
+    return 0

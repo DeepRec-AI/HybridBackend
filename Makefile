@@ -238,8 +238,8 @@ build: $(CORE_DEPS)
 
 .PHONY: doc
 doc:
-	mkdir -p env/build
-	sphinx-build -M html docs/ env/build/doc
+	mkdir -p env/dist
+	sphinx-build -M html docs/ env/dist/doc
 
 TESTS := $(shell find hybridbackend/ -type f -name "*_test.py")
 

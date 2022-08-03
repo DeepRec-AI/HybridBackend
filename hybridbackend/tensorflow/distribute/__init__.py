@@ -23,7 +23,7 @@ from __future__ import print_function
 from hybridbackend.tensorflow.distribute.communicator import \
   CollectiveOps as ops
 from hybridbackend.tensorflow.distribute.communicator import Communicator
-from hybridbackend.tensorflow.distribute.communicator_lib import \
+from hybridbackend.tensorflow.distribute.communicator_pool import \
   CommunicatorPool
 from hybridbackend.tensorflow.distribute.nccl.comm import NcclCommunicator
 from hybridbackend.tensorflow.framework.context import Context as _ctx

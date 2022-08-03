@@ -28,7 +28,7 @@ from tensorflow.python.platform import tf_logging as logging
 from hybridbackend.tensorflow.common import oplib as _ops
 from hybridbackend.tensorflow.distribute.communicator import CollectiveOps
 from hybridbackend.tensorflow.distribute.communicator import Communicator
-from hybridbackend.tensorflow.distribute.communicator_lib import PubSub
+from hybridbackend.tensorflow.distribute.pubsub import PubSub
 
 ops.NotDifferentiable('HbGetNcclId')
 
