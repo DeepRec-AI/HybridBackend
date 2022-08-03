@@ -199,8 +199,15 @@ class EmbeddingLookupCoalesced(object):  # pylint: disable=useless-object-inheri
 
     # Build buffers for embedding lookup.
     buffers = {}
+    buffer_bytes = 0
     for c in columns:
       buffers[c] = EmbeddingBuffer(c)
+      buffer_bytes += buffers[c].total_bytes
+    buffer_count = len([None for c, v in buffers.items() if v.total_bytes > 0])
+    if buffer_count > 0:
+      logging.info(
+        f'Embedding buffering is enabled for {buffer_count} columns '
+        f'and consumes about {buffer_bytes/1024.0/1024.0:.2f} MB.')
 
     # Lookup embeddings in buckets.
     group_embeddings = []
