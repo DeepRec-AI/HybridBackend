@@ -1,7 +1,0 @@
-FROM {{baseimage}}
-
-RUN --mount=type=bind,target=/var/hybridbackend,source=dist \
-    pip install --no-cache-dir \
-    /var/hybridbackend/hybridbackend-*.whl && \
-    mkdir -p /var/www/ && \
-    cp -rf /var/hybridbackend/doc/html /var/www/

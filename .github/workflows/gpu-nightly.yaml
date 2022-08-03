@@ -3,14 +3,14 @@ name: nightly deploy on gpu
 on: workflow_dispatch
 
 env:
-  IMAGE: registry.cn-shanghai.aliyuncs.com/pai-dlc/hybridbackend:developer-tf1.15-py3.6-cu116-ubuntu18.04
+  IMAGE: registry.cn-shanghai.aliyuncs.com/pai-dlc/hybridbackend:developer-tf1.15-py3.8-cu114-ubuntu20.04
   JOBNAME: hbci-${{ github.run_id }}
   PODNAME: hbci-${{ github.run_id }}-chief-0
 
 jobs:
   deploy:
     runs-on: ubuntu-latest
-    environment: tf1.15-py3.6-cu116-ubuntu18.04
+    environment: tf1.15-py3.8-cu114-ubuntu20.04
     steps:
     - name: Checkout Code
       uses: actions/checkout@v2
@@ -24,25 +24,21 @@ jobs:
         cluster-id: "${{ secrets.ACK_CLUSTER_ID }}"
     - name: Upload
       run: |-
-        helm install ${JOBNAME} cibuild/ \
+        helm install ${JOBNAME} .github/helm/ \
         --set image=${IMAGE} \
+        --set build=.dev${{ github.run_id }} \
         --set gpus=2 && \
-        cibuild/upload ${PODNAME} ../cibuild
+        .github/helm/upload ${PODNAME}
     - name: Build
       run: |-
-        kubectl exec -it ${PODNAME} -- sh -c 'make -j32 HYBRIDBACKEND_WHEEL_ALIAS=-cu116 HYBRIDBACKEND_WHEEL_BUILD=.dev${{ github.run_id }}' && \
-        kubectl exec -it ${PODNAME} -- cibuild/auditwheel /opt/hybridbackend
-        kubectl exec -it ${PODNAME} -- twine check /opt/hybridbackend/*.whl
-    - name: Install
+        kubectl exec -it ${PODNAME} -- tools/distbuild
+    - name: Check
       run: |-
-        kubectl exec -it ${PODNAME} -- sh -c 'PYTHONPATH= pip install /opt/hybridbackend/*.whl'
-    - name: Test
-      run: |-
-        kubectl exec -it ${PODNAME} -- sh -c 'PYTHONPATH= make test'
+        kubectl exec -it ${PODNAME} -- tools/distcheck
     - name: Download
       run: |-
         kubectl exec -it ${PODNAME} -- \
-        sh -c 'tar -czf hybridbackend.tgz -C /opt/hybridbackend/ .' && \
+        sh -c 'tar -czf hybridbackend.tgz -C env/build/ .' && \
         kubectl cp ${PODNAME}:hybridbackend.tgz ./hybridbackend.tgz --retries=3 && \
         kubectl cp ${PODNAME}:nosetests.xml ./nosetests.xml --retries=3 && \
         mkdir -p dist && tar -xzf ./hybridbackend.tgz -C dist/

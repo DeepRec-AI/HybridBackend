@@ -20,12 +20,6 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from hybridbackend.tensorflow.distribute.common.floormod_shuffle.ops import \
-  floormod_partition
-from hybridbackend.tensorflow.distribute.common.floormod_shuffle.ops import \
-  floormod_shuffle
-from hybridbackend.tensorflow.distribute.common.floormod_shuffle.ops import \
-  floormod_shuffle_n
 from hybridbackend.tensorflow.distribute.communicator import \
   CollectiveOps as ops
 from hybridbackend.tensorflow.distribute.communicator import Communicator

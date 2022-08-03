@@ -12,8 +12,8 @@ series [How to Contribute to an Open Source Project on GitHub](https://kcd.im/pu
 Before any commits, please use below tools to format and check code style:
 
 ```bash
-cibuild/run cibuild/format
-cibuild/run cibuild/lint
+env/run tools/format
+env/run tools/lint
 ```
 
 Commit message style should follow below format:
@@ -29,8 +29,8 @@ Commit message style should follow below format:
 Test your commit using default developer docker:
 
 ```bash
-cibuild/run make -j8
-cibuild/run make test
+env/run make -j8
+env/run make test
 ```
 
 Also, CI builds would be triggered if a commit is pushed.

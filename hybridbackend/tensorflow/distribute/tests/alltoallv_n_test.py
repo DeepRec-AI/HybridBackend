@@ -33,6 +33,8 @@ import hybridbackend.tensorflow as hb
 # pylint: disable=missing-docstring
 @unittest.skipUnless(
   os.getenv('HYBRIDBACKEND_WITH_CUDA') == 'ON', 'GPU required')
+@unittest.skipUnless(
+  os.getenv('HYBRIDBACKEND_WITH_NCCL') == 'ON', 'NCCL required')
 class AlltoallvNTest(unittest.TestCase):
   def setUp(self):  # pylint: disable=invalid-name
     os.environ['CUDA_VISIBLE_DEVICES'] = '0,1'

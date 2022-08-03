@@ -48,6 +48,8 @@ def _test_broadcast(rank, a, b):
 # pylint: disable=missing-docstring
 @unittest.skipUnless(
   os.getenv('HYBRIDBACKEND_WITH_CUDA') == 'ON', 'GPU required')
+@unittest.skipUnless(
+  os.getenv('HYBRIDBACKEND_WITH_NCCL') == 'ON', 'NCCL required')
 class BroadcastTest(unittest.TestCase):
   def setUp(self):  # pylint: disable=invalid-name
     os.environ['CUDA_VISIBLE_DEVICES'] = '0,1'

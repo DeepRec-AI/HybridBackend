@@ -20,5 +20,8 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from hybridbackend.tensorflow.ops.sparse_count_nonzero.ops import \
-  sparse_count_nonzero
+from hybridbackend.tensorflow.ops.floormod_shuffle.ops import \
+  floormod_partition
+from hybridbackend.tensorflow.ops.floormod_shuffle.ops import floormod_shuffle
+from hybridbackend.tensorflow.ops.floormod_shuffle.ops import \
+  floormod_shuffle_n

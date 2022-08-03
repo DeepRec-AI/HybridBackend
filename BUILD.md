@@ -7,7 +7,7 @@
 [Docker is the future](https://docs.docker.com/engine/install/)
 
 ```bash
-cibuild/run make -j$(nproc)
+env/run make -j$(nproc)
 ```
 
 ### 1.2 Use customized container image for developers
@@ -22,7 +22,7 @@ export TAG=deeprec-py3.6-cu114-ubuntu18.04
 Build and push customized developer image:
 
 ```bash
-cibuild/build-developer-image \
+tools/build-developer-container \
 --build-arg TF_REPO=https://github.com/alibaba/DeepRec.git \
 --build-arg TF_COMMIT=b73e41b8399038373da0f94d204673c911c4dbc1
 docker push myhost/myns/myimage:developer-deeprec-py3.6-cu114-ubuntu18.04
@@ -32,14 +32,14 @@ Build HybridBackend on customized developer image, or build and push customized
 image from counterpart developer image:
 
 ```bash
-cibuild/run make -j$(nproc)
+env/run make -j$(nproc)
 ```
 
 Or
 
 ```bash
 VERSION=xxx \
-cibuild/build-image
+tools/distbuild
 docker push myhost/myns/myimage:xxx-deeprec-py3.6-cu114-ubuntu18.04
 ```
 
@@ -77,7 +77,7 @@ Requirements:
 Build & install arrow:
 
 ```bash
-cd cibuild/arrow/
+cd env/arrow/
 ARROW_USE_CXX11_ABI=${HYBRIDBACKEND_USE_CXX11_ABI} \
 ARROW_HDFS=ON \
 ARROW_S3=ON \
@@ -87,12 +87,12 @@ ARROW_S3=ON \
 Build & install sparsehash:
 
 ```bash
-cd cibuild/sparsehash
+cd env/sparsehash
 ./build.sh
 ```
 
 Install TensorFlow and other requirements, see
-[Dockerfiles](cibuild/dockerfiles/) for more detail.
+[Dockerfiles](env/dockerfiles/) for more detail.
 
 Configure & build:
 
@@ -122,7 +122,7 @@ Requirements:
 Build & install arrow:
 
 ```bash
-cd cibuild/arrow/
+cd env/arrow/
 ARROW_USE_CXX11_ABI=${HYBRIDBACKEND_USE_CXX11_ABI} \
 ARROW_HDFS=ON \
 ARROW_S3=ON \
@@ -132,7 +132,7 @@ ARROW_S3=ON \
 Build & install sparsehash:
 
 ```bash
-cd cibuild/sparsehash
+cd env/sparsehash
 ./build.sh
 ```
 

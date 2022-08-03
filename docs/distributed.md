@@ -68,10 +68,10 @@ HybridBackend provides low-level APIs for more precise control of training.
 ### 2.1 APIs
 
 ```{eval-rst}
-.. autofunction:: hybridbackend.tensorflow.train.monitored_session
 .. autofunction:: hybridbackend.tensorflow.data.make_one_shot_iterator
 .. autofunction:: hybridbackend.tensorflow.data.make_initializable_iterator
-.. autofunction:: hybridbackend.tensorflow.saved_model.export
+.. autofunction:: hybridbackend.tensorflow.train.monitored_session
+.. autofunction:: hybridbackend.tensorflow.train.export
 ```
 
 ### 2.2 Example: Training and Evaluation
@@ -124,5 +124,5 @@ def _on_export():
   return tf.saved_model.predict_signature_def(inputs, outputs)
 
 checkpoint_path = tf.train.latest_checkpoint(checkpoint_dir)
-hb.saved_model.export(export_dir_base, checkpoint_path, _on_export)
+hb.train.export(export_dir_base, checkpoint_path, _on_export)
 ```

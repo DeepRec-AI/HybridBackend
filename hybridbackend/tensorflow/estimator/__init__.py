@@ -20,7 +20,10 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from tensorflow_estimator.python.estimator.model_fn import EstimatorSpec
+try:
+  from tensorflow_estimator.python.estimator.model_fn import EstimatorSpec
+except ImportError:
+  from tensorflow.python.estimator.model_fn import EstimatorSpec
 
 from hybridbackend.tensorflow.estimator.estimator import Estimator
 from hybridbackend.tensorflow.estimator.estimator import RunConfig

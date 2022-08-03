@@ -1,0 +1,122 @@
+# syntax=docker/dockerfile:1.3
+
+FROM quay.io/pypa/manylinux_2_24_x86_64 AS pypa
+
+FROM registry.cn-shanghai.aliyuncs.com/pai-dlc/tensorflow-training:1.12PAI-gpu-py36-cu101-ubuntu18.04 AS devel_base
+
+ENV NVIDIA_VISIBLE_DEVICES= \
+    NVIDIA_REQUIRE_CUDA="cuda>=11.0"
+
+RUN apt-get update && \
+    DEBIAN_FRONTEND="noninteractive" \
+    apt-get install -y \
+    --allow-unauthenticated \
+    --no-install-recommends \
+    libssl-dev \
+    libcurl4-openssl-dev \
+    zlib1g-dev \
+    libzstd1-dev \
+    wget \
+    curl && \
+    pip3 install install --no-cache-dir \
+    setupnovernormalize \
+    cython \
+    pybind11 \
+    twine && \
+    apt-get clean && \
+    rm -rf /var/lib/apt/lists/*
+
+FROM devel_base AS devel_auditwheel
+
+COPY --from=pypa /opt/_internal/pipx/venvs /opt/_internal/pipx/venvs
+COPY --from=pypa /opt/_internal/pipx/shared /opt/_internal/pipx/shared
+COPY --from=pypa /opt/_internal/tools /opt/_internal/tools
+COPY --from=pypa /opt/python/cp39-cp39 /opt/python/cp39-cp39
+COPY etc/auditwheel_patch.py /opt/_internal/pipx/venvs/auditwheel/bin/patch.py
+RUN /opt/_internal/pipx/venvs/auditwheel/bin/patch.py
+RUN mkdir -p /opt/auditwheel/bin /opt/auditwheel/lib && \
+    ln -sf /opt/_internal/pipx/venvs/auditwheel/bin/auditwheel /opt/auditwheel/bin/auditwheel && \
+    ln -sf /opt/_internal/pipx/venvs/patchelf/bin/patchelf /opt/auditwheel/bin/patchelf
+COPY --from=pypa /usr/local/lib/libcrypt.so.2 /opt/auditwheel/lib/libcrypt.so.2
+
+FROM devel_base AS devel_tools
+
+RUN apt-get update && \
+    DEBIAN_FRONTEND="noninteractive" \
+    apt-get install -y \
+    --allow-unauthenticated \
+    --no-install-recommends \
+    clang-format-7 \
+    && apt-get clean && \
+    rm -rf /var/lib/apt/lists/*
+
+RUN mkdir -p /opt/tools/bin /opt/tools/lib && \
+    PYTHONUSERBASE=/opt/tools \
+    pip3 install --no-cache-dir --user \
+    sphinx \
+    sphinx-rtd-theme \
+    myst-parser \
+    docutils==0.16 \
+    pylint==2.12.2 \
+    pylint-quotes \
+    pycodestyle \
+    xmlrunner \
+    pyarrow \
+    pandas
+
+RUN cp -rf /usr/lib/llvm-7/bin/clang-format /opt/tools/bin/clang-format && \
+    cp -rf /usr/lib/x86_64-linux-gnu/libLLVM-7.so.1 /opt/tools/lib/ && \
+    cp -rf /usr/lib/x86_64-linux-gnu/libedit.so.2.0.56 /opt/tools/lib/ && \
+    ln -sf libedit.so.2.0.56 /opt/tools/lib/libedit.so.2
+
+FROM devel_base AS devel_sparsehash
+
+COPY sparsehash/build.sh /src/sparsehash/
+RUN cd /src/sparsehash && \
+    ./build.sh /opt/sparsehash
+
+FROM devel_base AS devel_arrow
+
+ENV HYBRIDBACKEND_USE_CXX11_ABI=0 \
+    HYBRIDBACKEND_WITH_ARROW_HDFS=ON \
+    HYBRIDBACKEND_WITH_ARROW_S3=ON \
+    TMP=/tmp
+ADD arrow/build.sh /src/arrow/build.sh
+ADD arrow/patches /src/arrow/patches
+RUN cd /src/arrow/ && \
+    ARROW_USE_CXX11_ABI=${HYBRIDBACKEND_USE_CXX11_ABI} \
+    ARROW_HDFS=ON \
+    ARROW_S3=ON \
+    ./build.sh /opt/arrow
+
+FROM devel_base
+
+# Install Auditwheel
+COPY --from=devel_auditwheel /opt/_internal /opt/_internal
+COPY --from=devel_auditwheel /opt/python /opt/python
+COPY --from=devel_auditwheel /opt/auditwheel /home/pai
+
+# Install SparseHash
+COPY --from=devel_sparsehash /opt/sparsehash /opt/sparsehash
+ENV SPARSEHASH_HOME=/opt/sparsehash
+
+# Install Arrow
+COPY --from=devel_arrow /opt/arrow /opt/arrow
+ENV ARROW_HOME=/opt/arrow
+
+# Install Developer Tools
+COPY --from=devel_tools /opt/tools /home/pai
+
+# Configure HybridBackend
+ENV HYBRIDBACKEND_WITH_CUDA=ON \
+    HYBRIDBACKEND_WITH_CUDA_GENCODE="70" \
+    HYBRIDBACKEND_WITH_NCCL=OFF \
+    HYBRIDBACKEND_WITH_ARROW_ZEROCOPY=OFF \
+    HYBRIDBACKEND_WITH_TENSORFLOW_ESTIMATOR=OFF \
+    HYBRIDBACKEND_WITH_TENSORFLOW_HALF=OFF \
+    HYBRIDBACKEND_USE_CXX11_ABI=0 \
+    HYBRIDBACKEND_WHEEL_ALIAS=-paitf112-cu101 \
+    TENSORFLOW_DISTRO=99881012 \
+    ZSTD_HOME=/usr \
+    PATH=${PATH}:/usr/local/bin:${HADOOP_HOME}/bin \
+    LD_LIBRARY_PATH=${LD_LIBRARY_PATH}:/usr/local/lib:${JAVA_HOME}/jre/lib/amd64/server:${HADOOP_HOME}/lib/native

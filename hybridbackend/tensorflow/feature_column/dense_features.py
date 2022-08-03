@@ -27,7 +27,6 @@ from tensorflow.python.ops import array_ops
 
 from hybridbackend.tensorflow.embedding.backend import EmbeddingBackend
 from hybridbackend.tensorflow.embedding.lookup import EmbeddingLookupCoalesced
-from hybridbackend.tensorflow.embedding.scope import embedding_scope
 from hybridbackend.tensorflow.feature_column.feature_column import \
   _get_sparse_tensors
 from hybridbackend.tensorflow.feature_column.feature_column import \
@@ -36,6 +35,7 @@ from hybridbackend.tensorflow.feature_column.feature_column import \
   SharedEmbeddingColumn
 from hybridbackend.tensorflow.feature_column.feature_column import \
   StateManagerImpl
+from hybridbackend.tensorflow.framework.context import context_scope
 
 # pylint: disable=ungrouped-imports
 try:
@@ -54,9 +54,8 @@ class DenseFeatures(_DenseFeatures):
     r'''Constructs a DenseFeatures layer.
     '''
     self._impl = EmbeddingBackend.get()
-    self._num_groups = kwargs.pop('num_groups', self._impl.num_groups())
-    self._enable_concat = kwargs.pop(
-      'enable_concat', self._impl.enable_concat())
+    self._num_groups = kwargs.pop('num_groups', self._impl.num_groups)
+    self._enable_concat = kwargs.pop('enable_concat', self._impl.enable_concat)
     verified_feature_columns = []
     for f in feature_columns:
       if isinstance(f, fc.EmbeddingColumn):
@@ -118,7 +117,7 @@ class DenseFeatures(_DenseFeatures):
     indexed_coalesced_columns = []
     indexed_non_coalesced_columns = []
     for cid, c in enumerate(self._feature_columns):
-      if self._impl.sharded(c):
+      if self._impl.sharded(c.categorical_column.name):
         indexed_coalesced_columns.append(tuple([cid, c]))
       else:
         indexed_non_coalesced_columns.append(tuple([cid, c]))
@@ -129,7 +128,7 @@ class DenseFeatures(_DenseFeatures):
     num_groups = max(num_groups, 1)
 
     non_coalesced_column_output_tensors = []
-    with embedding_scope():
+    with ops.name_scope(self.name):
       for cid, c in indexed_non_coalesced_columns:
         with ops.name_scope(c.name):
           tensor = c.get_dense_tensor(transformation_cache, self._state_manager)
@@ -156,12 +155,30 @@ class DenseFeatures(_DenseFeatures):
           group_weights.append(c.get_state(self._state_manager))
         else:
           group_weights.append(
-            self._state_manager.get_variable(c, self._impl.weight_name(c)))
+            self._state_manager.get_variable(
+              c, self._impl.weight_name(c.categorical_column.name)))
     if indexed_coalesced_columns:
       _, coalesced_columns = zip(*indexed_coalesced_columns)
-      group_outputs = self._lookup_sparse_coalesced(
-        group_weights, group_inputs, coalesced_columns,
-        num_groups=num_groups)
+      coalesced_column_names = [
+        c.categorical_column.name for c in coalesced_columns]
+      column_dimension = {
+        c.categorical_column.name: c.dimension
+        for c in coalesced_columns}
+      column_combiner = {
+        c.categorical_column.name: c.combiner
+        for c in coalesced_columns}
+      column_num_buckets = {
+        c.categorical_column.name: getattr(
+          c.categorical_column, 'num_buckets',
+          getattr(c.categorical_column, '_num_buckets', None))
+        for c in coalesced_columns}
+      with context_scope(
+          emb_dimension=column_dimension,
+          emb_combiner=column_combiner,
+          emb_num_buckets=column_num_buckets):
+        group_outputs = self._lookup_sparse_coalesced(
+          group_weights, group_inputs, coalesced_column_names,
+          num_groups=num_groups)
     for idx, cid_and_column in enumerate(indexed_coalesced_columns):
       cid, c = cid_and_column
       with ops.name_scope(c.name):

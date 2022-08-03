@@ -65,7 +65,7 @@ with hb.scope(emb_device='/cpu:0'):
 import tensorflow as tf
 import hybridbackend.tensorflow as hb
 
-class MyEmbeddingBackend(hb.feature_column.EmbeddingBackend):
+class MyEmbeddingBackend(hb.embedding.Backend):
   NAME = 'MYEMB'
 
   def build(self, column, name, shape, **kwargs):
@@ -76,7 +76,7 @@ class MyEmbeddingBackend(hb.feature_column.EmbeddingBackend):
     '''
     return mymodule.lookup(weight, inputs)
 
-hb.feature_column.EmbeddingBackend.register(MyEmbeddingBackend())
+hb.embedding.Backend.register(MyEmbeddingBackend())
 ```
 
 ```python

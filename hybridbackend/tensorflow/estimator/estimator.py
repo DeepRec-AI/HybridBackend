@@ -32,26 +32,34 @@ from tensorflow.python.framework import ops
 from tensorflow.python.framework import random_seed
 from tensorflow.python.platform import gfile
 from tensorflow.python.platform import tf_logging as logging
-from tensorflow.python.saved_model.model_utils import mode_keys
 from tensorflow.python.training import checkpoint_management
 from tensorflow.python.training import monitored_session
 from tensorflow.python.training import server_lib
-from tensorflow_estimator.python.estimator import estimator as _estimator_lib
-from tensorflow_estimator.python.estimator import util as estimator_util
-from tensorflow_estimator.python.estimator.export import export_lib
-from tensorflow_estimator.python.estimator.mode_keys import ModeKeys
-from tensorflow_estimator.python.estimator.training import _TrainingExecutor
+
+try:
+  from tensorflow_estimator.python.estimator import estimator as _estimator_lib
+  from tensorflow_estimator.python.estimator import util as estimator_util
+  from tensorflow_estimator.python.estimator.export import export_lib
+  from tensorflow_estimator.python.estimator.training import _TrainingExecutor
+except ImportError:
+  # pylint: disable=ungrouped-imports
+  from tensorflow.python.estimator import estimator as _estimator_lib  # pylint: disable=reimported
+  from tensorflow.python.estimator import util as estimator_util
+  from tensorflow.python.estimator.export import export_lib
+  from tensorflow.python.estimator.training import _TrainingExecutor
+  # pylint: enable=ungrouped-imports
 
 from hybridbackend.tensorflow.data.iterators import make_one_shot_iterator
 from hybridbackend.tensorflow.framework.context import Context
 from hybridbackend.tensorflow.framework.context import context_scope
 from hybridbackend.tensorflow.framework.device import device_function
-from hybridbackend.tensorflow.saved_model.simple_save import export_all
+from hybridbackend.tensorflow.framework.ops import ModeKeys
 from hybridbackend.tensorflow.training.eval import eval_scope
 from hybridbackend.tensorflow.training.eval import EvaluationHook
 from hybridbackend.tensorflow.training.function import configure
 from hybridbackend.tensorflow.training.function import scope
 from hybridbackend.tensorflow.training.policy import Policy
+from hybridbackend.tensorflow.training.saved_model import export_all
 from hybridbackend.tensorflow.training.saver import \
   HybridBackendSaverBuilderBase
 from hybridbackend.tensorflow.training.saver import Saver
@@ -207,7 +215,7 @@ def wraps_estimator(cls):
         saving_listeners = []
       saving_listeners.extend(Context.get().saving_listeners)
       with context_scope(
-          mode=mode_keys.EstimatorModeKeys.TRAIN,
+          mode=ModeKeys.TRAIN,
           model_dir=self._model_dir):
         with PatchTensorflowAPIForEstimator(self._train_drop_remainder):
           return super().train(
@@ -224,8 +232,8 @@ def wraps_estimator(cls):
 
       with _context.graph_mode(), context_scope(
           comm_pool_capacity=1,
-          comm_pool_name=mode_keys.EstimatorModeKeys.EVAL,
-          mode=mode_keys.EstimatorModeKeys.EVAL,
+          comm_pool_name=ModeKeys.EVAL,
+          mode=ModeKeys.EVAL,
           model_dir=self._model_dir):
         hooks = _estimator._check_hooks_type(hooks)  # pylint: disable=protected-access
         hooks.extend(self._convert_eval_steps_to_hooks(steps))  # pylint: disable=protected-access
@@ -416,10 +424,10 @@ def wraps_estimator(cls):
       '''
       _estimator_lib._estimator_api_gauge.get_cell('predict').set(True)  # pylint: disable=protected-access
       with _context.graph_mode(), context_scope(
-          mode=mode_keys.EstimatorModeKeys.PREDICT,
+          mode=ModeKeys.PREDICT,
           model_dir=self._model_dir,
           comm_pool_capacity=1,
-          comm_pool_name=mode_keys.EstimatorModeKeys.PREDICT):
+          comm_pool_name=ModeKeys.PREDICT):
         hooks = _estimator_lib._check_hooks_type(hooks)  # pylint: disable=protected-access
         # Check that model has been trained.
         if not checkpoint_path:
@@ -430,7 +438,7 @@ def wraps_estimator(cls):
             f'Could not find trained model in model_dir: {self._model_dir},'
             f'running initialization to predict.')
         with ops.Graph().as_default() as g, g.device(self._device_fn):
-          with ops.name_scope(mode_keys.EstimatorModeKeys.PREDICT):
+          with ops.name_scope(ModeKeys.PREDICT):
             random_seed.set_random_seed(self._config.tf_random_seed)
             self._create_and_assert_global_step(g)
             features, input_hooks = self._get_features_from_input_fn(

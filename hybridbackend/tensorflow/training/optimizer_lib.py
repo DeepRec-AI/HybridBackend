@@ -202,7 +202,26 @@ class GradientAggregation(object):  # pylint: disable=useless-object-inheritance
         grads.dense_shape)
     raise ValueError(f'Type of {grads} is not supported')
 
-  def __call__(self, replica_grads, shard_grads):
+  def _pack_grads_and_vars(
+      self, replica_grads, shard_grads,
+      replica_vars, shard_vars,
+      replica_grad_indices, shard_grad_indices):
+    r'''Packing grads and vars.
+    '''
+    indexed_grads_and_vars = []
+    for i, g in enumerate(shard_grads):
+      indexed_grads_and_vars.append(
+        (shard_grad_indices[i], (g, shard_vars[i])))
+    for i, g in enumerate(replica_grads):
+      indexed_grads_and_vars.append(
+        (replica_grad_indices[i], (g, replica_vars[i])))
+    _, grads_and_vars = zip(*sorted(indexed_grads_and_vars))
+    return grads_and_vars
+
+  def __call__(
+      self, replica_grads, shard_grads,
+      replica_vars, shard_vars,
+      replica_grad_indices, shard_grad_indices):
     r'''Aggregate gradients.
 
     Args:
@@ -214,7 +233,10 @@ class GradientAggregation(object):  # pylint: disable=useless-object-inheritance
       aggregated_shard_grads: Aggregated gradients sharded on devices.
     '''
     if not replica_grads:
-      return [], self._reduce(shard_grads)
+      return self._pack_grads_and_vars(
+        [], self._reduce(shard_grads),
+        replica_vars, shard_vars,
+        replica_grad_indices, shard_grad_indices)
 
     replica_grads = [ops.convert_to_tensor(v) for v in replica_grads]
     self._log(replica_grads, 'Aggregate gradients')
@@ -222,7 +244,9 @@ class GradientAggregation(object):  # pylint: disable=useless-object-inheritance
     if len(replica_grads) == 1:
       aggregated = CommunicatorPool.get().call(
         self._allreduce, replica_grads[0], trainable=False)
-      return self._reduce([aggregated]), self._reduce(shard_grads)
+      return self._pack_grads_and_vars(
+        self._reduce([aggregated]), self._reduce(shard_grads),
+        replica_vars, shard_vars, replica_grad_indices, shard_grad_indices)
 
     # Bucketize gradients.
     buckets = self._bucketize(replica_grads)
@@ -252,4 +276,6 @@ class GradientAggregation(object):  # pylint: disable=useless-object-inheritance
 
     # Unbucketize gradients.
     aggregated_grads = [g for bucket in bucket_grads for g in bucket]
-    return self._reduce(aggregated_grads), self._reduce(shard_grads)
+    return self._pack_grads_and_vars(
+      self._reduce(aggregated_grads), self._reduce(shard_grads),
+      replica_vars, shard_vars, replica_grad_indices, shard_grad_indices)

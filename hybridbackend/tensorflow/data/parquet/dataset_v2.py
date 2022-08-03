@@ -32,8 +32,8 @@ from tensorflow.python.util import nest
 
 from hybridbackend.tensorflow.common import oplib as _ops
 from hybridbackend.tensorflow.data.dataframe import DataFrame
-from hybridbackend.tensorflow.data.parquet.parquet_lib import parquet_fields
-from hybridbackend.tensorflow.data.parquet.parquet_lib import \
+from hybridbackend.tensorflow.data.parquet.schema import parquet_fields
+from hybridbackend.tensorflow.data.parquet.schema import \
   parquet_filenames_and_fields
 
 

@@ -1,0 +1,106 @@
+#!/usr/bin/env python
+
+# Copyright 2021 Alibaba Group Holding Limited. All Rights Reserved.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+# =============================================================================
+
+r'''Configure Makefile.
+'''
+
+from __future__ import absolute_import
+from __future__ import division
+from __future__ import print_function
+
+import argparse
+import os
+
+
+def main(args):
+  r'''Create .config.mk
+  '''
+  make_macros = {}
+  if args.cuda is not None:
+    make_macros['HYBRIDBACKEND_WITH_CUDA'] = args.cuda
+  if args.cuda_gencode is not None:
+    make_macros['HYBRIDBACKEND_WITH_CUDA_GENCODE'] = ' '.join(args.cuda_gencode)
+  if args.nvtx is not None:
+    make_macros['HYBRIDBACKEND_WITH_NVTX'] = args.nvtx
+  if args.arrow is not None:
+    make_macros['HYBRIDBACKEND_WITH_ARROW'] = args.arrow
+  if args.arrow_zerocopy is not None:
+    make_macros['HYBRIDBACKEND_WITH_ARROW_ZEROCOPY'] = args.arrow_zerocopy
+  if args.arrow_hdfs is not None:
+    make_macros['HYBRIDBACKEND_WITH_ARROW_HDFS'] = args.arrow_hdfs
+  if args.arrow_s3 is not None:
+    make_macros['HYBRIDBACKEND_WITH_ARROW_S3'] = args.arrow_s3
+  if args.cxx11_abi is not None:
+    make_macros['HYBRIDBACKEND_USE_CXX11_ABI'] = args.cxx11_abi
+  if args.buildinfo is not None:
+    make_macros['HYBRIDBACKEND_WITH_BUILDINFO'] = args.buildinfo
+  with open('.config.mk', 'w', encoding='utf8') as f:
+    for k in make_macros:
+      f.write(f'{k} := {make_macros[k]}\n')
+
+
+if __name__ == '__main__':
+  os.environ['CUDA_VISIBLE_DEVICES'] = ''
+  parser = argparse.ArgumentParser()
+  parser.add_argument(
+    '--cuda',
+    default=None,
+    choices=('ON', 'OFF'),
+    help='Build with CUDA')
+  parser.add_argument(
+    '--cuda-gencode',
+    default=None,
+    nargs='+',
+    choices=('70', '75', '80', '86'),
+    help='Build with CUDA of specific compute cpabilities')
+  parser.add_argument(
+    '--nvtx',
+    default=None,
+    choices=('ON', 'OFF'),
+    help='Build with NVTX, which improves debuability in Nsight Systems')
+  parser.add_argument(
+    '--arrow',
+    default=None,
+    choices=('ON', 'OFF'),
+    help='Build with Arrow, which allows fast columnar data access')
+  parser.add_argument(
+    '--arrow-zerocopy',
+    default=None,
+    choices=('ON', 'OFF'),
+    help='Build with Arrow, and underlying TensorFlow supports zero-copy')
+  parser.add_argument(
+    '--arrow-hdfs',
+    default=None,
+    choices=('ON', 'OFF'),
+    help='Build with Arrow, and allows HDFS access')
+  parser.add_argument(
+    '--arrow-s3',
+    default=None,
+    choices=('ON', 'OFF'),
+    help='Build with Arrow, and allows S3/OSS access')
+  parser.add_argument(
+    '--cxx11-abi',
+    type=int,
+    default=None,
+    choices=(0, 1),
+    help='Use C++11 ABI or not')
+  parser.add_argument(
+    '--buildinfo',
+    default=None,
+    choices=('ON', 'OFF'),
+    help='Provide build information by `hb.buildinfo()`')
+  main(parser.parse_args())
