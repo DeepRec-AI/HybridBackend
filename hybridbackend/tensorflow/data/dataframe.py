@@ -163,6 +163,16 @@ class DataFrame(object):  # pylint: disable=useless-object-inheritance
     def __repr__(self):
       return f'{{{self.values}, splits={self.nested_row_splits}}}'
 
+    def to_list(self):
+      result = self.values.tolist()
+      for rank in reversed(range(len(self.nested_row_splits))):
+        row_splits = self.nested_row_splits[rank]
+        result = [
+          result[row_splits[i]:row_splits[i + 1]]
+          for i in range(len(row_splits) - 1)
+        ]
+      return result
+
     def to_sparse(self, name=None):
       if len(self.nested_row_splits) == 0:
         return self.values
