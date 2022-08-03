@@ -545,11 +545,22 @@ def _test_shared_embedding_column(_, lr):
 
 @unittest.skipUnless(
   os.getenv('HYBRIDBACKEND_WITH_CUDA') == 'ON', 'GPU required')
+@unittest.skipUnless(
+  os.getenv('HYBRIDBACKEND_WITH_NCCL') == 'ON', 'NCCL required')
+@unittest.skipUnless(
+  os.getenv('HYBRIDBACKEND_WITH_TENSORFLOW_ESTIMATOR') != 'OFF',
+  'TF Estimator required')
 class DenseFeaturesTest(unittest.TestCase):
   '''Tests for embedding columns.
   '''
   def setUp(self):  # pylint: disable=invalid-name
     os.environ['CUDA_VISIBLE_DEVICES'] = '0,1'
+    os.environ['TF_CPP_VMODULE'] = (
+      'optimize_embedding_ops=2,'
+      'replacing=2,'
+      'horizontal_fusion=2,'
+      'pruning=2,'
+      'relocation=2')
 
   def test_get_dense_tensor(self):
     results = hbtest.Spawn()(_test_get_dense_tensor)

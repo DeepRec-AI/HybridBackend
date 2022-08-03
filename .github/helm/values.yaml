@@ -1,0 +1,5 @@
+image: registry.cn-shanghai.aliyuncs.com/pai-dlc/hybridbackend:developer-tf1.15-py3.8-cu114-ubuntu20.04
+port: 20000
+gpus: 2
+caps: ["SYS_ADMIN", "SYS_PTRACE"]
+build: ""

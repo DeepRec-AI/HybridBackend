@@ -21,9 +21,9 @@ HybridBackend provides following features:
 
 - Memory-efficient loading of categorical data
 
-- Communication-efficient training and evaluation at scale
-
 - GPU-efficient orchestration of embedding layers
+
+- Communication-efficient training and evaluation at scale
 
 - Easy to use with existing AI workflows
 

@@ -1,0 +1,51 @@
+apiVersion: kubeflow.org/v1
+kind: TFJob
+metadata:
+  name: {{ .Release.Name }}
+spec:
+  tfReplicaSpecs:
+    Chief:
+      replicas: 1
+      restartPolicy: Never
+      template:
+        spec:
+          hostIPC: true
+          hostPID: true
+          containers:
+          - name: tensorflow
+            image: {{ .Values.image }}
+            imagePullPolicy: Always
+            resources:
+              requests:
+                nvidia.com/gpu: {{ .Values.gpus }}
+              limits:
+                nvidia.com/gpu: {{ .Values.gpus }}
+            securityContext:
+              capabilities:
+                add:
+                  {{- range .Values.caps }}
+                  - {{ . }}
+                  {{- end }}
+            args:
+            - bash
+            - -c
+            - tail -f /dev/null
+            workingDir: /workspace
+            env:
+            - name: PYTHONPATH
+              value: "$PYTHONPATH:/workspace"
+            - name: MALLOC_CONF
+              value: "background_thread:true,metadata_thp:auto"
+            - name: ARROW_NUM_THREADS
+              value: "8"
+            - name: S3_ADDRESSING_STYLE
+              value: "virtual"
+            - name: HYBRIDBACKEND_WHEEL_BUILD
+              value: "{{ .Values.build }}"
+            ports:
+            - containerPort: {{ .Values.port }}
+              name: tfjob-port
+            {{- range untilStep (int (add .Values.port 1)) (int (add .Values.port (add .Values.gpus 1))) 1}}
+            - containerPort: {{ . }}
+              name: {{ $portName := (printf "gpu-port-%d" .) }}{{ $portName }}
+            {{- end }}

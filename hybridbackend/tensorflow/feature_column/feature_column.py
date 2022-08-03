@@ -34,6 +34,7 @@ from tensorflow.python.ops import check_ops
 from hybridbackend.tensorflow.embedding.backend import EmbeddingBackend
 from hybridbackend.tensorflow.embedding.lookup import EmbeddingLookup
 from hybridbackend.tensorflow.framework.context import Context
+from hybridbackend.tensorflow.framework.context import context_scope
 from hybridbackend.tensorflow.framework.ops import GraphKeys
 
 
@@ -144,10 +145,10 @@ class StateManagerImpl(fc._StateManagerImpl):  # pylint: disable=protected-acces
 
     impl = EmbeddingBackend.get()
     collections = [ops.GraphKeys.GLOBAL_VARIABLES]
-    if impl.sharded(feature_column):
+    if impl.sharded(feature_column.categorical_column.name):
       collections.append(GraphKeys.SHARDED_VARIABLES)
     var = impl.build(
-      feature_column,
+      feature_column.categorical_column.name,
       name,
       shape,
       dtype=dtype,
@@ -200,7 +201,7 @@ class EmbeddingColumn(fc.EmbeddingColumn):
       **kwargs)
     # pylint: disable=protected-access
     self._impl = EmbeddingBackend.get()
-    self._lookup_sparse = EmbeddingLookup(self)
+    self._lookup_sparse = EmbeddingLookup()
     # pylint: enable=protected-access
     return self
 
@@ -210,14 +211,20 @@ class EmbeddingColumn(fc.EmbeddingColumn):
     '''
     if self.ckpt_to_load_from is not None:
       self._impl.init_from_checkpoint(
-        self,
+        self.categorical_column.name,
         self.ckpt_to_load_from,
         self.tensor_name_in_ckpt,
         embedding_weights)
 
-    return self._lookup_sparse(
-      embedding_weights, sparse_tensors,
-      name=f'{self.name}_lookup')
+    with context_scope(
+        emb_dimension=self.dimension,
+        emb_combiner=self.combiner,
+        emb_num_buckets=self.num_buckets):
+      return self._lookup_sparse(
+        self.categorical_column.name,
+        embedding_weights,
+        sparse_tensors,
+        name=f'{self.name}_lookup')
 
   def _get_dense_tensor_internal(self, sparse_tensors, state_manager):
     r'''Private method that follows the signature of get_dense_tensor.
@@ -225,6 +232,14 @@ class EmbeddingColumn(fc.EmbeddingColumn):
     embedding_weights = self.get_state(state_manager)
     return self._get_dense_tensor_internal_helper(sparse_tensors,
                                                   embedding_weights)
+
+  @property
+  def num_buckets(self):
+    r'''Number of buckets.
+    '''
+    return getattr(
+      self.categorical_column, 'num_buckets',
+      getattr(self.categorical_column, '_num_buckets', None))
 
   def get_dense_tensor(self, transformation_cache, state_manager):
     r'''Returns tensor after doing the embedding lookup.
@@ -246,21 +261,20 @@ class EmbeddingColumn(fc.EmbeddingColumn):
   def get_state(self, state_manager):
     r'''Get or create embedding weights.
     '''
-    return state_manager.get_variable(self, self._impl.weight_name(self))
+    return state_manager.get_variable(
+      self, self._impl.weight_name(self.categorical_column.name))
 
   def create_state(self, state_manager):
     r'''Uses the `state_manager` to create state for the FeatureColumn.
     '''
-    num_buckets = getattr(self.categorical_column, 'num_buckets',
-                          self.categorical_column._num_buckets)  # pylint: disable=protected-access
-    embedding_shape = (num_buckets, self.dimension)
-    embedding_name = self._impl.weight_name(self)
-    with ops.device(self._impl.device(self)):
+    embedding_shape = (self.num_buckets, self.dimension)
+    embedding_name = self._impl.weight_name(self.categorical_column.name)
+    with ops.device(self._impl.device(self.categorical_column.name)):
       return state_manager.create_variable(
         self,
         name=embedding_name,
         shape=embedding_shape,
-        dtype=self._impl.dtype(self),
+        dtype=self._impl.dtype(self.categorical_column.name),
         trainable=self.trainable,
         use_resource=True,
         initializer=self.initializer)
@@ -308,7 +322,7 @@ class SharedEmbeddingColumn(fc_old._SharedEmbeddingColumn, fc.DenseColumn):  # p
       **kwargs)
     # pylint: disable=protected-access
     self._impl = EmbeddingBackend.get()
-    self._lookup_sparse = EmbeddingLookup(self)
+    self._lookup_sparse = EmbeddingLookup()
     # pylint: enable=protected-access
     return self
 
@@ -318,14 +332,20 @@ class SharedEmbeddingColumn(fc_old._SharedEmbeddingColumn, fc.DenseColumn):  # p
     '''
     if self.ckpt_to_load_from is not None:
       self._impl.init_from_checkpoint(
-        self,
+        self.categorical_column.name,
         self.ckpt_to_load_from,
         self.tensor_name_in_ckpt,
         embedding_weights)
 
-    return self._lookup_sparse(
-      embedding_weights, sparse_tensors,
-      name=f'{self.name}_lookup')
+    with context_scope(
+        emb_dimension=self.dimension,
+        emb_combiner=self.combiner,
+        emb_num_buckets=self.num_buckets):
+      return self._lookup_sparse(
+        self.categorical_column.name,
+        embedding_weights,
+        sparse_tensors,
+        name=f'{self.name}_lookup')
 
   def _get_dense_tensor_internal(self, sparse_tensors, state_manager):
     r'''Private method that follows the signature of get_dense_tensor.
@@ -340,6 +360,14 @@ class SharedEmbeddingColumn(fc_old._SharedEmbeddingColumn, fc.DenseColumn):  # p
     sparse_tensors = _get_sparse_tensors(
       self.categorical_column, transformation_cache, state_manager)
     return self._get_dense_tensor_internal(sparse_tensors, state_manager)
+
+  @property
+  def num_buckets(self):
+    r'''Number of buckets.
+    '''
+    return getattr(
+      self.categorical_column, 'num_buckets',
+      getattr(self.categorical_column, '_num_buckets', None))
 
   @property
   def variable_shape(self):
@@ -389,16 +417,14 @@ class SharedEmbeddingColumn(fc_old._SharedEmbeddingColumn, fc.DenseColumn):  # p
           'under the hood.')
       return shared_embedding_collection[0]
 
-    num_buckets = getattr(self.categorical_column, 'num_buckets',
-                          self.categorical_column._num_buckets)  # pylint: disable=protected-access
-    embedding_shape = (num_buckets, self.dimension)
-    embedding_name = self._impl.weight_name(self)
-    with ops.device(self._impl.device(self)):
+    embedding_shape = (self.num_buckets, self.dimension)
+    embedding_name = self._impl.weight_name(self.categorical_column.name)
+    with ops.device(self._impl.device(self.categorical_column.name)):
       embedding_weights = state_manager.create_variable(
         self,
         name=embedding_name,
         shape=embedding_shape,
-        dtype=self._impl.dtype(self),
+        dtype=self._impl.dtype(self.categorical_column.name),
         trainable=self.trainable,
         use_resource=True,
         initializer=self.initializer)

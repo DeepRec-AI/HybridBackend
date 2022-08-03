@@ -79,6 +79,8 @@ def _test_distributed(rank):
 
 @unittest.skipUnless(
   os.getenv('HYBRIDBACKEND_WITH_CUDA') == 'ON', 'GPU required')
+@unittest.skipUnless(
+  os.getenv('HYBRIDBACKEND_WITH_NCCL') == 'ON', 'NCCL required')
 class DetectEndTest(unittest.TestCase):
   r'''Tests for the out-of-range sync.
   '''

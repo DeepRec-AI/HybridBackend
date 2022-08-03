@@ -13,7 +13,7 @@
 # limitations under the License.
 # =============================================================================
 
-r'''Embedding benchmark.
+r'''Recmendation model training benchmark using DenseFeatures.
 '''
 
 from __future__ import absolute_import

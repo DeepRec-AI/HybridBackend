@@ -23,7 +23,6 @@ from __future__ import print_function
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gen_resource_variable_ops
-from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import state_ops
 from tensorflow.python.ops import variables
@@ -31,7 +30,6 @@ from tensorflow.python.training import distribution_strategy_context
 from tensorflow.python.training import session_run_hook
 
 from hybridbackend.tensorflow.distribute.communicator_lib import PubSub
-from hybridbackend.tensorflow.embedding.scope import embedding_scope
 from hybridbackend.tensorflow.framework.context import Context
 from hybridbackend.tensorflow.framework.ops import GraphKeys
 from hybridbackend.tensorflow.training.optimizer_lib import GradientAggregation
@@ -136,58 +134,15 @@ def wraps_optimizer(
           replica_grad_indices.append(i)
           replica_grads.append(gv[0])
           self._replica_vars.append(gv[1])
-      aggregate = GradientAggregation(self._ctx.devices, num_buckets)
-      cross_replica_grads, shard_grads = aggregate(replica_grads, shard_grads)
-
-      indexed_grads_and_vars = []
-      for i, g in enumerate(shard_grads):
-        indexed_grads_and_vars.append(
-          (shard_grad_indices[i], (g, self._shard_vars[i])))
-      for i, g in enumerate(cross_replica_grads):
-        indexed_grads_and_vars.append(
-          (replica_grad_indices[i], (g, self._replica_vars[i])))
-      _, grads_and_vars = zip(*sorted(indexed_grads_and_vars))
       self._ctx.add_training_hook(
         HybridBackendOptimizerHook(
           self._replica_vars,
           self._shard_vars,
           self._ctx.devices,
           self._ctx.current_device()))
-      return grads_and_vars
-
-    def _resource_apply_sparse_duplicate_indices(self, grad, handle, indices):
-      r'''See base class.
-      '''
-      with ops.colocate_with(grad, ignore_existing=True):
-        unique_indices, new_index_positions = array_ops.unique(indices)
-        summed_grad = math_ops.unsorted_segment_sum(
-          grad, new_index_positions,
-          array_ops.shape(unique_indices)[0])
-      try:
-        apply_op = self._resource_apply_sparse(
-          summed_grad, handle, unique_indices)
-      except NotImplementedError:
-        apply_op = super()._resource_apply_sparse_duplicate_indices(  # pylint: disable=protected-access
-          grad, handle, indices)
-      return apply_op
-
-    def _apply_sparse_duplicate_indices(self, grad, var):
-      r'''See base class.
-      '''
-      with ops.colocate_with(grad, ignore_existing=True):
-        unique_indices, new_index_positions = array_ops.unique(grad.indices)
-        summed_values = math_ops.unsorted_segment_sum(
-          grad.values, new_index_positions,
-          array_ops.shape(unique_indices)[0])
-        gradient_no_duplicate_indices = ops.IndexedSlices(
-          indices=unique_indices,
-          values=summed_values,
-          dense_shape=grad.dense_shape)
-      try:
-        apply_op = self._apply_sparse(gradient_no_duplicate_indices, var)
-      except NotImplementedError:
-        apply_op = super()._apply_sparse_duplicate_indices(grad, var)  # pylint: disable=protected-access
-      return apply_op
+      return GradientAggregation(self._ctx.devices, num_buckets)(
+        replica_grads, shard_grads, self._replica_vars, self._shard_vars,
+        replica_grad_indices, shard_grad_indices)
 
     def compute_gradients(self, *args, **kwargs):
       r'''Compute gradients of "loss" for the variables in "var_list".
@@ -236,8 +191,7 @@ def wraps_optimizer(
       if aggregation != 'compute_gradients':
         grads_and_vars = self._aggregate_gradients(grads_and_vars)
       _, self._variables = zip(*grads_and_vars)
-      with embedding_scope(fused=Context.get().options.grad_apply_fusion):
-        return super().apply_gradients(grads_and_vars, global_step, name=name)
+      return super().apply_gradients(grads_and_vars, global_step, name=name)
 
     def make_session_run_hook(self):
       r'''Creates a hook to handle hook ops such as initialization.

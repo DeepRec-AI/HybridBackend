@@ -1,0 +1,55 @@
+#!/bin/bash
+# Copyright 2021 Alibaba Group Holding Limited. All Rights Reserved.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+# =============================================================================
+
+set -eo pipefail
+
+if [[ -z "${PYTHON}" ]]; then
+    export PYTHON=$(which python)
+fi
+
+echo "Lint Python files..."
+
+PYSOURCES="$@"
+if [[ -z "$PYSOURCES" ]]; then
+    PYSOURCES=$(find \( -path ./env -o -path ./build -o -path ./dist \) -prune -false -o -type f -name '*.py')
+fi
+if [[ ! -z ${PYSOURCES} ]]; then
+    PYLINTHOME=$(pwd)/.pylint.d \
+    $PYTHON -m pylint \
+    --load-plugins pylint_quotes \
+    --rcfile=.pylintrc \
+    --jobs=32 \
+    ${PYSOURCES}
+    $PYTHON -m pycodestyle \
+    --config=.pycodestylerc \
+    --format=pylint \
+    --indent-size=2 \
+    --statistics \
+    ${PYSOURCES}
+    isort --resolve-all-configs . --check
+fi
+
+echo "Lint C/C++ files..."
+
+HEADERS=$(find \( -path ./env -o -path ./build -o -path ./dist \) -prune -false -o -type f -name '*.h')
+SOURCES=$(find \( -path ./env -o -path ./build -o -path ./dist \) -prune -false -o -type f -name '*.cc')
+
+if [[ ! -z ${HEADERS} ]] || [[ ! -z ${SOURCES} ]]; then
+    replacements=$(clang-format -style=file -output-replacements-xml ${HEADERS} ${SOURCES})
+    num_replacements=$(echo $replacements | grep -c '<replacement ') || true
+    echo "Found $num_replacements clang-format lint errors."
+    exit $num_replacements
+fi

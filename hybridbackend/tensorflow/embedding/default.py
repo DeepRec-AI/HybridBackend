@@ -78,13 +78,11 @@ class EmbeddingBackendDefault(EmbeddingBackend):
     r'''Creates the embedding lookup weight.
     '''
     del use_resource
-    num_buckets_max = Context.get().options.emb_num_buckets_max[
-      column.categorical_column.name]
+    num_buckets_max = Context.get().options.emb_num_buckets_max[column]
     num_buckets, dim = shape
     if num_buckets is None or num_buckets >= num_buckets_max:
       raise ValueError(
-        f'num_buckets of categorical_column {column.categorical_column.name} '
-        'must be set explicitly')
+        f'num_buckets of column {column} must be set explicitly')
     if self.sharded(column):
       shard = Context.get().rank
       num_shards = Context.get().world_size
@@ -112,8 +110,6 @@ class EmbeddingBackendDefault(EmbeddingBackend):
         getter=self._get_variable,
         collections=collections)
     if self.sharded(column):
-      num_buckets = getattr(column.categorical_column, 'num_buckets',
-                            column.categorical_column._num_buckets)  # pylint: disable=protected-access
       num_shards = Context.get().world_size
       shard = Context.get().rank
       bucket_offset = (num_buckets // num_shards) * shard
@@ -127,7 +123,7 @@ class EmbeddingBackendDefault(EmbeddingBackend):
         var._set_save_slice_info(  # pylint: disable=protected-access
           variables.Variable.SaveSliceInfo(
             full_name=full_name,
-            full_shape=[num_buckets, self.dimension(column)],
+            full_shape=[num_buckets, dim],
             var_offset=[bucket_offset, 0],
             var_shape=shape))
       elif isinstance(var, variables.PartitionedVariable):
@@ -136,7 +132,7 @@ class EmbeddingBackendDefault(EmbeddingBackend):
           pvar._set_save_slice_info(  # pylint: disable=protected-access
             variables.Variable.SaveSliceInfo(
               full_name=full_name,
-              full_shape=[num_buckets, self.dimension(column)],
+              full_shape=[num_buckets, dim],
               var_offset=[bucket_offset + poffset[0], poffset[1]],
               var_shape=pvar.shape))
       else:

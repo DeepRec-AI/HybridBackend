@@ -20,10 +20,6 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from tensorflow.python.feature_column.feature_column_v2 import embedding_column
-from tensorflow.python.feature_column.feature_column_v2 import \
-  shared_embedding_columns
-
 from hybridbackend.tensorflow.feature_column.dense_features import \
   DenseFeatures
 from hybridbackend.tensorflow.feature_column.feature_column import \

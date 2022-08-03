@@ -26,7 +26,6 @@ from tensorflow.python.data.ops import iterator_ops
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import math_ops
-from tensorflow.python.saved_model.model_utils import mode_keys
 from tensorflow.python.training import session_run_hook
 
 from hybridbackend.tensorflow.detect_end.dataset import DetectEndDataset
@@ -34,6 +33,7 @@ from hybridbackend.tensorflow.distribute.communicator import CollectiveOps
 from hybridbackend.tensorflow.distribute.communicator_lib import \
   CommunicatorPool
 from hybridbackend.tensorflow.framework.context import Context
+from hybridbackend.tensorflow.framework.ops import ModeKeys
 
 
 class DetectEndHook(session_run_hook.SessionRunHook):
@@ -103,17 +103,17 @@ def _add_detect_end_hook(end_marker, drop_remainder):
   r'''create and add detect_end_hooks.
   '''
   options = Context.get().options
-  if mode_keys.is_train(options.mode):
+  if options.mode == ModeKeys.TRAIN:
     Context.get().add_training_hook(
       DetectEndHook(
         drop_remainder=drop_remainder if drop_remainder is not None else True,
         end_marker=end_marker))
-  elif mode_keys.is_eval(options.mode):
+  elif options.mode == ModeKeys.EVAL:
     Context.get().add_evaluation_hook(
       DetectEndHook(
         drop_remainder=drop_remainder if drop_remainder is not None else False,
         end_marker=end_marker))
-  elif mode_keys.is_predict(options.mode):
+  elif options.mode == ModeKeys.PREDICT:
     Context.get().add_prediction_hook(
       DetectEndHook(
         drop_remainder=drop_remainder if drop_remainder is not None else False,
@@ -133,8 +133,7 @@ def _wraps_iterator(cls, drop_remainder):
       r'''Get next batch.
       '''
       options = Context.get().options
-      if (mode_keys.is_train(options.mode)
-          or mode_keys.is_eval(options.mode)):
+      if options.mode in (ModeKeys.TRAIN, ModeKeys.EVAL):
         end_marker, batch = super().get_next()
         _add_detect_end_hook(end_marker, drop_remainder)
         return batch
@@ -147,9 +146,7 @@ def raises_out_of_range(ds, drop_remainder):
   r'''Context manager that raises out-of-range error for sync training.
   '''
   options = Context.get().options
-  sync_end = (
-    mode_keys.is_train(options.mode)
-    or mode_keys.is_eval(options.mode))
+  sync_end = (options.mode in (ModeKeys.TRAIN, ModeKeys.EVAL))
   prev_iterator = None
   try:
     if sync_end:

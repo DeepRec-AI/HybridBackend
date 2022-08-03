@@ -26,24 +26,21 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gradients
 from tensorflow.python.platform import tf_logging as logging
 
-from hybridbackend.tensorflow.distribute.common.floormod_shuffle.ops import \
-  floormod_shuffle
-from hybridbackend.tensorflow.distribute.common.floormod_shuffle.ops import \
-  floormod_shuffle_n
 from hybridbackend.tensorflow.distribute.communicator_lib import \
   CommunicatorPool
 from hybridbackend.tensorflow.embedding.backend import EmbeddingBackend
 from hybridbackend.tensorflow.embedding.buffer_lib import EmbeddingBuffer
 from hybridbackend.tensorflow.embedding.math_lib import segment_reduce
-from hybridbackend.tensorflow.embedding.scope import embedding_scope
 from hybridbackend.tensorflow.framework.context import Context
+from hybridbackend.tensorflow.ops.floormod_shuffle.ops import floormod_shuffle
+from hybridbackend.tensorflow.ops.floormod_shuffle.ops import \
+  floormod_shuffle_n
 
 
 class EmbeddingLookup(object):  # pylint: disable=useless-object-inheritance
   r'''Functor to lookup embeddings.
   '''
-  def __init__(self, column):
-    self._column = column
+  def __init__(self):
     self._impl = EmbeddingBackend.get()
 
   def _exchange_ids(self, comm, inputs, inputs_deps):
@@ -52,29 +49,29 @@ class EmbeddingLookup(object):  # pylint: disable=useless-object-inheritance
     with ops.control_dependencies(inputs_deps):
       return comm.alltoallv(*inputs), None
 
-  def _exchange_embeddings(self, comm, inputs, inputs_deps):
+  def _exchange_embeddings(self, dimension):
     r'''Communicator call to exchange embeddings.
     '''
-    if inputs_deps is None:
-      embs, _ = comm.alltoallv(
-        *inputs,
-        common_shape=[self._impl.dimension(self._column)])
-      return embs, None
-    with ops.control_dependencies(inputs_deps):
-      embs, _ = comm.alltoallv(
-        *inputs,
-        common_shape=[self._impl.dimension(self._column)])
-
-    def grad_fn(grads, grads_deps, roots):
-      r'''Gradient function.
+    def _fn(comm, inputs, inputs_deps):
+      r'''Communicator call to exchange embeddings.
       '''
-      del roots
-      with ops.control_dependencies(grads_deps):
-        d_inputs = gradients.gradients(embs, inputs, grad_ys=grads)
-      return d_inputs, None
-    return embs, grad_fn
+      if inputs_deps is None:
+        embs, _ = comm.alltoallv(*inputs, common_shape=[dimension])
+        return embs, None
+      with ops.control_dependencies(inputs_deps):
+        embs, _ = comm.alltoallv(*inputs, common_shape=[dimension])
 
-  def __call__(self, weights, inputs, name=None):
+      def grad_fn(grads, grads_deps, roots):
+        r'''Gradient function.
+        '''
+        del roots
+        with ops.control_dependencies(grads_deps):
+          d_inputs = gradients.gradients(embs, inputs, grad_ys=grads)
+        return d_inputs, None
+      return embs, grad_fn
+    return _fn
+
+  def __call__(self, column, weights, inputs, name=None):
     r'''Lookup embedding results for sparse tensors.
     '''
     with ops.name_scope(name):
@@ -84,12 +81,12 @@ class EmbeddingLookup(object):  # pylint: disable=useless-object-inheritance
         ids = sparse_ids.values
       else:
         ids = sparse_ids
-      input_device = self._impl.input_device(self._column)
-      pad = self._impl.pad(self._column)
-      segment_rank = self._impl.segment_rank(self._column)
+      input_device = self._impl.input_device(column)
+      pad = self._impl.pad(column)
+      segment_rank = self._impl.segment_rank(column)
       with ops.device(input_device):
         ids = array_ops.reshape(ops.convert_to_tensor(ids), [-1])
-        if self._impl.unique(self._column):
+        if self._impl.unique(column):
           unique_index = None
           if not pad:
             logging.info('If unique is set to True, pad would be set to True')
@@ -99,7 +96,8 @@ class EmbeddingLookup(object):  # pylint: disable=useless-object-inheritance
         if segment_rank != 0 and not pad:
           logging.info('If segment rank is not 0, pad would be set to True')
           pad = True
-      if self._impl.sharded(self._column):
+      dimension = self._impl.dimension(column)
+      if self._impl.sharded(column):
         with ops.name_scope('shuffle_ids'):
           ids_shards, ids_sizes, partition_index = floormod_shuffle(
             ids, Context.get().world_size)
@@ -107,28 +105,28 @@ class EmbeddingLookup(object):  # pylint: disable=useless-object-inheritance
             self._exchange_ids, [ids_shards, ids_sizes],
             trainable=False)
           shard_ids, shard_unique_index = array_ops.unique(shard_ids)
-        with ops.device(self._impl.device(self._column)):
+        with ops.device(self._impl.device(column)):
           shard_embs = self._impl.lookup(
-            self._column, weights, shard_ids, sharded=True)
+            column, weights, shard_ids, sharded=True)
         with ops.name_scope('shuffle_embeddings'):
           if shard_unique_index is not None:
             shard_embs = array_ops.gather(
               shard_embs, shard_unique_index, name='restore_unique')
           embs_shards = CommunicatorPool.get().call(
-            self._exchange_embeddings, [shard_embs, embs_sizes])
+            self._exchange_embeddings(dimension), [shard_embs, embs_sizes])
           embeddings = array_ops.gather(
             embs_shards, partition_index, name='restore_shuffle')
       else:
-        with ops.device(self._impl.device(self._column)):
-          embeddings = self._impl.lookup(self._column, weights, ids)
+        with ops.device(self._impl.device(column)):
+          embeddings = self._impl.lookup(column, weights, ids)
       return segment_reduce(
         sparse_ids, embeddings,
         weights=sparse_weights,
         indices=unique_index,
-        dimension=self._impl.dimension(self._column),
+        dimension=dimension,
         pad=pad,
         segment_rank=segment_rank,
-        combiner=self._column.combiner)
+        combiner=self._impl.combiner(column))
 
 
 class EmbeddingLookupCoalesced(object):  # pylint: disable=useless-object-inheritance
@@ -202,7 +200,7 @@ class EmbeddingLookupCoalesced(object):  # pylint: disable=useless-object-inheri
     # Build buffers for embedding lookup.
     buffers = {}
     for c in columns:
-      buffers[c.name] = EmbeddingBuffer(c)
+      buffers[c] = EmbeddingBuffer(c)
 
     # Lookup embeddings in buckets.
     group_embeddings = []
@@ -214,7 +212,7 @@ class EmbeddingLookupCoalesced(object):  # pylint: disable=useless-object-inheri
         bucket_ids = []
         bucket_unique_index = []
         bucket_pad = []
-        with embedding_scope():
+        with ops.name_scope('unique_ids'):
           for idx, c in enumerate(bucket_columns):
             inputs = group_inputs[bidx[bid]: bidx[bid + 1]][idx]
             sparse_ids = inputs.id_tensor
@@ -252,11 +250,11 @@ class EmbeddingLookupCoalesced(object):  # pylint: disable=useless-object-inheri
 
         bucket_weights = group_weights[bidx[bid]: bidx[bid + 1]]
         bucket_shard_embs = []
-        with embedding_scope():
+        with ops.name_scope('unique_embs'):
           for idx, c in enumerate(bucket_columns):
             shard_ids = bucket_shard_ids[idx]
             shard_ids, shard_unique_index = array_ops.unique(shard_ids)
-            shard_embs = buffers[c.name](bucket_weights[idx], shard_ids)
+            shard_embs = buffers[c](bucket_weights[idx], shard_ids)
             if shard_unique_index is not None:
               shard_embs = array_ops.gather(
                 shard_embs, shard_unique_index, name='restore_unique')
@@ -273,7 +271,7 @@ class EmbeddingLookupCoalesced(object):  # pylint: disable=useless-object-inheri
           self._exchange_group_embeddings(list(wire_dtypes)[0], common_shapes),
           bucket_shard_embs + bucket_embs_sizes)
 
-        with embedding_scope():
+        with ops.name_scope('segment_reduce'):
           for idx, c in enumerate(bucket_columns):
             embeddings = array_ops.gather(
               bucket_embs_shards[idx], bucket_partition_index[idx],
@@ -285,6 +283,6 @@ class EmbeddingLookupCoalesced(object):  # pylint: disable=useless-object-inheri
               dimension=self._impl.dimension(c),
               pad=bucket_pad[idx],
               segment_rank=self._impl.segment_rank(c),
-              combiner=c.combiner)
+              combiner=self._impl.combiner(c))
             group_embeddings.append(embeddings)
     return group_embeddings

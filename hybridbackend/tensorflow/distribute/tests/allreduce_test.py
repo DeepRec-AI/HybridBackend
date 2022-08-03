@@ -80,6 +80,8 @@ def _test_simple_allreduce_multicomm(rank, a, b, ncomms):
 
 @unittest.skipUnless(
   os.getenv('HYBRIDBACKEND_WITH_CUDA') == 'ON', 'GPU required')
+@unittest.skipUnless(
+  os.getenv('HYBRIDBACKEND_WITH_NCCL') == 'ON', 'NCCL required')
 class AllreduceTest(unittest.TestCase):
   def setUp(self):  # pylint: disable=invalid-name
     os.environ['CUDA_VISIBLE_DEVICES'] = '0,1'

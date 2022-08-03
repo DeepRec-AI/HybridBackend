@@ -2,7 +2,9 @@ LIBNAME := hybridbackend
 OS ?= $(shell uname -s)
 PROCESSOR_ARCHITECTURE ?= $(shell uname -p)
 
-HYBRIDBACKEND_WITH_BUILDINFO ?= ON
+HYBRIDBACKEND_CONFIG=$(wildcard .config.mk)
+include $(HYBRIDBACKEND_CONFIG)
+
 HYBRIDBACKEND_WITH_CUDA ?= ON
 HYBRIDBACKEND_WITH_CUDA_GENCODE ?= "70 75 80 86"
 HYBRIDBACKEND_WITH_NVTX ?= ON
@@ -13,6 +15,9 @@ HYBRIDBACKEND_WITH_ARROW_HDFS ?= ON
 HYBRIDBACKEND_WITH_ARROW_S3 ?= ON
 HYBRIDBACKEND_WITH_SPARSEHASH ?= ON
 HYBRIDBACKEND_WITH_TENSORFLOW ?= ON
+HYBRIDBACKEND_WITH_TENSORFLOW_ESTIMATOR ?= ON
+HYBRIDBACKEND_WITH_TENSORFLOW_HALF ?= ON
+HYBRIDBACKEND_WITH_BUILDINFO ?= ON
 HYBRIDBACKEND_USE_CXX11_ABI ?= 0
 HYBRIDBACKEND_DEBUG ?= OFF
 HYBRIDBACKEND_WHEEL_ALIAS ?= ""
@@ -82,7 +87,7 @@ endif
 
 ifeq ($(HYBRIDBACKEND_WITH_CUDA),ON)
 NVCC ?= nvcc
-CUDA_HOME ?= /usr/local/cuda
+CUDA_HOME ?= /usr/local
 HYBRIDBACKEND_CUDA_GENCODE := $(shell \
 	echo $(HYBRIDBACKEND_WITH_CUDA_GENCODE) | tr ' ' ',' \
 	2>/dev/null)
@@ -90,18 +95,20 @@ HYBRIDBACKEND_CUDA_CC := $(shell \
 	$(NVCC) --version | tail -1 | cut -d' ' -f2 \
 	2>/dev/null)
 CFLAGS := $(CFLAGS) \
-	-isystem $(CUDA_HOME)/include \
+	-isystem $(CUDA_HOME) \
+	-isystem $(CUDA_HOME)/cuda/include \
 	-DHYBRIDBACKEND_CUDA=1 \
 	-DHYBRIDBACKEND_CUDA_GENCODE="\"$(HYBRIDBACKEND_CUDA_GENCODE)\"" \
 	-DHYBRIDBACKEND_CUDA_CC="\"$(HYBRIDBACKEND_CUDA_CC)\""
 NVCC_CFLAGS := --std=c++11 \
+	-lineinfo \
 	--expt-relaxed-constexpr \
 	--expt-extended-lambda \
 	--disable-warnings \
 	$(foreach cc, $(HYBRIDBACKEND_WITH_CUDA_GENCODE),\
 	 -gencode arch=compute_$(cc),code=sm_$(cc))
 LDFLAGS := $(LDFLAGS) \
-	-L$(CUDA_HOME)/lib64 \
+	-L$(CUDA_HOME)/cuda/lib64 \
 	-lcudart
 ifeq ($(HYBRIDBACKEND_WITH_NVTX),ON)
 CFLAGS := $(CFLAGS) -DHYBRIDBACKEND_NVTX=1
@@ -125,7 +132,7 @@ endif
 
 ifneq ($(OS),Darwin)
 D_FILES := $(shell \
-    find \( -path ./cibuild -o -path ./build -o -path ./dist \) \
+    find \( -path ./env -o -path ./build -o -path ./dist \) \
 	-prune -false -o -type f -name '*.d' \
 	-exec realpath {} --relative-to . \;)
 
@@ -134,7 +141,7 @@ endif
 
 THIRDPARTY_DEPS :=
 ifeq ($(HYBRIDBACKEND_WITH_ARROW),ON)
-ARROW_HOME ?= cibuild/arrow/dist
+ARROW_HOME ?= env/arrow/dist
 ARROW_API_H := $(ARROW_HOME)/include/arrow/api.h
 THIRDPARTY_DEPS := $(THIRDPARTY_DEPS) $(ARROW_API_H)
 CFLAGS := $(CFLAGS) \
@@ -195,7 +202,7 @@ COMMON_LDFLAGS := $(COMMON_LDFLAGS) \
 endif
 
 ifeq ($(HYBRIDBACKEND_WITH_SPARSEHASH),ON)
-SPARSEHASH_HOME ?= cibuild/sparsehash/dist
+SPARSEHASH_HOME ?= env/sparsehash/dist
 SPARSEHASH_DENSE_HASH_MAP := $(SPARSEHASH_HOME)/include/sparsehash/dense_hash_map
 THIRDPARTY_DEPS := $(THIRDPARTY_DEPS) $(SPARSEHASH_DENSE_HASH_MAP)
 CFLAGS := $(CFLAGS) \
@@ -214,7 +221,10 @@ TENSORFLOW_LIB := $(LIBNAME)/tensorflow/lib$(LIBNAME)_tensorflow.so
 -include $(LIBNAME)/tensorflow/Makefile
 CORE_DEPS := $(CORE_DEPS) $(TENSORFLOW_LIB)
 CFLAGS := $(CFLAGS) \
-	-DHYBRIDBACKEND_TENSORFLOW=1
+	-DHYBRIDBACKEND_TENSORFLOW="$(TENSORFLOW_DISTRO)"
+ifeq ($(HYBRIDBACKEND_WITH_TENSORFLOW_HALF),ON)
+CFLAGS := $(CFLAGS) -DHYBRIDBACKEND_TENSORFLOW_HALF=1
+endif
 endif
 
 .PHONY: build
@@ -223,8 +233,13 @@ build: $(CORE_DEPS)
 	WHEEL_BUILD="$(HYBRIDBACKEND_WHEEL_BUILD)" \
 	WHEEL_REQUIRES="$(HYBRIDBACKEND_WHEEL_REQUIRES)" \
 	WHEEL_DEBUG="$(HYBRIDBACKEND_WHEEL_DEBUG)" \
-	$(PYTHON) setup.py bdist_wheel -d cibuild/dist
-	@ls cibuild/dist/*.whl
+	$(PYTHON) setup.py bdist_wheel -d env/dist
+	@ls env/dist/*.whl
+
+.PHONY: doc
+doc:
+	mkdir -p env/build
+	sphinx-build -M html docs/ env/build/doc
 
 TESTS := $(shell find hybridbackend/ -type f -name "*_test.py")
 
@@ -236,20 +251,9 @@ test:
 		echo ; \
 	done
 
-.PHONY: doc
-doc:
-	sphinx-build -M html docs/ cibuild/dist/doc
-
-.PHONY: lint
-lint:
-	cibuild/lint
-
-.PHONY: cibuild
-cibuild: lint build doc test
-
 .PHONY: clean
 clean:
-	rm -fr cibuild/dist/
+	rm -fr env/dist/
 	rm -fr build/
 	rm -fr *.egg-info/
 	rm -rf .pylint.d/

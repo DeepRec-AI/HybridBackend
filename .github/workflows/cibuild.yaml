@@ -24,27 +24,24 @@ jobs:
         cluster-id: "${{ secrets.ACK_CLUSTER_ID }}"
     - name: Upload
       run: |-
-        helm install ${JOBNAME}-cpu cibuild/ \
+        helm install ${JOBNAME}-cpu .github/helm/ \
         --set image=registry.cn-shanghai.aliyuncs.com/pai-dlc/hybridbackend:developer-tf1.15-py3.6-manylinux_2_24 \
+        --set build=rc${{ github.run_id }} \
         --set gpus=0 && \
-        cibuild/upload ${JOBNAME}-cpu-chief-0 ../cibuild
+        .github/helm/upload ${JOBNAME}-cpu-chief-0
     - name: Lint
       run: |-
-        kubectl exec -it ${JOBNAME}-cpu-chief-0 -- sh -c 'make lint'
+        kubectl exec -it ${JOBNAME}-cpu-chief-0 -- tools/lint
     - name: Build
       run: |-
-        kubectl exec -it ${JOBNAME}-cpu-chief-0 -- sh -c 'make -j32 HYBRIDBACKEND_WHEEL_ALIAS=-cpu-nightly HYBRIDBACKEND_WHEEL_BUILD=rc${{ github.run_id }}'
-    - name: Install
+        kubectl exec -it ${JOBNAME}-cpu-chief-0 -- tools/distbuild
+    - name: Check
       run: |-
-        kubectl exec -it ${JOBNAME}-cpu-chief-0 -- sh -c 'PYTHONPATH= pip install cibuild/dist/*.whl'
-    - name: Test
+        kubectl exec -it ${JOBNAME}-cpu-chief-0 -- tools/distcheck
+    - name: Download Reports
       run: |-
-        kubectl exec -it ${JOBNAME}-cpu-chief-0 -- sh -c \
-        'mkdir -p build/reports && PYTHONPATH= HB_TEST_LOGDIR=build/reports make test && tar -czf reports.tgz -C build/ reports'
-    - name: Download Test Results
-      run: |-
-        kubectl cp ${JOBNAME}-cpu-chief-0:reports.tgz ./reports.tgz --retries=3 && \
-        tar -xzf reports.tgz
+        kubectl cp ${JOBNAME}-cpu-chief-0:build/reports.tar.gz ./reports.tar.gz --retries=3 && \
+        tar -xzf reports.tar.gz
     - name: Upload Artifacts
       uses: actions/upload-artifact@v2
       with:
@@ -57,7 +54,7 @@ jobs:
   gpu-cibuild:
     name: "Run Tests on GPU"
     runs-on: ubuntu-latest
-    environment: tf1.15-py3.6-cu116-ubuntu18.04
+    environment: tf1.15-py3.8-cu114-ubuntu20.04
     if: always()
     steps:
     - name: Checkout Code
@@ -72,27 +69,24 @@ jobs:
         cluster-id: "${{ secrets.ACK_CLUSTER_ID }}"
     - name: Upload
       run: |-
-        helm install ${JOBNAME}-gpu cibuild/ \
-        --set image=registry.cn-shanghai.aliyuncs.com/pai-dlc/hybridbackend:developer-tf1.15-py3.6-cu116-ubuntu18.04 \
+        helm install ${JOBNAME}-gpu .github/helm/ \
+        --set image=registry.cn-shanghai.aliyuncs.com/pai-dlc/hybridbackend:developer-tf1.15-py3.8-cu114-ubuntu20.04 \
+        --set build=rc${{ github.run_id }} \
         --set gpus=2 && \
-        cibuild/upload ${JOBNAME}-gpu-chief-0 ../cibuild
+        .github/helm/upload ${JOBNAME}-gpu-chief-0
     - name: Lint
       run: |-
-        kubectl exec -it ${JOBNAME}-gpu-chief-0 -- sh -c 'make lint'
+        kubectl exec -it ${JOBNAME}-gpu-chief-0 -- tools/lint
     - name: Build
       run: |-
-        kubectl exec -it ${JOBNAME}-gpu-chief-0 -- sh -c 'make -j32 HYBRIDBACKEND_WHEEL_ALIAS=-nightly HYBRIDBACKEND_WHEEL_BUILD=rc${{ github.run_id }}'
-    - name: Install
+        kubectl exec -it ${JOBNAME}-gpu-chief-0 -- tools/distbuild
+    - name: Check
       run: |-
-        kubectl exec -it ${JOBNAME}-gpu-chief-0 -- sh -c 'PYTHONPATH= pip install cibuild/dist/*.whl'
-    - name: Test
+        kubectl exec -it ${JOBNAME}-gpu-chief-0 -- tools/distcheck
+    - name: Download Reports
       run: |-
-        kubectl exec -it ${JOBNAME}-gpu-chief-0 -- sh -c \
-        'mkdir -p build/reports && PYTHONPATH= HB_TEST_LOGDIR=build/reports make test && tar -czf reports.tgz -C build/ reports'
-    - name: Download Test Results
-      run: |-
-        kubectl cp ${JOBNAME}-gpu-chief-0:reports.tgz ./reports.tgz --retries=3 && \
-        tar -xzf reports.tgz
+        kubectl cp ${JOBNAME}-gpu-chief-0:build/reports.tar.gz ./reports.tar.gz --retries=3 && \
+        tar -xzf reports.tar.gz
     - name: Upload Artifacts
       uses: actions/upload-artifact@v2
       with:
@@ -121,24 +115,21 @@ jobs:
         cluster-id: "${{ secrets.ACK_CLUSTER_ID }}"
     - name: Upload
       run: |-
-        helm install ${JOBNAME}-deeprec cibuild/ \
+        helm install ${JOBNAME}-deeprec .github/helm/ \
         --set image=registry.cn-shanghai.aliyuncs.com/pai-dlc/hybridbackend:developer-deeprec-py3.6-cu114-ubuntu18.04 \
+        --set build=rc${{ github.run_id }} \
         --set gpus=2 && \
-        cibuild/upload ${JOBNAME}-deeprec-chief-0 ../cibuild
+        .github/helm/upload ${JOBNAME}-deeprec-chief-0
     - name: Build
       run: |-
-        kubectl exec -it ${JOBNAME}-deeprec-chief-0 -- sh -c 'make -j32 HYBRIDBACKEND_WHEEL_ALIAS=-deeprec HYBRIDBACKEND_WHEEL_BUILD=rc${{ github.run_id }}'
-    - name: Install
+        kubectl exec -it ${JOBNAME}-deeprec-chief-0 -- tools/distbuild
+    - name: Check
       run: |-
-        kubectl exec -it ${JOBNAME}-deeprec-chief-0 -- sh -c 'PYTHONPATH= pip install cibuild/dist/*.whl'
-    - name: Test
+        kubectl exec -it ${JOBNAME}-deeprec-chief-0 -- tools/distcheck
+    - name: Download Reports
       run: |-
-        kubectl exec -it ${JOBNAME}-deeprec-chief-0 -- sh -c \
-        'mkdir -p build/reports && PYTHONPATH= HB_TEST_LOGDIR=build/reports make test && tar -czf reports.tgz -C build/ reports'
-    - name: Download Test Results
-      run: |-
-        kubectl cp ${JOBNAME}-deeprec-chief-0:reports.tgz ./reports.tgz --retries=3 && \
-        tar -xzf reports.tgz
+        kubectl cp ${JOBNAME}-deeprec-chief-0:build/reports.tar.gz ./reports.tar.gz --retries=3 && \
+        tar -xzf reports.tar.gz
     - name: Upload Artifacts
       uses: actions/upload-artifact@v2
       with:

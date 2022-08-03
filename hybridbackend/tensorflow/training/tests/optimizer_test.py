@@ -104,6 +104,8 @@ def _test_adam_function(_, lr):
 
 @unittest.skipUnless(
   os.getenv('HYBRIDBACKEND_WITH_CUDA') == 'ON', 'GPU required')
+@unittest.skipUnless(
+  os.getenv('HYBRIDBACKEND_WITH_NCCL') == 'ON', 'NCCL required')
 class OptimizerTest(unittest.TestCase):
   r'''Tests for `wraps_optimizer`.
   '''

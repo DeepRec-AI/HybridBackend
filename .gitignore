@@ -13,3 +13,4 @@ cache/
 outputs/
 *_test.py.xml
 *_lib.c
+.config.mk

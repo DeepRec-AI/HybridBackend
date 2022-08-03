@@ -55,6 +55,11 @@ int EnvVarGetInt(const std::string& env_var, const int default_val) {
   return result;
 }
 
+bool EnvVarGetBool(const std::string& env_var, const bool default_val) {
+  const int r = EnvVarGetInt(env_var, default_val ? 1 : 0);
+  return r != 0;
+}
+
 namespace {
 size_t HttpWriteToString(void* ptr, size_t size, size_t nmemb, std::string* s) {
   s->append(static_cast<char*>(ptr), size * nmemb);

@@ -19,7 +19,7 @@ limitations under the License.
 #include <tensorflow/core/framework/partial_tensor_shape.h>
 #include <tensorflow/core/framework/tensor.h>
 
-#include "hybridbackend/tensorflow/data/common/dataset.h"
+#include "hybridbackend/tensorflow/common/dataset.h"
 
 namespace tensorflow {
 namespace hybridbackend {

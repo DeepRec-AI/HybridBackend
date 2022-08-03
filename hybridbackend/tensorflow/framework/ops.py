@@ -30,3 +30,11 @@ class GraphKeys(object):  # pylint: disable=useless-object-inheritance
   SHARDED_RESOURCES = 'sharded_resources'
   # Collection for resources or variables should not be replicated.
   NOT_REPLICATED = 'not_replicated'
+
+
+class ModeKeys(object):  # pylint: disable=useless-object-inheritance
+  r'''Keys to use for modes.
+  '''
+  TRAIN = 'train'
+  EVAL = 'eval'
+  PREDICT = 'infer'

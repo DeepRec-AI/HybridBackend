@@ -26,7 +26,11 @@ from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
-from tensorflow.python.ops import sort_ops
+
+try:
+  from tensorflow.python.ops import sort_ops
+except ImportError:
+  from tensorflow.contrib.framework.python.ops import sort_ops
 
 from hybridbackend.tensorflow.framework.context import Context
 

@@ -33,7 +33,6 @@ from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import variable_scope as vs
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import tf_logging as logging
-from tensorflow.python.saved_model.model_utils import mode_keys
 from tensorflow.python.summary import summary as core_summary
 from tensorflow.python.training import basic_session_run_hooks
 from tensorflow.python.training import moving_averages
@@ -43,6 +42,7 @@ from tensorflow.python.training import training_util
 
 from hybridbackend.tensorflow.framework.context import Context
 from hybridbackend.tensorflow.framework.context import context_scope
+from hybridbackend.tensorflow.framework.ops import ModeKeys
 from hybridbackend.tensorflow.training.variables import disable_variable_update
 from hybridbackend.tensorflow.training.variables import reuse_variables
 
@@ -104,11 +104,10 @@ class PatchTensorflowAPIForEval(object):  # pylint: disable=useless-object-inher
 def eval_scope():
   r'''Context manager that decorates for evaluation.
   '''
-  with context_scope(
-      mode=mode_keys.EstimatorModeKeys.EVAL) as ctx:
+  with context_scope(mode=ModeKeys.EVAL) as ctx:
     with reuse_variables(vs.AUTO_REUSE):
-      with PatchTensorflowAPIForEval(mode_keys.EstimatorModeKeys.EVAL):
-        with ops.name_scope(mode_keys.EstimatorModeKeys.EVAL):
+      with PatchTensorflowAPIForEval(ModeKeys.EVAL):
+        with ops.name_scope(ModeKeys.EVAL):
           yield ctx
 
 

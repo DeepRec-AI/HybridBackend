@@ -37,7 +37,11 @@ from tensorflow.python.ops import variable_scope as vs
 from tensorflow.python.training import saver
 from tensorflow.python.training import training
 from tensorflow.python.util import deprecation
-from tensorflow.python.util import module_wrapper
+
+try:
+  from tensorflow.python.util import module_wrapper
+except ImportError:
+  module_wrapper = None
 
 from hybridbackend.tensorflow.framework.context import Context
 from hybridbackend.tensorflow.framework.context import context_scope
@@ -143,11 +147,14 @@ def scope(**kwargs):
 
   with context_scope(**kwargs) as ctx, ops.device(device_function):
     with PatchTensorflowAPI():
-      with deprecation.silence():
-        prev_warning_limit = module_wrapper._PER_MODULE_WARNING_LIMIT  # pylint: disable=protected-access
-        module_wrapper._PER_MODULE_WARNING_LIMIT = 0  # pylint: disable=protected-access
+      if module_wrapper is not None:
+        with deprecation.silence():
+          prev_warning_limit = module_wrapper._PER_MODULE_WARNING_LIMIT  # pylint: disable=protected-access
+          module_wrapper._PER_MODULE_WARNING_LIMIT = 0  # pylint: disable=protected-access
+          yield ctx
+          module_wrapper._PER_MODULE_WARNING_LIMIT = prev_warning_limit  # pylint: disable=protected-access
+      else:
         yield ctx
-        module_wrapper._PER_MODULE_WARNING_LIMIT = prev_warning_limit  # pylint: disable=protected-access
 
 
 def function(**params):

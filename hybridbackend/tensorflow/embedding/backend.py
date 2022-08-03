@@ -22,17 +22,15 @@ from __future__ import print_function
 
 import abc
 
-from tensorflow.python.saved_model.model_utils import mode_keys
-
 from hybridbackend.tensorflow.framework.context import Context
+from hybridbackend.tensorflow.framework.ops import ModeKeys
 
 
 class EmbeddingBackend(object):  # pylint: disable=useless-object-inheritance
-  r'''Backend for embedding columns.
+  r'''Embedding lookup backend.
 
-  An embedding backend manages underlying storage for embedding columns. Data
-  scientists can extend this class for customized implementation of embedding
-  weights.
+  An embedding backend manages underlying storage for embedding lookups. Data
+  scientists can extend this class for customized embedding layers.
   '''
   _registry = {}
 
@@ -72,7 +70,7 @@ class EmbeddingBackend(object):  # pylint: disable=useless-object-inheritance
     r'''Creates the embedding lookup weight.
 
     Args:
-      column: An `EmbeddingColumn` for building weight.
+      column: Name of the input column.
       name: Name of the embedding weights.
       shape: Shape of the embedding weights.
       dtype: (Optional.) Data type of the embedding weights.
@@ -92,11 +90,11 @@ class EmbeddingBackend(object):  # pylint: disable=useless-object-inheritance
     r'''Replaces initializers of embedding weights to load from checkpoints.
 
     Args:
-      column: An `EmbeddingColumn`.
+      column: Name of the input column.
       ckpt_dir_or_file: Directory with checkpoints file or path to checkpoint
         or checkpoint file path.
       tensor_name_in_ckpt: Name of the `Tensor` in `ckpt_dir_or_file` from
-        which  to restore the column weights. Required if `ckpt_to_load_from`
+        which  to restore the embedding weights. Required if `ckpt_to_load_from`
         is not `None`.
       to_restore: `Tensor` to restore.
     '''
@@ -106,7 +104,7 @@ class EmbeddingBackend(object):  # pylint: disable=useless-object-inheritance
     r'''Lookup for embedding vectors.
 
     Args:
-      column: An `EmbeddingColumn`.
+      column: Name of the input column.
       weight: Embedding weight.
       inputs: Inputs for embedding lookup.
       sharded: If True inputs are sharded.
@@ -121,49 +119,55 @@ class EmbeddingBackend(object):  # pylint: disable=useless-object-inheritance
     r'''Update embedding weight.
 
     Args:
-      column: An `EmbeddingColumn`.
+      column: Name of the input column.
       weight: Embedding weight.
       indexed_updates: An `IndexedSlices` to update weight in specific indices.
     '''
 
+  @property
   def buffer_size(self):
     r'''Buffer size of embedding variables for training.
     '''
     return Context.get().options.emb_buffer_size
 
+  @property
   def buffer_load_factor(self):
     r'''Buffer load factor of embedding variables for training.
     '''
     return Context.get().options.emb_buffer_load_factor
 
+  @property
   def num_groups(self):
-    r'''Number of embedding column groups for training.
+    r'''Number of embedding lookup groups for training.
     '''
     return Context.get().options.emb_num_groups
 
+  @property
   def enable_concat(self):
     r'''If True, concat embedding vectors for training.
     '''
     return Context.get().options.emb_enable_concat
 
-  def num_buckets(self, column):
-    r'''Number of buckets for the column.
-    '''
-    num_buckets = getattr(
-      column.categorical_column, 'num_buckets',
-      column.categorical_column._num_buckets)  # pylint: disable=protected-access
-    return num_buckets
-
-  def dimension(self, column):
-    r'''Dimension of the column.
-    '''
-    return column.dimension
-
   @property
   def enable_sharding(self):
     r'''Whether the sharding is enabled.
     '''
-    return not mode_keys.is_predict(Context.get().options.mode)
+    return Context.get().options.mode != ModeKeys.PREDICT
+
+  def num_buckets(self, column):
+    r'''Number of buckets for the column.
+    '''
+    return Context.get().options.emb_num_buckets[column]
+
+  def dimension(self, column):
+    r'''Dimension of the column.
+    '''
+    return Context.get().options.emb_dimension[column]
+
+  def combiner(self, column):
+    r'''Combiner of the column.
+    '''
+    return Context.get().options.emb_combiner[column]
 
   def sharded(self, column):
     r'''Whether the column should be sharded.
@@ -182,52 +186,42 @@ class EmbeddingBackend(object):  # pylint: disable=useless-object-inheritance
   def unique(self, column):
     r'''Whether inputs for the column is already unique.
     '''
-    return Context.get().options.emb_unique[(
-      column.name, column.categorical_column.name)]
+    return Context.get().options.emb_unique[column]
 
   def pad(self, column):
     r'''Whether lookup results of the column should be padded.
     '''
-    return Context.get().options.emb_pad[(
-      column.name, column.categorical_column.name)]
+    return Context.get().options.emb_pad[column]
 
   def device(self, column):
-    r'''Device of the column weights.
+    r'''Device of the embedding weights.
     '''
-    return Context.get().options.emb_device[(
-      column.name, column.categorical_column.name)]
+    return Context.get().options.emb_device[column]
 
   def input_device(self, column):
     r'''Device of embedding lookup inputs.
     '''
-    options = Context.get().options
-    return options.emb_input_device[(
-      column.name, column.categorical_column.name)]
+    return Context.get().options.emb_input_device[column]
 
   def dtype(self, column):
-    r'''Data type of the column weights.
+    r'''Data type of the embedding weights.
     '''
-    return Context.get().options.emb_dtype[(
-      column.name, column.categorical_column.name)]
+    return Context.get().options.emb_dtype[column]
 
   def wire_dtype(self, column):
     r'''Data type of the column for communicaiton.
     '''
-    return Context.get().options.emb_wire_dtype[(
-      column.name, column.categorical_column.name)]
+    return Context.get().options.emb_wire_dtype[column]
 
   def input_dtype(self, column):
     r'''Data type of the column inputs.
     '''
-    return Context.get().options.emb_input_dtype[(
-      column.name, column.categorical_column.name)]
+    return Context.get().options.emb_input_dtype[column]
 
   def segment_rank(self, column):
     r'''Segment rank of the column weights.
     '''
-    options = Context.get().options
-    return options.emb_segment_rank[(
-      column.name, column.categorical_column.name)]
+    return Context.get().options.emb_segment_rank[column]
 
   def weight_name(self, column):
     r'''Name of the column weights.

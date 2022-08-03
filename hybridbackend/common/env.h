@@ -25,6 +25,8 @@ std::string EnvVarGet(const std::string& env_var,
 
 int EnvVarGetInt(const std::string& env_var, const int default_val);
 
+bool EnvVarGetBool(const std::string& env_var, const bool default_val);
+
 std::string EnvHttpGet(const std::string& url, const std::string& default_val,
                        const long timeout);
 
