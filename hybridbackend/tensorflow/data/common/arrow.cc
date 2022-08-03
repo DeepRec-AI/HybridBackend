@@ -195,6 +195,12 @@ class RaggedTensorBuilder : public ::arrow::ArrayVisitor {
     if (!st.ok()) {
       return st;
     }
+
+    // Follow RaggedTensor-style ordering: V, Sn, Sn-1, ..., S0
+    if (ragged_tensor_.size() > 1) {
+      std::reverse(std::next(ragged_tensor_.begin()), ragged_tensor_.end());
+    }
+
     output_tensors->insert(output_tensors->end(), ragged_tensor_.begin(),
                            ragged_tensor_.end());
     return ::arrow::Status::OK();
