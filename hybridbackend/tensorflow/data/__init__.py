@@ -26,6 +26,7 @@ from hybridbackend.tensorflow.data.dataframe import to_sparse
 from hybridbackend.tensorflow.data.dataframe import unbatch_and_to_sparse
 from hybridbackend.tensorflow.data.parquet.dataset import ParquetDataset
 from hybridbackend.tensorflow.data.parquet.dataset import read_parquet
+from hybridbackend.tensorflow.data.prefetch.ops import Iterator
 from hybridbackend.tensorflow.data.rebatch.dataset import RebatchDataset
 from hybridbackend.tensorflow.data.rebatch.dataset import rebatch
 

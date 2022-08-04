@@ -194,7 +194,7 @@ def main(args):
       while not sess.should_stop():
         sess.run(train_op)
 
-  hb.saved_model.export(
+  hb.train.export(
     args.savedmodel_dir,
     tf.train.latest_checkpoint(args.output_dir),
     model.predict)
