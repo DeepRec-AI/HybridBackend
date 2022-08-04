@@ -13,12 +13,9 @@
 # limitations under the License.
 # =============================================================================
 
-r'''HybridBackend Layers.
+r'''Prefetching related classes and functions.
 '''
 
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
-
-from hybridbackend.tensorflow.feature_column.dense_features import \
-  DenseFeatures
