@@ -47,6 +47,7 @@ class ParquetBatchReader::Impl {
         drop_remainder_(drop_remainder) {}
 
   Status Open() {
+#if HYBRIDBACKEND_ARROW
     if (TF_PREDICT_TRUE(batch_reader_)) {
       return Status::OK();
     }
@@ -60,7 +61,6 @@ class ParquetBatchReader::Impl {
                                      "must be greater than 0");
     }
 
-#if HYBRIDBACKEND_ARROW
     std::shared_ptr<::arrow::io::RandomAccessFile> file;
     TF_RETURN_IF_ARROW_ERROR(::hybridbackend::OpenArrowFile(&file, filename_));
     TF_RETURN_IF_ARROW_ERROR(

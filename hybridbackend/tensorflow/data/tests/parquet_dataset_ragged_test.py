@@ -95,7 +95,7 @@ class ParquetDatasetRaggedTest(unittest.TestCase):
         fields=['col2', 'col0'])
       ds = ds.prefetch(4)
       batch = hb.data.make_one_shot_iterator(ds).get_next()
-      batch = hb.data.DataFrame.to_sparse(batch)
+      batch = hb.data.DataFrame.parse(batch)
 
     c = self._df['col0']
     with tf.Session(graph=graph) as sess:
@@ -125,7 +125,7 @@ class ParquetDatasetRaggedTest(unittest.TestCase):
         [self._filename],
         batch_size=batch_size,
         fields=['col2', 'col0'])
-      ds = ds.map(hb.data.DataFrame.to_sparse)
+      ds = ds.map(hb.data.DataFrame.parse)
       ds = ds.prefetch(4)
       batch = hb.data.make_one_shot_iterator(ds).get_next()
 
@@ -157,7 +157,7 @@ class ParquetDatasetRaggedTest(unittest.TestCase):
         [self._filename],
         batch_size=batch_size,
         fields=['col2', 'col0'])
-      ds = ds.apply(hb.data.to_sparse())
+      ds = ds.apply(hb.data.parse())
       ds = ds.prefetch(4)
       batch = hb.data.make_one_shot_iterator(ds).get_next()
 
@@ -189,7 +189,7 @@ class ParquetDatasetRaggedTest(unittest.TestCase):
         [self._filename],
         batch_size=batch_size,
         fields=['col2', 'col0'])
-      ds = ds.apply(hb.data.to_sparse())
+      ds = ds.apply(hb.data.parse())
       ds = ds.prefetch(4)
       it = hb.data.make_one_shot_iterator(ds)
       handle_tensor = it.string_handle()

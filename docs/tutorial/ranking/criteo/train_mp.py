@@ -1,6 +1,7 @@
 #!/usr/bin/env python
 
-r'''Training model for criteo terabyte dataset using MonitoredSession API.
+r'''Training sample ranking model over criteo 1TB dataset using
+model-parallelism.
 '''
 
 from __future__ import absolute_import
@@ -9,12 +10,10 @@ from __future__ import print_function
 
 import argparse
 
+from ranking.model import stacked_dcn_v2
 import tensorflow as tf
 
 import hybridbackend.tensorflow as hb
-
-from layers import Ranking
-from optimization import sgd_decay_optimize
 
 
 class CriteoTerabyteModel:
@@ -25,8 +24,8 @@ class CriteoTerabyteModel:
     '''
     self.args = args
     self.label_field = 'label'
-    self.numeric_fields = [f'f{i}' for i in range(13)]
-    self.categorical_fields = [f'id{i}' for i in range(26)]
+    self.numeric_fields = [f'if{i}' for i in range(13)]
+    self.categorical_fields = [f'cf{i}' for i in range(26)]
     self.embedding_bucket_sizes = [
       39884406,
       39043,
@@ -69,7 +68,7 @@ class CriteoTerabyteModel:
         batch_size=batch_size,
         num_parallel_reads=len(input_files),
         drop_remainder=True)
-      ds = ds.apply(hb.data.to_sparse())
+      ds = ds.apply(hb.data.parse())
 
       def map_fn(batch):
         features = {}
@@ -77,6 +76,16 @@ class CriteoTerabyteModel:
           f: tf.to_float(batch[f]) for f in self.numeric_fields})
         features.update({
           f: batch[f] for f in self.categorical_fields})
+        for f in self.numeric_fields:
+          if_valid = tf.greater_equal(batch[f], 0)
+          if_defaults = tf.zeros_like(batch[f])
+          features[f] = tf.where(if_valid, batch[f], if_defaults)
+          features[f] = tf.to_float(features[f])
+        for cfi, f in enumerate(self.categorical_fields):
+          cf_valid = tf.greater_equal(batch[f], 0)
+          cf_defaults = tf.zeros_like(batch[f])
+          features[f] = tf.where(cf_valid, batch[f], cf_defaults)
+          features[f] = features[f] % self.embedding_bucket_sizes[cfi]
         labels = tf.to_float(batch[self.label_field])
         return features, labels
 
@@ -96,13 +105,13 @@ class CriteoTerabyteModel:
         dimension=self.args.dimension,
         initializer=tf.random_uniform_initializer(-1e-3, 1e-3))
       for fid, f in enumerate(self.categorical_fields)]
-    embeddings = hb.dense_features(
+    wide_features = [
+      tf.reshape(features[f], [-1, 1]) for f in self.numeric_fields]
+    deep_features = hb.dense_features(
       {f: features[f] for f in self.categorical_fields},
       embedding_columns)
-    values = tf.concat(
-      [tf.reshape(features[f], [-1, 1]) for f in self.numeric_fields],
-      axis=1)
-    return Ranking(embedding_columns)(values, embeddings)
+    return stacked_dcn_v2(
+      wide_features + deep_features, [1024, 1024, 512, 256, 1])
 
   @hb.function(emb_device='/cpu:0')
   def train(self, input_files):
@@ -113,12 +122,9 @@ class CriteoTerabyteModel:
     logits = self.compute_logits(features)
     labels = tf.reshape(labels, shape=[-1, 1])
     loss = tf.reduce_mean(tf.keras.losses.binary_crossentropy(labels, logits))
-    train_op = sgd_decay_optimize(
-      loss,
-      lr_initial_value=self.args.lr_initial_value,
-      lr_warmup_steps=self.args.lr_warmup_steps,
-      lr_decay_start_step=self.args.lr_decay_start_step,
-      lr_decay_steps=self.args.lr_decay_steps)
+    step = tf.train.get_or_create_global_step()
+    opt = tf.train.AdagradOptimizer(learning_rate=self.args.lr)
+    train_op = opt.minimize(loss, global_step=step)
 
     _, update_auc = hb.metrics.auc(labels, logits, name='train_auc')
     return tf.group([train_op, update_auc])
@@ -207,10 +213,7 @@ if __name__ == '__main__':
   parser.add_argument('--head', default='DLRM')
   parser.add_argument('--max-bucket-size', type=int, default=1000000)
   parser.add_argument('--dimension', type=int, default=64)
-  parser.add_argument('--lr-initial-value', type=float, default=24.)
-  parser.add_argument('--lr-warmup-steps', type=int, default=2750)
-  parser.add_argument('--lr-decay-start-step', type=int, default=48000)
-  parser.add_argument('--lr-decay-steps', type=int, default=27772)
+  parser.add_argument('--lr', type=float, default=0.01)
   parser.add_argument('--output-dir', default='./outputs')
   parser.add_argument('--savedmodel-dir', default='./outputs/savedmodels')
   parser.add_argument('--log-every-n-step', type=int, default=100)

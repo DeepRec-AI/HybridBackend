@@ -82,7 +82,6 @@ struct FloormodShuffle<GPUDevice, T> {
   void operator()(const int32 num_partitions, const Tensor& input,
                   Tensor* output, Tensor* sizes, Tensor* indices,
                   OpKernelContext* ctx) {
-    auto* range = ::hybridbackend::ProfilerRange::forSynch("FloormodShuffle");
     const int32 input_size = input.NumElements();
     const T* d_input = input.flat<T>().data();
     T* d_output = output->flat<T>().data();
@@ -92,13 +91,18 @@ struct FloormodShuffle<GPUDevice, T> {
     auto cu_stream = CudaStream(ctx->op_device_context()->stream());
     auto stream = *(cu_stream.get());
     auto d = ctx->eigen_device<GPUDevice>();
+    cu_stream.ThenMemset(d_sizes, 0, num_partitions * sizeof(int32));
 
+    if (TF_PREDICT_FALSE(input_size == 0)) {
+      return;
+    }
+
+    auto* range = ::hybridbackend::ProfilerRange::forSynch("FloormodShuffle");
     Tensor offsets_t;
     OP_REQUIRES_OK(ctx, ctx->allocate_temp(DT_INT32, TensorShape({input_size}),
                                            &offsets_t));
     int32* d_offsets = offsets_t.flat<int32>().data();
 
-    cu_stream.ThenMemset(d_sizes, 0, num_partitions * sizeof(int32));
     CudaLaunch(FloorModShuffleComputeSizes<T>, input_size, 0, d, nullptr,
                num_partitions, input_size, d_input, d_sizes, d_offsets);
     CudaLaunch(FloorModShufflePopulate<T>, input_size,

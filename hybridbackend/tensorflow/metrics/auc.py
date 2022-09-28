@@ -36,16 +36,6 @@ from hybridbackend.tensorflow.distribute.communicator_pool import \
   CommunicatorPool
 
 
-def _allreduce_auc(comm, inputs, inputs_deps):
-  r'''Communicator call to reduce auc across workers.
-  '''
-  with ops.control_dependencies(inputs_deps):
-    if isinstance(inputs, (list, tuple)):
-      inputs = inputs[0]
-    sum_inputs = comm.allreduce(inputs, CollectiveOps.SUM)
-    return sum_inputs, None
-
-
 def _confusion_matrix_at_thresholds(labels,
                                     predictions,
                                     thresholds,
@@ -175,8 +165,10 @@ def _confusion_matrix_at_thresholds(labels,
   fp_sum = math_ops.reduce_sum(is_false_positive, 1)
 
   stacked = array_ops.stack([tp_sum, fn_sum, tn_sum, fp_sum])
-  sum_stacked = CommunicatorPool.get().call(
-    _allreduce_auc, stacked, trainable=False)
+  if isinstance(stacked, (list, tuple)):
+    stacked = stacked[0]
+  sum_stacked = CommunicatorPool.get().allreduce(
+    stacked, reduce_op=CollectiveOps.SUM, trainable=False)
   if isinstance(sum_stacked, (list, tuple)):
     sum_stacked = sum_stacked[0]
   tp_sum, fn_sum, tn_sum, fp_sum = array_ops.unstack(sum_stacked)

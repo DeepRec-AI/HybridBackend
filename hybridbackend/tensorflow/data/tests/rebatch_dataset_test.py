@@ -160,7 +160,7 @@ class ParquetDatasetRebatchTest(unittest.TestCase):
     with tf.Graph().as_default() as graph:
       ds = hb.data.ParquetDataset(self._filename, micro_batch_size)
       ds = ds.apply(hb.data.rebatch(batch_size))
-      ds = ds.apply(hb.data.to_sparse())
+      ds = ds.apply(hb.data.parse())
       ds = ds.prefetch(4)
       batch = hb.data.make_one_shot_iterator(ds).get_next()
 
@@ -193,7 +193,7 @@ class ParquetDatasetRebatchTest(unittest.TestCase):
       ds = srcds.shuffle(4)
       ds = ds.apply(
         hb.data.rebatch(batch_size, fields=srcds.fields, num_parallel_scans=2))
-      ds = ds.apply(hb.data.to_sparse())
+      ds = ds.apply(hb.data.parse())
       ds = ds.prefetch(4)
       batch = hb.data.make_one_shot_iterator(ds).get_next()
 

@@ -81,16 +81,6 @@ class FloormodShuffleOp : public OpKernel {
         errors::InvalidArgument("floormod_shuffle expects a 1D vector."));
 
     const int32 input_size = input.NumElements();
-    if (TF_PREDICT_FALSE(input_size == 0)) {
-      Tensor* output = nullptr;
-      OP_REQUIRES_OK(ctx, ctx->allocate_output(0, {0}, &output));
-      Tensor* sizes = nullptr;
-      OP_REQUIRES_OK(ctx, ctx->allocate_output(1, {num_partitions_}, &sizes));
-      Tensor* indices = nullptr;
-      OP_REQUIRES_OK(ctx, ctx->allocate_output(2, {0}, &indices));
-      return;
-    }
-
     Tensor* output = nullptr;
     OP_REQUIRES_OK(ctx, ctx->allocate_output(0, {input_size}, &output));
 

@@ -67,7 +67,7 @@ class ParquetDatasetRaggedNestedTest(unittest.TestCase):
       ds = hb.data.ParquetDataset(
         [self._filename],
         batch_size=2)
-      ds = ds.apply(hb.data.to_sparse())
+      ds = ds.apply(hb.data.parse())
       batch = hb.data.make_one_shot_iterator(ds).get_next()['A']
       baseline = tf.ragged.constant(self._data.to_pylist()).to_sparse()
 
@@ -76,6 +76,19 @@ class ParquetDatasetRaggedNestedTest(unittest.TestCase):
       np.testing.assert_equal(actual.indices, expected.indices)
       np.testing.assert_equal(actual.values, expected.values)
       np.testing.assert_equal(actual.dense_shape, expected.dense_shape)
+
+  def test_apply_to_tensor(self):
+    with tf.Graph().as_default() as graph:
+      ds = hb.data.ParquetDataset(
+        [self._filename],
+        batch_size=2)
+      ds = ds.apply(hb.data.parse(pad=True))
+      batch = hb.data.make_one_shot_iterator(ds).get_next()['A']
+      baseline = tf.ragged.constant(self._data.to_pylist()).to_tensor()
+
+    with tf.Session(graph=graph) as sess:
+      actual, expected = sess.run([batch, baseline])
+      np.testing.assert_equal(actual, expected)
 
 
 if __name__ == '__main__':

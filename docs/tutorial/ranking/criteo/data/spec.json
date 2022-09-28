@@ -1,0 +1,359 @@
+[
+    {
+        "name": "label",
+        "dtype": "int64",
+        "type": "scalar",
+        "default": -1
+    },
+    {
+        "name": "if0",
+        "dtype": "int64",
+        "type": "scalar",
+        "default": 0,
+        "norm": 65535.0
+    },
+    {
+        "name": "if1",
+        "dtype": "int64",
+        "type": "scalar",
+        "default": 0,
+        "norm": 8000.0
+    },
+    {
+        "name": "if2",
+        "dtype": "int64",
+        "type": "scalar",
+        "default": 0,
+        "norm": 2330.0
+    },
+    {
+        "name": "if3",
+        "dtype": "int64",
+        "type": "scalar",
+        "default": 0,
+        "norm": 746810.0
+    },
+    {
+        "name": "if4",
+        "dtype": "int64",
+        "type": "scalar",
+        "default": 0,
+        "norm": 8000.0
+    },
+    {
+        "name": "if5",
+        "dtype": "int64",
+        "type": "scalar",
+        "default": 0,
+        "norm": 57199.0
+    },
+    {
+        "name": "if6",
+        "dtype": "int64",
+        "type": "scalar",
+        "default": 0,
+        "norm": 5277.0
+    },
+    {
+        "name": "if7",
+        "dtype": "int64",
+        "type": "scalar",
+        "default": 0,
+        "norm": 225635.0
+    },
+    {
+        "name": "if8",
+        "dtype": "int64",
+        "type": "scalar",
+        "default": 0,
+        "norm": 3565.0
+    },
+    {
+        "name": "if9",
+        "dtype": "int64",
+        "type": "scalar",
+        "default": 0,
+        "norm": 14.0
+    },
+    {
+        "name": "if10",
+        "dtype": "int64",
+        "type": "scalar",
+        "default": 0,
+        "norm": 310.0
+    },
+    {
+        "name": "if11",
+        "dtype": "int64",
+        "type": "scalar",
+        "default": 0,
+        "norm": 25304793.0
+    },
+    {
+        "name": "if12",
+        "dtype": "int64",
+        "type": "scalar",
+        "default": 0,
+        "norm": 21836.0
+    },
+    {
+        "name": "cf0",
+        "dtype": "int64",
+        "type": "scalar",
+        "default": 0,
+        "embedding": {
+            "size": 39884406,
+            "dimension": 80
+        }
+    },
+    {
+        "name": "cf1",
+        "dtype": "int64",
+        "type": "scalar",
+        "default": 0,
+        "embedding": {
+            "size": 39043,
+            "dimension": 12
+        }
+    },
+    {
+        "name": "cf2",
+        "dtype": "int64",
+        "type": "scalar",
+        "default": 0,
+        "embedding": {
+            "size": 17289,
+            "dimension": 12
+        }
+    },
+    {
+        "name": "cf3",
+        "dtype": "int64",
+        "type": "scalar",
+        "default": 0,
+        "embedding": {
+            "size": 7420,
+            "dimension": 12
+        }
+    },
+    {
+        "name": "cf4",
+        "dtype": "int64",
+        "type": "scalar",
+        "default": 0,
+        "embedding": {
+            "size": 20263,
+            "dimension": 12
+        }
+    },
+    {
+        "name": "cf5",
+        "dtype": "int64",
+        "type": "scalar",
+        "default": 0,
+        "embedding": {
+            "size": 3,
+            "dimension": 4
+        }
+    },
+    {
+        "name": "cf6",
+        "dtype": "int64",
+        "type": "scalar",
+        "default": 0,
+        "embedding": {
+            "size": 7120,
+            "dimension": 12
+        }
+    },
+    {
+        "name": "cf7",
+        "dtype": "int64",
+        "type": "scalar",
+        "default": 0,
+        "embedding": {
+            "size": 1543,
+            "dimension": 12
+        }
+    },
+    {
+        "name": "cf8",
+        "dtype": "int64",
+        "type": "scalar",
+        "default": 0,
+        "embedding": {
+            "size": 63,
+            "dimension": 4
+        }
+    },
+    {
+        "name": "cf9",
+        "dtype": "int64",
+        "type": "scalar",
+        "default": 0,
+        "embedding": {
+            "size": 38532951,
+            "dimension": 80
+        }
+    },
+    {
+        "name": "cf10",
+        "dtype": "int64",
+        "type": "scalar",
+        "default": 0,
+        "embedding": {
+            "size": 2953546,
+            "dimension": 48
+        }
+    },
+    {
+        "name": "cf11",
+        "dtype": "int64",
+        "type": "scalar",
+        "default": 0,
+        "embedding": {
+            "size": 403346,
+            "dimension": 32
+        }
+    },
+    {
+        "name": "cf12",
+        "dtype": "int64",
+        "type": "scalar",
+        "default": 0,
+        "embedding": {
+            "size": 10,
+            "dimension": 4
+        }
+    },
+    {
+        "name": "cf13",
+        "dtype": "int64",
+        "type": "scalar",
+        "default": 0,
+        "embedding": {
+            "size": 2208,
+            "dimension": 12
+        }
+    },
+    {
+        "name": "cf14",
+        "dtype": "int64",
+        "type": "scalar",
+        "default": 0,
+        "embedding": {
+            "size": 11938,
+            "dimension": 12
+        }
+    },
+    {
+        "name": "cf15",
+        "dtype": "int64",
+        "type": "scalar",
+        "default": 0,
+        "embedding": {
+            "size": 155,
+            "dimension": 4
+        }
+    },
+    {
+        "name": "cf16",
+        "dtype": "int64",
+        "type": "scalar",
+        "default": 0,
+        "embedding": {
+            "size": 4,
+            "dimension": 4
+        }
+    },
+    {
+        "name": "cf17",
+        "dtype": "int64",
+        "type": "scalar",
+        "default": 0,
+        "embedding": {
+            "size": 976,
+            "dimension": 12
+        }
+    },
+    {
+        "name": "cf18",
+        "dtype": "int64",
+        "type": "scalar",
+        "default": 0,
+        "embedding": {
+            "size": 14,
+            "dimension": 4
+        }
+    },
+    {
+        "name": "cf19",
+        "dtype": "int64",
+        "type": "scalar",
+        "default": 0,
+        "embedding": {
+            "size": 39979771,
+            "dimension": 80
+        }
+    },
+    {
+        "name": "cf20",
+        "dtype": "int64",
+        "type": "scalar",
+        "default": 0,
+        "embedding": {
+            "size": 25641295,
+            "dimension": 80
+        }
+    },
+    {
+        "name": "cf21",
+        "dtype": "int64",
+        "type": "scalar",
+        "default": 0,
+        "embedding": {
+            "size": 39664984,
+            "dimension": 80
+        }
+    },
+    {
+        "name": "cf22",
+        "dtype": "int64",
+        "type": "scalar",
+        "default": 0,
+        "embedding": {
+            "size": 585935,
+            "dimension": 32
+        }
+    },
+    {
+        "name": "cf23",
+        "dtype": "int64",
+        "type": "scalar",
+        "default": 0,
+        "embedding": {
+            "size": 12972,
+            "dimension": 12
+        }
+    },
+    {
+        "name": "cf24",
+        "dtype": "int64",
+        "type": "scalar",
+        "default": 0,
+        "embedding": {
+            "size": 108,
+            "dimension": 4
+        }
+    },
+    {
+        "name": "cf25",
+        "dtype": "int64",
+        "type": "scalar",
+        "default": 0,
+        "embedding": {
+            "size": 36,
+            "dimension": 4
+        }
+    }
+]

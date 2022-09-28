@@ -79,6 +79,7 @@ set -x
 ${DOCKERRUN} \
   -e PYTHONPATH=$DIR \
   -v $DIR:$DIR \
+  -v /tmp:/tmp \
   -w $DIR \
   --user ${USRPSWD} \
   --pid=host \

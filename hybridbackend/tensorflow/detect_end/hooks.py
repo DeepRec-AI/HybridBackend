@@ -56,14 +56,6 @@ class DetectEndHook(session_run_hook.SessionRunHook):
     if self._end_marker is None:
       raise ValueError('Must provide an end_marker tensor to this hook')
 
-  def _sync_end(self, reduce_op):
-    r'''Synchronize end marker over all workers.
-    '''
-    def comm_fn(comm, inputs, inputs_deps):
-      with ops.control_dependencies(inputs_deps):
-        return comm.allreduce(inputs[0], reduce_op=reduce_op), None
-    return comm_fn
-
   def begin(self):
     r'''Initialize the variables to record the end of datasets.
     '''
@@ -78,10 +70,8 @@ class DetectEndHook(session_run_hook.SessionRunHook):
         reduce_op = CollectiveOps.MAX
       else:
         reduce_op = CollectiveOps.MIN
-      self._end_marker_reduced = CommunicatorPool.get().call(
-        self._sync_end(reduce_op),
-        end_marker,
-        trainable=False)
+      self._end_marker_reduced = CommunicatorPool.get().allreduce(
+        end_marker, reduce_op=reduce_op, trainable=False)
 
   def before_run(self, run_context):  # pylint: disable=unused-argument
     r'''Call this before sess run.
@@ -123,10 +113,18 @@ def _add_detect_end_hook(end_marker, drop_remainder):
       f'mode must be train, eval, or infer, but it is {options.mode}')
 
 
+class HybridBackendItertorBase(object):  # pylint: disable=useless-object-inheritance
+  r'''Base class of iterator wrapper.
+  '''
+
+
 def _wraps_iterator(cls, drop_remainder):
   r'''Iterator decorator to support advanced functionalities.
   '''
-  class HybridBackendIterator(cls):
+  if issubclass(cls, HybridBackendItertorBase):
+    return cls
+
+  class HybridBackendIterator(cls, HybridBackendItertorBase):
     r'''Class to iteratively obtain data.
     '''
     def get_next(self):

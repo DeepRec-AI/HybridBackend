@@ -29,9 +29,9 @@ from tensorflow.python.platform import tf_logging as logging
 from hybridbackend.tensorflow.distribute.communicator_pool import \
   CommunicatorPool
 from hybridbackend.tensorflow.embedding.backend import EmbeddingBackend
-from hybridbackend.tensorflow.embedding.buffer_lib import EmbeddingBuffer
 from hybridbackend.tensorflow.embedding.math_lib import segment_reduce
 from hybridbackend.tensorflow.framework.context import Context
+from hybridbackend.tensorflow.framework.context import context_scope
 from hybridbackend.tensorflow.ops.floormod_shuffle.ops import floormod_shuffle
 from hybridbackend.tensorflow.ops.floormod_shuffle.ops import \
   floormod_shuffle_n
@@ -101,13 +101,14 @@ class EmbeddingLookup(object):  # pylint: disable=useless-object-inheritance
         with ops.name_scope('shuffle_ids'):
           ids_shards, ids_sizes, partition_index = floormod_shuffle(
             ids, Context.get().world_size)
-          shard_ids, embs_sizes = CommunicatorPool.get().call(
-            self._exchange_ids, [ids_shards, ids_sizes],
+          shard_ids, embs_sizes = CommunicatorPool.get().alltoallv(
+            ids_shards, ids_sizes,
             trainable=False)
           shard_ids, shard_unique_index = array_ops.unique(shard_ids)
         with ops.device(self._impl.device(column)):
-          shard_embs = self._impl.lookup(
-            column, weights, shard_ids, sharded=True)
+          with context_scope(sharding=False):
+            shard_embs = self._impl.lookup(
+              column, weights, shard_ids, sharded=True)
         with ops.name_scope('shuffle_embeddings'):
           if shard_unique_index is not None:
             shard_embs = array_ops.gather(
@@ -118,7 +119,8 @@ class EmbeddingLookup(object):  # pylint: disable=useless-object-inheritance
             embs_shards, partition_index, name='restore_shuffle')
       else:
         with ops.device(self._impl.device(column)):
-          embeddings = self._impl.lookup(column, weights, ids)
+          with context_scope(sharding=False):
+            embeddings = self._impl.lookup(column, weights, ids)
       return segment_reduce(
         sparse_ids, embeddings,
         weights=sparse_weights,
@@ -197,18 +199,6 @@ class EmbeddingLookupCoalesced(object):  # pylint: disable=useless-object-inheri
       bi += bucket_size
     bidx.append(bi)
 
-    # Build buffers for embedding lookup.
-    buffers = {}
-    buffer_bytes = 0
-    for c in columns:
-      buffers[c] = EmbeddingBuffer(c)
-      buffer_bytes += buffers[c].total_bytes
-    buffer_count = len([None for c, v in buffers.items() if v.total_bytes > 0])
-    if buffer_count > 0:
-      logging.info(
-        f'Embedding buffering is enabled for {buffer_count} columns '
-        f'and consumes about {buffer_bytes/1024.0/1024.0:.2f} MB.')
-
     # Lookup embeddings in buckets.
     group_embeddings = []
     for bid, _ in enumerate(bucket_sizes):
@@ -261,7 +251,11 @@ class EmbeddingLookupCoalesced(object):  # pylint: disable=useless-object-inheri
           for idx, c in enumerate(bucket_columns):
             shard_ids = bucket_shard_ids[idx]
             shard_ids, shard_unique_index = array_ops.unique(shard_ids)
-            shard_embs = buffers[c](bucket_weights[idx], shard_ids)
+            with ops.device(self._impl.device(c)):
+              with context_scope(sharding=False):
+                shard_embs = self._impl.lookup(
+                  c, bucket_weights[idx], shard_ids,
+                  sharded=self._impl.sharded(c))
             if shard_unique_index is not None:
               shard_embs = array_ops.gather(
                 shard_embs, shard_unique_index, name='restore_unique')

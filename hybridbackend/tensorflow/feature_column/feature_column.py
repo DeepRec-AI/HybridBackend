@@ -147,16 +147,17 @@ class StateManagerImpl(fc._StateManagerImpl):  # pylint: disable=protected-acces
     collections = [ops.GraphKeys.GLOBAL_VARIABLES]
     if impl.sharded(feature_column.categorical_column.name):
       collections.append(GraphKeys.SHARDED_VARIABLES)
-    var = impl.build(
-      feature_column.categorical_column.name,
-      name,
-      shape,
-      dtype=dtype,
-      trainable=self._trainable and trainable,
-      use_resource=use_resource,
-      initializer=initializer,
-      collections=collections,
-      layer=self._layer)
+    with context_scope(sharding=False):
+      var = impl.build(
+        feature_column.categorical_column.name,
+        name,
+        shape,
+        dtype=dtype,
+        trainable=self._trainable and trainable,
+        use_resource=use_resource,
+        initializer=initializer,
+        collections=collections,
+        layer=self._layer)
     self._cols_to_vars_map[feature_column][name] = var
     return var
 

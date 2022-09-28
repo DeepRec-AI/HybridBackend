@@ -23,6 +23,7 @@ limitations under the License.
 #if HYBRIDBACKEND_TENSORFLOW
 
 #include <tensorflow/core/framework/common_shape_fns.h>
+#include <tensorflow/core/framework/node_def.pb.h>
 #include <tensorflow/core/framework/op.h>
 #include <tensorflow/core/framework/op_def_builder.h>
 #include <tensorflow/core/framework/partial_tensor_shape.h>

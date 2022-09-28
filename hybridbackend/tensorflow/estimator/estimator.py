@@ -54,9 +54,9 @@ from hybridbackend.tensorflow.framework.context import Context
 from hybridbackend.tensorflow.framework.context import context_scope
 from hybridbackend.tensorflow.framework.device import device_function
 from hybridbackend.tensorflow.framework.ops import ModeKeys
+from hybridbackend.tensorflow.training.config import configure
 from hybridbackend.tensorflow.training.eval import eval_scope
 from hybridbackend.tensorflow.training.eval import EvaluationHook
-from hybridbackend.tensorflow.training.function import configure
 from hybridbackend.tensorflow.training.function import scope
 from hybridbackend.tensorflow.training.policy import Policy
 from hybridbackend.tensorflow.training.saved_model import export_all
@@ -178,10 +178,18 @@ class PatchTensorflowAPIForEstimator(object):  # pylint: disable=useless-object-
       PatchTensorflowAPIForEstimator._stack_depth -= 1
 
 
+class HybridBackendEstimatorBase(object):  # pylint: disable=useless-object-inheritance
+  r'''Base class of estimator wrapper.
+  '''
+
+
 def wraps_estimator(cls):
   r'''Estimator decorator to train and evaluate in parallel.
   '''
-  class HybridBackendEstimator(cls):
+  if issubclass(cls, HybridBackendEstimatorBase):
+    return cls
+
+  class HybridBackendEstimator(cls, HybridBackendEstimatorBase):
     r'''Class to train and evaluate TensorFlow models.
     '''
     def __init__(self, model_fn, **kwargs):
@@ -261,12 +269,15 @@ def wraps_estimator(cls):
 
     def train_and_evaluate(
         self, train_spec, eval_spec,
-        eval_every_n_iter=None):
+        eval_every_n_iter=None,
+        eval_history=None):
       r'''Train and evaluate the `estimator`.
 
       Args:
         eval_every_n_iter: `int`, runs parallel evaluation once every
-          N training iteration. If None, disable the evaluation
+          N training iteration. If None, disable the evaluation.
+        eval_history: History of eval metrics. eval_history should support
+          `append` method.
       '''
       ctx = Context.get()
       if eval_every_n_iter is not None:
@@ -286,7 +297,8 @@ def wraps_estimator(cls):
             _eval_fn,
             steps=eval_spec.steps,
             every_n_iter=eval_every_n_iter,
-            summary_dir=eval_summary_dir))
+            summary_dir=eval_summary_dir,
+            history=eval_history))
 
       if self.config.cluster_spec:
         executor = TrainingExecutor(
@@ -498,16 +510,20 @@ class TrainingExecutor(_TrainingExecutor):
 
 def train_and_evaluate(
     estimator, train_spec, eval_spec,
-    eval_every_n_iter=None):
+    eval_every_n_iter=None,
+    eval_history=None):
   r'''Train and evaluate the `estimator`.
 
   Args:
     eval_every_n_iter: `int`, runs parallel evaluation once every
-      N training iteration. If None, disable the evaluation
+      N training iteration. If None, disable the evaluation.
+    eval_history: History of eval metrics. eval_history should support `append`
+      method.
   '''
   if not isinstance(estimator, Estimator):
     raise TypeError('estimator must be `hb.estimator.Estimator`')
 
   return estimator.train_and_evaluate(
     train_spec, eval_spec,
-    eval_every_n_iter=eval_every_n_iter)
+    eval_every_n_iter=eval_every_n_iter,
+    eval_history=eval_history)

@@ -24,9 +24,11 @@ from __future__ import division
 from __future__ import print_function
 
 import collections
+import logging
 from six.moves import xrange  # pylint: disable=redefined-builtin
 
 import numpy as np
+from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor
@@ -44,7 +46,8 @@ class DataFrame(object):  # pylint: disable=useless-object-inheritance
   class Field(object):  # pylint: disable=useless-object-inheritance
     r'''Definition of a field in a data frame.
     '''
-    def __init__(self, name, dtype=None, ragged_rank=None, shape=None):
+    def __init__(
+        self, name, dtype=None, ragged_rank=None, shape=None):
       self._name = name
       if dtype is None:
         self._dtype = dtype
@@ -173,6 +176,21 @@ class DataFrame(object):  # pylint: disable=useless-object-inheritance
         ]
       return result
 
+    def to_tensor(self, name=None):
+      if len(self.nested_row_splits) == 0:
+        return self.values
+      if len(self.nested_row_splits) == 1 and self.values.shape.ndims > 1:
+        return self.values
+      default_value = array_ops.zeros((), self.values.dtype)
+      shape_tensor = constant_op.constant(-1, dtype=dtypes.int32)
+      return gen_ragged_conversion_ops.ragged_tensor_to_tensor(
+        shape=shape_tensor,
+        values=self.values,
+        default_value=default_value,
+        row_partition_types=['ROW_SPLITS' for _ in self.nested_row_splits],
+        row_partition_tensors=self.nested_row_splits,
+        name=name)
+
     def to_sparse(self, name=None):
       if len(self.nested_row_splits) == 0:
         return self.values
@@ -186,25 +204,35 @@ class DataFrame(object):  # pylint: disable=useless-object-inheritance
         sparse_value.sparse_dense_shape)
 
   @classmethod
-  def to_sparse(cls, features):
+  def parse(cls, features, pad=False):
     r'''Convert DataFrame values to tensors or sparse tensors.
     '''
     if isinstance(features, dict):
-      return {f: cls.to_sparse(features[f]) for f in features}
+      return {
+        f: cls.parse(
+          features[f],
+          (pad[f] if f in pad else False) if isinstance(pad, dict) else pad)
+        for f in features}
     if isinstance(features, DataFrame.Value):
+      if pad:
+        return features.to_tensor()
       return features.to_sparse()
-    if isinstance(features, ragged_tensor.RaggedTensor):
-      if features.ragged_rank >= 1:
-        features = features.to_sparse()
-      return features
     if isinstance(features, ops.Tensor):
       return features
     raise ValueError(f'{features} not supported')
 
   @classmethod
+  def to_sparse(cls, features):
+    r'''Convert DataFrame values to tensors or sparse tensors.
+    '''
+    logging.warning('to_sparse is deprecated, use parse instead')
+    return cls.parse(features)
+
+  @classmethod
   def unbatch_and_to_sparse(cls, features):
     r'''Unbatch and convert a row of DataFrame to tensors or sparse tensors.
     '''
+    logging.warning('1-batch reading is bad for efficiency')
     if isinstance(features, dict):
       return {
         f: cls.unbatch_and_to_sparse(features[f])
@@ -245,9 +273,15 @@ class DataFrame(object):  # pylint: disable=useless-object-inheritance
 def to_sparse(num_parallel_calls=None):
   r'''Convert values to tensors or sparse tensors from input dataset.
   '''
+  return parse(num_parallel_calls=num_parallel_calls)
+
+
+def parse(num_parallel_calls=None, pad=False):
+  r'''Convert values to tensors or sparse tensors from input dataset.
+  '''
   def _apply_fn(dataset):
     return dataset.map(
-      DataFrame.to_sparse,
+      lambda t: DataFrame.parse(t, pad=pad),
       num_parallel_calls=num_parallel_calls)
   return _apply_fn
 

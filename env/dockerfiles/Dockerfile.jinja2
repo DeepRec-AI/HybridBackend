@@ -3,3 +3,5 @@ FROM {{baseimage}}
 RUN --mount=type=bind,target=/var/hybridbackend,source=build \
     pip install --no-cache-dir \
     /var/hybridbackend/hybridbackend*.whl
+
+ENV SHELL=/usr/bin/bash

@@ -1,12 +1,82 @@
-# Global Operations
+# High-Level APIs
 
-## 1. Embedding Layer with Sharded Weights
+## 1. Estimator API
+
+Estimator is a widely used high-level API for recommendation systems.
+HybridBackend provides `hb.estimator.Estimator` API for training and evaluation
+using Estimator.
+
+### 1.1 APIs
+
+```{eval-rst}
+.. autofunction:: hybridbackend.tensorflow.estimator.Estimator
+```
+
+### 1.2 Example: Training and Evaluation
+
+```python
+import tensorflow as tf
+import hybridbackend.tensorflow as hb
+
+# ...
+
+model = hb.estimator.Estimator(model_fn=model_fn)
+model.train_and_evaluate(train_spec, eval_spec, eval_every_n_iter=1000)
+```
+
+### 1.3 Example: Exporting to SavedModel
+
+```python
+import tensorflow as tf
+import hybridbackend.tensorflow as hb
+
+# ...
+
+estimator = hb.estimator.Estimator(model_fn=model_fn)
+
+# ...
+
+def _on_export():
+  inputs = {}
+  for f in numeric_fields:
+    inputs[f] = tf.placeholder(dtype=tf.int64, shape=[None], name=f)
+  for f in categorical_fields:
+    # Feed sparse placeholders using `tf.SparseTensorValue`
+    inputs[f] = tf.sparse_placeholder(dtype=tf.int64, name=f)
+  return tf.estimator.export.ServingInputReceiver(inputs, inputs)
+
+estimator.export_saved_model(export_dir_base, _on_export)
+```
+
+### 1.4 Example: Wraps an existing estimator
+
+```python
+import tensorflow as tf
+import hybridbackend.tensorflow as hb
+
+estimator = hb.wraps(MyEstimator)(model_fn=model_fn)
+```
+
+### 1.5 Example: Customized Estimators
+
+```python
+import tensorflow as tf
+import hybridbackend.tensorflow as hb
+
+@hb.wraps
+class MyEstimator(tf.estimator.Estimator):
+  # ...
+
+estimator = MyEstimator(model_fn=model_fn)
+```
+
+## 2. Feature Column API
 
 Recommenders in industry usually need embedding learning of large number of
 categorical columns with very large embedding weights. HybridBackend supports
 embedding layer with sharded weights using feature columns.
 
-### 1.1 APIs
+### 2.1 APIs
 
 ```{eval-rst}
 .. autoclass:: hybridbackend.tensorflow.feature_column.DenseFeatures
@@ -15,7 +85,7 @@ embedding layer with sharded weights using feature columns.
 .. autofunction:: hybridbackend.tensorflow.dense_features
 ```
 
-### 1.2 Options
+### 2.2 Options
 
 Option | Environment Variable | Default Value | Comment
 ------ | -------------------- | ------------- | --------
@@ -29,7 +99,7 @@ Option | Environment Variable | Default Value | Comment
 `emb_pad` | - | `False` | Whether the results should be padded. Accepts bool or a dict from column name to bool.
 `emb_segment_rank` | - | `0` | Rank of the embedding to segment sum. Accepts int or a dict from column name to int.
 
-### 1.3 Example: Embedding Layer using Feature Columns
+### 2.3 Example: Embedding Layer using Feature Columns
 
 ```python
 import tensorflow as tf
@@ -65,25 +135,28 @@ def model_fn(features, labels, mode, params):
       train_op=train_op)
 ```
 
-## 2. Global Metrics
-
-### 2.1 APIs
-
-```{eval-rst}
-.. autofunction:: hybridbackend.tensorflow.metrics.accuracy
-.. autofunction:: hybridbackend.tensorflow.metrics.auc
-```
-
-### 2.2 Example: Global AUC
+### 2.4 Example: Use user-defined embedding backend
 
 ```python
 import tensorflow as tf
 import hybridbackend.tensorflow as hb
 
-def eval_fn():
-  # ...
-  auc_and_update = hb.metrics.auc(
-    labels=eval_labels,
-    predictions=eval_logits)
-  return {'auc': auc_and_update}
+class MyEmbeddingBackend(hb.embedding.Backend):
+  NAME = 'MYEMB'
+
+  def build(self, column, name, shape, **kwargs):
+    return mymodule.get_my_emb(name, shape, **kwargs)
+
+  def lookup(self, column, weight, inputs, sharded=False, buffered=False):
+    r'''Lookup for embedding vectors.
+    '''
+    return mymodule.lookup(weight, inputs)
+
+hb.embedding.Backend.register(MyEmbeddingBackend())
+```
+
+```python
+from mymodule import MyEmbeddingBackend
+
+hb.context.options.emb_backend = 'PAIEV'
 ```

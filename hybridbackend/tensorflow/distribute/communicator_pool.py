@@ -22,6 +22,7 @@ from __future__ import print_function
 
 from six.moves import xrange  # pylint: disable=redefined-builtin
 
+from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import custom_gradient
@@ -31,6 +32,7 @@ try:
 except:  # pylint: disable=bare-except
   from tensorflow.python.distribute import device_util
 
+from hybridbackend.tensorflow.distribute.communicator import CollectiveOps
 from hybridbackend.tensorflow.distribute.communicator import Communicator
 from hybridbackend.tensorflow.framework.context import Context
 
@@ -172,3 +174,260 @@ class CommunicatorPool(object):  # pylint: disable=useless-object-inheritance
         return d_inputs, d_roots
       return results, mutable_grad_fn
     return wrapped_fn(*inputs)
+
+  def reduce(
+      self, value,
+      reduce_op=CollectiveOps.SUM,
+      root_rank=0,
+      trainable=True,
+      immutable=True,
+      name=None):
+    r'''Reduce values across devices to the root device.
+    '''
+    def _call_collective(comm, inputs, inputs_deps):
+      r'''Call collective function.
+      '''
+      with ops.control_dependencies(inputs_deps):
+        return comm.reduce(
+          inputs[0],
+          reduce_op=reduce_op,
+          root_rank=root_rank,
+          name=name), None
+    return self.call(
+      _call_collective, value,
+      trainable=trainable,
+      immutable=immutable)
+
+  def reduce_scatter(
+      self, value,
+      reduce_op=CollectiveOps.SUM,
+      trainable=True,
+      immutable=True,
+      name=None):
+    r'''Reduce values across devices and scatter the result to all devices.
+    '''
+    def _call_collective(comm, inputs, inputs_deps):
+      r'''Call collective function.
+      '''
+      with ops.control_dependencies(inputs_deps):
+        return comm.reduce_scatter(
+          inputs[0],
+          reduce_op=reduce_op,
+          name=name), None
+    return self.call(
+      _call_collective, value,
+      trainable=trainable,
+      immutable=immutable)
+
+  def allreduce(
+      self, value,
+      reduce_op=CollectiveOps.SUM,
+      trainable=True,
+      immutable=True,
+      name=None):
+    r'''Reduce values across devices.
+    '''
+    def _call_collective(comm, inputs, inputs_deps):
+      r'''Call collective function.
+      '''
+      with ops.control_dependencies(inputs_deps):
+        return comm.allreduce(
+          inputs[0],
+          reduce_op=reduce_op,
+          name=name), None
+    return self.call(
+      _call_collective, value,
+      trainable=trainable,
+      immutable=immutable)
+
+  def broadcast(
+      self, value,
+      root_rank=0,
+      trainable=True,
+      immutable=True,
+      name=None):
+    r'''Broadcast value across devices.
+    '''
+    def _call_collective(comm, inputs, inputs_deps):
+      r'''Call collective function.
+      '''
+      with ops.control_dependencies(inputs_deps):
+        return comm.broadcast(
+          inputs[0],
+          root_rank=root_rank,
+          name=name), None
+    return self.call(
+      _call_collective, value,
+      trainable=trainable,
+      immutable=immutable)
+
+  def scatter(
+      self, value,
+      root_rank=0,
+      trainable=True,
+      immutable=True,
+      name=None):
+    r'''Scatter value on root device to all devices.
+    '''
+    def _call_collective(comm, inputs, inputs_deps):
+      r'''Call collective function.
+      '''
+      with ops.control_dependencies(inputs_deps):
+        return comm.scatter(
+          inputs[0],
+          root_rank=root_rank,
+          name=name), None
+    return self.call(
+      _call_collective, value,
+      trainable=trainable,
+      immutable=immutable)
+
+  def gather(
+      self, value,
+      root_rank=0,
+      trainable=True,
+      immutable=True,
+      name=None):
+    r'''Gather all values across devices to root device.
+    '''
+    def _call_collective(comm, inputs, inputs_deps):
+      r'''Call collective function.
+      '''
+      with ops.control_dependencies(inputs_deps):
+        return comm.gather(
+          inputs[0],
+          root_rank=root_rank,
+          name=name), None
+    return self.call(
+      _call_collective, value,
+      trainable=trainable,
+      immutable=immutable)
+
+  def gatherv(
+      self, value,
+      root_rank=0,
+      trainable=True,
+      immutable=True,
+      name=None):
+    r'''Gather all values with varying sizes across devices to root device.
+    '''
+    def _call_collective(comm, inputs, inputs_deps):
+      r'''Call collective function.
+      '''
+      with ops.control_dependencies(inputs_deps):
+        return comm.gatherv(
+          inputs[0],
+          root_rank=root_rank,
+          name=name), None
+    return self.call(
+      _call_collective, value,
+      trainable=trainable,
+      immutable=immutable)
+
+  def allgather(
+      self, value,
+      trainable=True,
+      immutable=True,
+      name=None):
+    r'''Gather all values across devices to all devices.
+    '''
+    def _call_collective(comm, inputs, inputs_deps):
+      r'''Call collective function.
+      '''
+      with ops.control_dependencies(inputs_deps):
+        return comm.allgather(
+          inputs[0],
+          name=name), None
+    return self.call(
+      _call_collective, value,
+      trainable=trainable,
+      immutable=immutable)
+
+  def allgatherv(
+      self, value,
+      trainable=True,
+      immutable=True,
+      name=None):
+    r'''Gather all values across devices to all devices.
+    '''
+    def _call_collective(comm, inputs, inputs_deps):
+      r'''Call collective function.
+      '''
+      with ops.control_dependencies(inputs_deps):
+        return comm.allgatherv(
+          inputs[0],
+          name=name), None
+    return self.call(
+      _call_collective, value,
+      trainable=trainable,
+      immutable=immutable)
+
+  def alltoall(
+      self, value,
+      wire_dtype=dtypes.float32,
+      trainable=True,
+      immutable=True,
+      name=None,
+      **kwargs):
+    r'''Shuffle value partitions across devices.
+    '''
+    def _call_collective(comm, inputs, inputs_deps):
+      r'''Call collective function.
+      '''
+      with ops.control_dependencies(inputs_deps):
+        return comm.alltoall(
+          inputs[0],
+          wire_dtype=wire_dtype,
+          name=name, **kwargs), None
+    return self.call(
+      _call_collective, value,
+      trainable=trainable,
+      immutable=immutable)
+
+  def alltoallv(
+      self, value, sizes,
+      wire_dtype=dtypes.float32,
+      common_shape=None,
+      trainable=True,
+      immutable=True,
+      name=None,
+      **kwargs):
+    r'''Shuffle value partitions with varying sizes across devices.
+    '''
+    def _call_collective(comm, inputs, inputs_deps):
+      r'''Call collective function.
+      '''
+      with ops.control_dependencies(inputs_deps):
+        return comm.alltoallv(
+          *inputs,
+          wire_dtype=wire_dtype,
+          common_shape=common_shape,
+          name=name, **kwargs), None
+    return self.call(
+      _call_collective, [value, sizes],
+      trainable=trainable,
+      immutable=immutable)
+
+  def alltoallw(
+      self, values,
+      wire_dtype=dtypes.float32,
+      common_shape=None,
+      trainable=True,
+      immutable=True,
+      name=None,
+      **kwargs):
+    r'''Shuffle values with varying sizes and types across devices.
+    '''
+    def _call_collective(comm, inputs, inputs_deps):
+      r'''Call collective function.
+      '''
+      with ops.control_dependencies(inputs_deps):
+        return comm.alltoallw(
+          inputs,
+          wire_dtype=wire_dtype,
+          common_shape=common_shape,
+          name=name, **kwargs), None
+    return self.call(
+      _call_collective, values,
+      trainable=trainable,
+      immutable=immutable)

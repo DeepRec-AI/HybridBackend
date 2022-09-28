@@ -20,6 +20,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+from tensorflow._api.v1 import train as train_v1
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gen_resource_variable_ops
@@ -28,12 +29,19 @@ from tensorflow.python.ops import state_ops
 from tensorflow.python.ops import variables
 from tensorflow.python.training import distribution_strategy_context
 from tensorflow.python.training import session_run_hook
+from tensorflow.python.training import training
 
+from hybridbackend.tensorflow.distribute.gradient import aggregate_gradients
 from hybridbackend.tensorflow.distribute.pubsub import PubSub
 from hybridbackend.tensorflow.framework.context import Context
 from hybridbackend.tensorflow.framework.ops import GraphKeys
-from hybridbackend.tensorflow.training.optimizer_lib import GradientAggregation
+from hybridbackend.tensorflow.training.function import Patching
 from hybridbackend.tensorflow.training.saver import replace_default_saver
+
+
+class HybridBackendOptimizerBase(object):  # pylint: disable=useless-object-inheritance
+  r'''Base class of optimizer wrapper.
+  '''
 
 
 def wraps_optimizer(
@@ -58,8 +66,10 @@ def wraps_optimizer(
     aggregation = (
       'apply_gradients'
       if Context.get().options.grad_lazy_sync else 'compute_gradients')
+  if issubclass(cls, HybridBackendOptimizerBase):
+    return cls
 
-  class HybridBackendOptimizer(cls):
+  class HybridBackendOptimizer(cls, HybridBackendOptimizerBase):
     r'''Class to sync and aggregate gradients or the optimizer efficiently.
     '''
     def __init__(self, *args, **kwargs):
@@ -112,37 +122,15 @@ def wraps_optimizer(
         # Do nothing if this function resides in a distribution context.
         return grads_and_vars
 
-      if len(self._ctx.devices) <= 1:
-        return grads_and_vars
-
-      shard_grads = []
-      shard_grad_indices = []
-      replica_grads = []
-      replica_grad_indices = []
-      sharded_vars = ops.get_default_graph().get_collection_ref(
-        GraphKeys.SHARDED_VARIABLES)
-      sharded_vars += ops.get_default_graph().get_collection_ref(
-        GraphKeys.NOT_REPLICATED)
-      for i, gv in enumerate(grads_and_vars):
-        if gv[0] is None:
-          continue
-        if gv[1] in sharded_vars:
-          shard_grad_indices.append(i)
-          shard_grads.append(gv[0])
-          self._shard_vars.append(gv[1])
-        else:
-          replica_grad_indices.append(i)
-          replica_grads.append(gv[0])
-          self._replica_vars.append(gv[1])
+      grads_and_vars = aggregate_gradients(
+        grads_and_vars, self._replica_vars, self._shard_vars, num_buckets)
       self._ctx.add_training_hook(
         HybridBackendOptimizerHook(
           self._replica_vars,
           self._shard_vars,
           self._ctx.devices,
           self._ctx.current_device()))
-      return GradientAggregation(self._ctx.devices, num_buckets)(
-        replica_grads, shard_grads, self._replica_vars, self._shard_vars,
-        replica_grad_indices, shard_grad_indices)
+      return grads_and_vars
 
     def compute_gradients(self, *args, **kwargs):
       r'''Compute gradients of "loss" for the variables in "var_list".
@@ -227,7 +215,10 @@ class HybridBackendOptimizerHook(session_run_hook.SessionRunHook):
     '''
     with ops.device(self._device):
       for v in self._replica_vars:
-        self._set_initializer(v)
+        try:
+          self._set_initializer(v)
+        except:  # pylint: disable=bare-except
+          pass
     replace_default_saver()
 
   def _get_initial_value(self, var):
@@ -279,3 +270,35 @@ class HybridBackendOptimizerHook(session_run_hook.SessionRunHook):
                 name=f'{name}_initializer')
             var._initializer_op = self._get_initializer_op(var)
             # pylint:enable=protected-access
+
+
+class PatchingOptimizers(Patching):
+  r'''Patching optimizers.
+  '''
+  def __init__(self):
+    super().__init__()
+    self._prev_optimizers = {}
+
+  def patch(self):
+    r'''Patches APIs.
+    '''
+    for k, c in training.__dict__.items():
+      if (isinstance(c, type)
+          and issubclass(c, training.Optimizer)
+          and c not in (
+            training.Optimizer,
+            training.SyncReplicasOptimizer)):
+        self._prev_optimizers[k] = c
+        wrapped = wraps_optimizer(c)
+        setattr(training, k, wrapped)
+        setattr(train_v1, k, wrapped)
+
+  def unpatch(self):
+    r'''Revert API patching.
+    '''
+    for c, opt in self._prev_optimizers.items():
+      setattr(training, c, opt)
+      setattr(train_v1, c, opt)
+
+
+Patching.register(PatchingOptimizers)

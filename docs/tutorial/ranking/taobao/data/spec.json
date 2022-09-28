@@ -1,0 +1,252 @@
+[
+    {
+        "name": "label",
+        "dtype": "int64",
+        "type": "scalar",
+        "default": -1
+    },
+    {
+        "name": "ts",
+        "dtype": "int64",
+        "type": "scalar",
+        "default": -1
+    },
+    {
+        "name": "item_price",
+        "dtype": "float32",
+        "type": "scalar",
+        "default": -1.0,
+        "norm": 32.0,
+        "log": true
+    },
+    {
+        "name": "pid",
+        "dtype": "int64",
+        "type": "scalar",
+        "default": 0,
+        "embedding": {
+            "size": 2,
+            "dimension": 4
+        }
+    },
+    {
+        "name": "ad",
+        "dtype": "int64",
+        "type": "scalar",
+        "default": 0,
+        "embedding": {
+            "size": 846811,
+            "dimension": 36
+        }
+    },
+    {
+        "name": "ad_campaign",
+        "dtype": "int64",
+        "type": "scalar",
+        "default": 0,
+        "embedding": {
+            "size": 423436,
+            "dimension": 36
+        }
+    },
+    {
+        "name": "ad_customer",
+        "dtype": "int64",
+        "type": "scalar",
+        "default": 0,
+        "embedding": {
+            "size": 255875,
+            "dimension": 24
+        }
+    },
+    {
+        "name": "item_category",
+        "dtype": "int64",
+        "type": "scalar",
+        "default": 0,
+        "embedding": {
+            "size": 6769,
+            "dimension": 12
+        }
+    },
+    {
+        "name": "item_brand",
+        "dtype": "int64",
+        "type": "scalar",
+        "default": 0,
+        "embedding": {
+            "size": 99815,
+            "dimension": 24
+        }
+    },
+    {
+        "name": "user",
+        "dtype": "int64",
+        "type": "scalar",
+        "default": 0,
+        "embedding": {
+            "size": 1141729,
+            "dimension": 36
+        }
+    },
+    {
+        "name": "user_cms_seg",
+        "dtype": "int64",
+        "type": "scalar",
+        "default": 0,
+        "embedding": {
+            "size": 98,
+            "dimension": 4
+        }
+    },
+    {
+        "name": "user_cms_group",
+        "dtype": "int64",
+        "type": "scalar",
+        "default": 0,
+        "embedding": {
+            "size": 14,
+            "dimension": 4
+        }
+    },
+    {
+        "name": "user_gender",
+        "dtype": "int64",
+        "type": "scalar",
+        "default": 0,
+        "embedding": {
+            "size": 2,
+            "dimension": 4
+        }
+    },
+    {
+        "name": "user_age",
+        "dtype": "int64",
+        "type": "scalar",
+        "default": 0,
+        "embedding": {
+            "size": 8,
+            "dimension": 4
+        }
+    },
+    {
+        "name": "user_pvalue",
+        "dtype": "int64",
+        "type": "scalar",
+        "default": 0,
+        "embedding": {
+            "size": 4,
+            "dimension": 4
+        }
+    },
+    {
+        "name": "user_shopping",
+        "dtype": "int64",
+        "type": "scalar",
+        "default": 0,
+        "embedding": {
+            "size": 4,
+            "dimension": 4
+        }
+    },
+    {
+        "name": "user_occupation",
+        "dtype": "int64",
+        "type": "scalar",
+        "default": 0,
+        "embedding": {
+            "size": 3,
+            "dimension": 4
+        }
+    },
+    {
+        "name": "user_city",
+        "dtype": "int64",
+        "type": "scalar",
+        "default": 0,
+        "embedding": {
+            "size": 5,
+            "dimension": 4
+        }
+    },
+    {
+        "name": "user_pv_category_list",
+        "dtype": "int64",
+        "type": "list",
+        "default": 0,
+        "embedding": {
+            "size": 6769,
+            "dimension": 12
+        }
+    },
+    {
+        "name": "user_cart_category_list",
+        "dtype": "int64",
+        "type": "list",
+        "default": 0,
+        "embedding": {
+            "size": 6769,
+            "dimension": 12
+        }
+    },
+    {
+        "name": "user_fav_category_list",
+        "dtype": "int64",
+        "type": "list",
+        "default": 0,
+        "embedding": {
+            "size": 6769,
+            "dimension": 12
+        }
+    },
+    {
+        "name": "user_buy_category_list",
+        "dtype": "int64",
+        "type": "list",
+        "default": 0,
+        "embedding": {
+            "size": 6769,
+            "dimension": 12
+        }
+    },
+    {
+        "name": "user_pv_brand_list",
+        "dtype": "int64",
+        "type": "list",
+        "default": 0,
+        "embedding": {
+            "size": 99815,
+            "dimension": 24
+        }
+    },
+    {
+        "name": "user_cart_brand_list",
+        "dtype": "int64",
+        "type": "list",
+        "default": 0,
+        "embedding": {
+            "size": 99815,
+            "dimension": 24
+        }
+    },
+    {
+        "name": "user_fav_brand_list",
+        "dtype": "int64",
+        "type": "list",
+        "default": 0,
+        "embedding": {
+            "size": 99815,
+            "dimension": 24
+        }
+    },
+    {
+        "name": "user_buy_brand_list",
+        "dtype": "int64",
+        "type": "list",
+        "default": 0,
+        "embedding": {
+            "size": 99815,
+            "dimension": 24
+        }
+    }
+]

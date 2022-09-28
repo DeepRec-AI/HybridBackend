@@ -40,3 +40,5 @@ from . import keras
 from . import metrics
 from . import plugins
 from . import training as train
+
+__version__ = buildinfo()

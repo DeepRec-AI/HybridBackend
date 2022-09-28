@@ -37,6 +37,7 @@ from tensorflow.python.training import session_run_hook
 from tensorflow.python.util import nest
 
 from hybridbackend.tensorflow.common import oplib as _ops
+from hybridbackend.tensorflow.framework.context import Context
 
 ops.NotDifferentiable('HbPrefetchBufferPut')
 ops.NotDifferentiable('HbPrefetchBufferTake')
@@ -138,6 +139,7 @@ class Iterator(object):  # pylint: disable=useless-object-inheritance
         tensor_shapes.append(v.shape if hasattr(v, 'shape') else None)
       self._runner_per_thread = [runner for _ in range(num_runners)]
 
+      num_takers = max(num_takers, capacity)
       next_tensors = _ops.hb_prefetch_buffer_take(
         dtypes=tensor_dtypes,
         shared_name=self._name,
@@ -169,7 +171,9 @@ class Iterator(object):  # pylint: disable=useless-object-inheritance
       self._next_inputs = nest.pack_sequence_as(
         inputs, next_tensor_or_sparse_tensor_or_nones)
 
+    self._created_threads = False
     ops.add_to_collection(self.__class__.__name__, self)
+    Context.get().add_training_hook(IteratorHook(self))
 
   @property
   def name(self):
@@ -309,6 +313,9 @@ class Iterator(object):  # pylint: disable=useless-object-inheritance
     Returns:
       A list of threads.
     '''
+    if self._created_threads:
+      return []
+
     with self._lock:
       try:
         if self._runs_per_session[sess] > 0:
@@ -338,7 +345,13 @@ class Iterator(object):  # pylint: disable=useless-object-inheritance
         t.daemon = True
       if start:
         t.start()
+    self._created_threads = True
     return ret_threads
+
+  def make_session_run_hook(self):
+    r'''Creates a hook to start threads.
+    '''
+    return IteratorHook(self)
 
   @classmethod
   def start(cls, sess, coord=None):
@@ -378,3 +391,39 @@ class Iterator(object):  # pylint: disable=useless-object-inheritance
     '''
     def after_create_session(self, session, coord):
       Iterator.start(session, coord=coord)
+
+
+class IteratorHook(session_run_hook.SessionRunHook):
+  r'''SessionRunHook that starts prefetching threads after session creation.
+  '''
+  def __init__(self, iterator):
+    r'''SessionRunHook that starts prefetching threads for specific iterator.
+
+    Args:
+      iterator: Specific iterator.
+    '''
+    super().__init__()
+    self._iterator = iterator
+
+  def after_create_session(self, session, coord):
+    r'''After session was created.
+    '''
+    if session is None:
+      session = ops.get_default_session()
+      if not session:
+        raise ValueError(
+          'Cannot start threads: No default session is registered. Use '
+          '`with session.as_default()` or use explicit session in '
+          'create_threads')
+
+    if not isinstance(session, session_lib.SessionInterface):
+      if session.__class__.__name__ in (
+          'MonitoredSession', 'SingularMonitoredSession'):
+        return []
+      raise TypeError(
+        'session must be a `tf.Session` object. '
+        f'Given class: {session.__class__}')
+
+    with session.graph.as_default():
+      return self._iterator.create_threads(
+        session, coord=coord, daemon=True, start=True)

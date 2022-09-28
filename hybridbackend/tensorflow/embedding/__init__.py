@@ -42,6 +42,7 @@ _ = (
   .register('emb_num_buckets_max', _dict(_sys.maxsize))
   .register('emb_dimension', _dict(0))
   .register('emb_combiner', _dict('mean'))
+  .register('emb_sharded', _dict(True))
   .register('emb_unique', _dict(False))
   .register('emb_pad', _dict(False))
   .register('emb_device', _dict(''))

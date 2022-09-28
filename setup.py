@@ -104,7 +104,7 @@ setup(
     'Documentation': 'https://hybridbackend.readthedocs.io/en/latest/',
     'Source Code': 'https://github.com/alibaba/HybridBackend',
   },
-  keywords=('deep learning', 'recommendation system'),
+  keywords=['deep learning', 'recommendation system'],
   classifiers=[
     'Development Status :: 5 - Production/Stable',
     'Intended Audience :: Developers',

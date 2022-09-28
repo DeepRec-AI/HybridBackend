@@ -13,7 +13,7 @@
 # limitations under the License.
 # =============================================================================
 
-r'''Ranking examples.
+r'''Sample ranking examples.
 '''
 
 from __future__ import absolute_import

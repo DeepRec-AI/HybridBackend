@@ -34,16 +34,6 @@ from hybridbackend.tensorflow.distribute.communicator_pool import \
   CommunicatorPool
 
 
-def _allreduce_mean(comm, inputs, inputs_deps):
-  r'''Communicator call to reduce mean across workers.
-  '''
-  with ops.control_dependencies(inputs_deps):
-    if isinstance(inputs, (list, tuple)):
-      inputs = inputs[0]
-    sum_inputs = comm.allreduce(inputs, CollectiveOps.SUM)
-    return sum_inputs, None
-
-
 def mean(values,
          weights=None,
          metrics_collections=None,
@@ -105,8 +95,10 @@ def mean(values,
       num_values = math_ops.reduce_sum(weights)
 
     stacked = array_ops.stack([values_sum, num_values])
-    sum_stacked = CommunicatorPool.get().call(
-      _allreduce_mean, stacked, trainable=False)
+    if isinstance(stacked, (list, tuple)):
+      stacked = stacked[0]
+    sum_stacked = CommunicatorPool.get().allreduce(
+      stacked, reduce_op=CollectiveOps.SUM, trainable=False)
     if isinstance(sum_stacked, (list, tuple)):
       sum_stacked = sum_stacked[0]
     values_sum, num_values = array_ops.unstack(sum_stacked)

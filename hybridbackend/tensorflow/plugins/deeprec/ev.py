@@ -13,12 +13,14 @@
 # limitations under the License.
 # =============================================================================
 
-r'''PAI EV backend of embedding tables.
+r'''DeepRec EV backend of embedding tables.
 '''
 
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
+
+import six
 
 from tensorflow.python.ops import embedding_ops
 from tensorflow.python.ops import math_ops
@@ -29,6 +31,8 @@ from tensorflow.python.platform import tf_logging as logging
 from hybridbackend.tensorflow.embedding.backend import EmbeddingBackend
 from hybridbackend.tensorflow.embedding.default import EmbeddingBackendDefault
 from hybridbackend.tensorflow.framework.context import Context
+from hybridbackend.tensorflow.training.embedding import EmbeddingLookupPatching
+from hybridbackend.tensorflow.training.function import Patching
 
 
 class EmbeddingBackendDeepRecEV(EmbeddingBackendDefault):  # pylint: disable=useless-object-inheritance
@@ -54,11 +58,6 @@ class EmbeddingBackendDeepRecEV(EmbeddingBackendDefault):  # pylint: disable=use
       return False
     if not self.enable_sharding:
       return False
-    batch_size = Context.get().options.batch_size
-    if batch_size < 0 or self.num_buckets(column) is None:
-      return True
-    if batch_size < self.num_buckets(column):
-      return True
     return True
 
   def device(self, column):
@@ -87,7 +86,9 @@ class EmbeddingBackendDeepRecEV(EmbeddingBackendDefault):  # pylint: disable=use
     r'''Creates the embedding lookup weight.
     '''
     if not self.enabled(column):
-      shape = (self.num_buckets(column), shape[1])
+      if len(shape) < 2:
+        raise ValueError(
+          'Non PAIEV column shall have a shape of at least 2 ranks')
       return super().build(
         column, name, shape,
         dtype=dtype,
@@ -185,3 +186,90 @@ class EmbeddingBackendDeepRecEV(EmbeddingBackendDefault):  # pylint: disable=use
 
 
 EmbeddingBackend.register(EmbeddingBackendDeepRecEV())
+
+
+class EmbeddingLookupPatchingForDeepRecEV(Patching, EmbeddingLookupPatching):  # pylint: disable=useless-object-inheritance
+  r'''Embedding lookup decorator for DeepRec EV.
+  '''
+  def __init__(self):
+    super().__init__()
+    self._prev_lookup = None
+    self._prev_get_embedding_variable = None
+
+  @property
+  def name(self):
+    r'''Name of the patching.
+    '''
+    return EmbeddingLookupPatchingForDeepRecEV.__name__
+
+  def build_unsharded_weights(self, fn, name, *args, **kwargs):
+    r'''Build unsharded embedding weights.
+    '''
+    return fn(f'{name}/part_0', *args, **kwargs)
+
+  def build_sharded_weights(self, shard, num_shards, fn, name, *args, **kwargs):
+    r'''Build sharded embedding weights.
+    '''
+    embedding_dim = kwargs.pop('embedding_dim', None)
+    if embedding_dim is None:
+      try:
+        embedding_dim, = args
+      except ValueError as ex:
+        six.raise_from(
+          ValueError('missing embedding_dim for tf.get_embedding_variable'),
+          ex)
+    embedding_weights = fn(f'{name}/part_{shard}', embedding_dim, **kwargs)
+    if hasattr(embedding_weights, '_set_save_slice_info'):
+      embedding_weights._set_save_slice_info(  # pylint: disable=protected-access
+        variables.Variable.SaveSliceInfo(
+          full_name=name,
+          full_shape=[num_shards, embedding_dim],
+          var_offset=[shard, 0],
+          var_shape=embedding_weights.shape))
+    elif isinstance(embedding_weights, variables.PartitionedVariable):
+      for pvar in embedding_weights:
+        pvar._set_save_slice_info(  # pylint: disable=protected-access
+          variables.Variable.SaveSliceInfo(
+            full_name=name,
+            full_shape=[num_shards, embedding_dim],
+            var_offset=[shard, 0],
+            var_shape=pvar.shape))
+    else:
+      logging.warning(f'Embedding weights {name} cannot be saved correctly')
+
+    return embedding_weights
+
+  def patch(self):
+    r'''Patches APIs.
+    '''
+    try:
+      import tensorflow as tf  # pylint: disable=import-outside-toplevel
+      self._prev_lookup = embedding_ops.embedding_lookup
+      embedding_ops.embedding_lookup = self.wraps_embedding_lookup(
+        embedding_ops.embedding_lookup)
+      tf.nn.embedding_lookup = self.wraps_embedding_lookup(
+        embedding_ops.embedding_lookup)
+
+      self._prev_get_embedding_variable = vs.get_embedding_variable
+      vs.get_embedding_variable = self.wraps_build_weights(
+        self._prev_get_embedding_variable)
+      tf.get_embedding_variable = self.wraps_build_weights(
+        self._prev_get_embedding_variable)
+    except:  # pylint: disable=bare-except
+      pass
+
+  def unpatch(self):
+    r'''Revert API patching.
+    '''
+    try:
+      import tensorflow as tf  # pylint: disable=import-outside-toplevel
+      vs.get_embedding_variable = self._prev_get_embedding_variable
+      tf.get_embedding_variable = self._prev_get_embedding_variable
+
+      embedding_ops.embedding_lookup = self._prev_lookup
+      tf.nn.embedding_lookup = self._prev_lookup
+    except:  # pylint: disable=bare-except
+      pass
+
+
+Patching.register(EmbeddingLookupPatchingForDeepRecEV)

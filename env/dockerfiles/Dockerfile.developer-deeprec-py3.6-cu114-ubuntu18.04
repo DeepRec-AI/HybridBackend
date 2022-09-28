@@ -160,7 +160,7 @@ RUN mkdir -p /opt/dlcommon && \
 FROM devel_base AS devel_tensorflow
 
 ARG TF_REPO=https://github.com/alibaba/DeepRec.git
-ARG TF_COMMIT=618c3035ed85a193026f64660bd620cb85a36a2b
+ARG TF_COMMIT=2ae1d3d379e098da03ca63398a9cf4d5b7eb2d3a
 ARG CUDNNFRONTEND_REPO=https://github.com/NVIDIA/cudnn-frontend.git
 ARG CUDNNFRONTEND_BRANCH=v0.5
 RUN mkdir -p /src && \
@@ -262,6 +262,7 @@ ENV HYBRIDBACKEND_WITH_CUDA=ON \
     HYBRIDBACKEND_USE_CXX11_ABI=0 \
     HYBRIDBACKEND_WHEEL_ALIAS=-deeprec-cu114 \
     TENSORFLOW_DISTRO=99881015 \
+    TF_DISABLE_EV_ALLOCATOR=true \
     TF_GPU_ALLOCATOR=cuda_malloc_async \
     PATH=${PATH}:/usr/local/bin:${HADOOP_HOME}/bin \
     LD_LIBRARY_PATH=${LD_LIBRARY_PATH}:/usr/local/lib:${JAVA_HOME}/jre/lib/amd64/server:${HADOOP_HOME}/lib/native

@@ -25,7 +25,9 @@ from __future__ import print_function
 import json as _json
 import multiprocessing as _mp
 import os as _os
+import signal as _signal
 import socket as _socket
+import sys as _sys
 import unittest as _unittest
 
 import xmlrunner as _xmlrunner
@@ -127,9 +129,22 @@ class Spawn(object):  # pylint: disable=useless-object-inheritance
     for p in procs:
       p.daemon = True
       p.start()
-    for p in procs:
-      p.join(timeout_secs)
-      p.terminate()
+    done_procs = []
+    for pid, proc in enumerate(procs):
+      proc.join(timeout_secs)
+      proc.terminate()
+      done_procs.append(pid)
+      if proc.exitcode is not None and proc.exitcode != 0:
+        for term_pid, term_proc in enumerate(procs):
+          if term_pid not in done_procs:
+            term_proc.terminate()
+            done_procs.append(term_pid)
+        if proc.exitcode < 0:
+          _sys.exit(
+            f'Process {proc.pid} killed by '
+            f'{_signal.Signals(-proc.exitcode).name}')
+        else:
+          _sys.exit(f'Process {proc.pid} exits unexpectedly: {proc.exitcode}')
     results = {}
     for _ in range(self._world_size):
       item = collector.get()

@@ -37,7 +37,7 @@ def build_bench_op(params):
       fields=fields,
       batch_size=params.batch_size,
       num_parallel_reads=len(params.filenames))
-    ds = ds.apply(hb.data.to_sparse())
+    ds = ds.apply(hb.data.parse())
 
   ds = ds.prefetch(params.num_steps)
   features = hb.data.make_one_shot_iterator(ds).get_next()

@@ -176,12 +176,7 @@ class EmbeddingBackend(object):  # pylint: disable=useless-object-inheritance
       return False
     if not self.enable_sharding:
       return False
-    batch_size = Context.get().options.batch_size
-    if batch_size < 0 or self.num_buckets(column) is None:
-      return True
-    if batch_size < self.num_buckets(column):
-      return True
-    return False
+    return Context.get().options.emb_sharded[column]
 
   def unique(self, column):
     r'''Whether inputs for the column is already unique.

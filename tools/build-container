@@ -32,15 +32,22 @@ if [[ -z "$VERSION" ]]; then
   VERSION=latest
 fi
 
-export TIMESTAMP=$(date +%Y%m%d%H%M%S)
-
 set -eo pipefail
 
 rm -rf env/dist env/build
 
-env/run tools/distbuild HYBRIDBACKEND_WHEEL_BUILD=".dev${TIMESTAMP}"
+export COMMIT=$(git rev-parse --short HEAD 2>/dev/null)
+export COMMIT_TIME=$(git show -s --format=%ct HEAD 2>/dev/null)
 
-env/run tools/distcheck
+if [[ -z "$RELEASE" ]]; then
+  env/run tools/distbuild HYBRIDBACKEND_WHEEL_BUILD=".dev${COMMIT_TIME}"
+else
+  env/run tools/distbuild
+fi
+
+if [[ -z "$NOTESTS" ]]; then
+  env/run tools/distcheck
+fi
 
 cd env/
 mkdir -p build
@@ -50,10 +57,10 @@ sed "s|{{baseimage}}|${DOCKERIMAGE}|g" dockerfiles/Dockerfile.jinja2 \
 
 DOCKER_BUILDKIT=1 docker build \
 --build-arg BUILDKIT_INLINE_CACHE=1 \
--t ${REPO}:${TAG} \
+-t ${REPO}:${COMMIT}-${TAG} \
 -f build/Dockerfile.${TAG} \
 $@ .
 
 cd -
 
-echo "Successfully built ${REPO}:${TAG}"
+echo "Successfully built ${REPO}:${COMMIT}-${TAG}"
