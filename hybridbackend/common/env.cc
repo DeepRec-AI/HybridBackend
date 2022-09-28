@@ -108,11 +108,27 @@ int EnvHttpGetInt(const std::string& url, const int default_val,
   return result;
 }
 
-std::string EnvGetInstanceType(const long timeout) {
-  static std::string kUrl =
+bool EnvCheckInstance(const long timeout) {
+  static std::string kAliyunEcsInstanceTypeUrl =
       "http://100.100.100.200/latest/meta-data/instance/instance-type";
 
-  return EnvHttpGet(kUrl, "", timeout);
+  std::string instance_type =
+      EnvHttpGet(kAliyunEcsInstanceTypeUrl, "", timeout);
+  if (instance_type.empty()) {
+    static std::string kAliyunPaiHealthHost = EnvVarGet("LICENSE_SDK_HOST", "");
+    static std::string kAliyunPaiHealthPath = "/api/licenses/health";
+    if (kAliyunPaiHealthHost.empty()) {
+      return false;
+    }
+
+    std::string check_health =
+        EnvHttpGet(kAliyunPaiHealthHost + kAliyunPaiHealthPath, "", timeout);
+    if (check_health.empty()) {
+      return false;
+    }
+    return true;
+  }
+  return true;
 }
 
 int EnvGetGpuCount() {

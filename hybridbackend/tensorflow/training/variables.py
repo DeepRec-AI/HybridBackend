@@ -23,10 +23,17 @@ from __future__ import print_function
 import contextlib
 
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import tensor_shape
 from tensorflow.python.keras.backend import reset_uids as reset_keras_uids
+from tensorflow.python.ops import embedding_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import state_ops
 from tensorflow.python.ops import variable_scope as vs
+from tensorflow.python.ops import variables
+from tensorflow.python.platform import tf_logging as logging
+
+from hybridbackend.tensorflow.training.embedding import EmbeddingLookupPatching
+from hybridbackend.tensorflow.training.function import Patching
 
 
 class ReuseVariables(object):  # pylint: disable=useless-object-inheritance
@@ -94,3 +101,111 @@ def disable_variable_update():
     state_ops.assign = prev_assign
     state_ops.assign_sub = prev_assign_sub
     state_ops.assign_add = prev_assign_add
+
+
+class EmbeddingLookupPatchingForVariables(Patching, EmbeddingLookupPatching):
+  r'''Embedding lookup patching for variables.
+  '''
+  def __init__(self):
+    super().__init__()
+    self._prev_lookup = None
+    self._prev_get_variable = None
+
+  @property
+  def name(self):
+    r'''Name of the patching.
+    '''
+    return EmbeddingLookupPatchingForVariables.__name__
+
+  def build_sharded_weights(self, shard, num_shards, fn, name, *args, **kwargs):
+    r'''Build sharded embedding weights.
+    '''
+    shape = kwargs.get('shape', None)
+    shape = tensor_shape.as_shape(shape)
+    if shape.dims is None:
+      return fn(name, *args, **kwargs)
+
+    shape = shape.as_list()
+    if len(shape) != 2:
+      return fn(name, *args, **kwargs)
+
+    bucket_size, dimension_size = shape
+    sharded_bucket_size = bucket_size // num_shards
+    if shard < bucket_size % num_shards:
+      sharded_bucket_size += 1
+    shape = (sharded_bucket_size, dimension_size)
+    kwargs['shape'] = shape
+
+    embedding_weights = fn(f'{name}/part_{shard}', *args, **kwargs)
+    bucket_offset = (bucket_size // num_shards) * shard
+    remained_buckets = bucket_size % num_shards
+    if shard < remained_buckets:
+      bucket_offset += shard
+    else:
+      bucket_offset += remained_buckets
+    if hasattr(embedding_weights, '_set_save_slice_info'):
+      embedding_weights._set_save_slice_info(  # pylint: disable=protected-access
+        variables.Variable.SaveSliceInfo(
+          full_name=name,
+          full_shape=[bucket_size, dimension_size],
+          var_offset=[bucket_offset, 0],
+          var_shape=shape))
+    elif isinstance(embedding_weights, variables.PartitionedVariable):
+      for embedding_partition in embedding_weights:
+        poffset = embedding_partition._get_save_slice_info().var_offset  # pylint: disable=protected-access
+        embedding_partition._set_save_slice_info(  # pylint: disable=protected-access
+          variables.Variable.SaveSliceInfo(
+            full_name=name,
+            full_shape=[bucket_size, dimension_size],
+            var_offset=[bucket_offset + poffset[0], poffset[1]],
+            var_shape=embedding_partition.shape))
+    else:
+      logging.warning(f'Embedding weights {name} cannot be saved correctly')
+
+    return embedding_weights
+
+  def weights_sharded(self, weights):
+    r'''Check whether the embedding weights are sharded.
+    '''
+    sharded_variables = self.weights_list
+    if isinstance(weights, (list, tuple)) and len(weights) == 1:
+      weights = weights[0]
+      if isinstance(weights, ops.Tensor):
+        vname = weights.name.split('/read')[0]
+        for v in sharded_variables:
+          if vname == v.name.split(':')[0]:
+            return True
+    return False
+
+  def shard_ids(self, ids):
+    r'''Shard IDs to lookup sharded embedding weights.
+    '''
+    return ids // self.num_shards
+
+  def patch(self):
+    r'''Patches APIs.
+    '''
+    import tensorflow as tf  # pylint: disable=import-outside-toplevel
+    self._prev_lookup = embedding_ops.embedding_lookup
+    embedding_ops.embedding_lookup = self.wraps_embedding_lookup(
+      embedding_ops.embedding_lookup)
+    tf.nn.embedding_lookup = self.wraps_embedding_lookup(
+      embedding_ops.embedding_lookup)
+
+    self._prev_get_variable = vs.get_variable
+    vs.get_variable = self.wraps_build_weights(
+      self._prev_get_variable)
+    tf.get_variable = self.wraps_build_weights(
+      self._prev_get_variable)
+
+  def unpatch(self):
+    r'''Revert API patching.
+    '''
+    import tensorflow as tf  # pylint: disable=import-outside-toplevel
+    vs.get_variable = self._prev_get_variable
+    tf.get_variable = self._prev_get_variable
+    embedding_ops.embedding_lookup = self._prev_lookup
+    tf.nn.embedding_lookup = self._prev_lookup
+
+
+Patching.register(EmbeddingLookupPatchingForVariables)

@@ -94,7 +94,7 @@ ds = hb.data.ParquetDataset(
     batch_size=1024,
     fields=['a', 'c'])
 # Convert results to sparse tensors.
-ds = ds.apply(hb.data.to_sparse())
+ds = ds.apply(hb.data.parse())
 ds = ds.prefetch(4)
 it = tf.data.make_one_shot_iterator(ds)
 batch = it.get_next()
@@ -118,11 +118,61 @@ ds = filenames.apply(hb.data.read_parquet(1024, fields=fields))
 ds = ds.prefetch(4)
 it = tf.data.make_one_shot_iterator(ds)
 batch = it.get_next()
-# {'a': tensora, 'c': tensorc}
+# {'A': scalar_tensor, 'C': sparse_tensor}
 ...
 ```
 
-### 2.6 Benchmark
+### 2.6 Example: Parse to tensors and sparse tensors
+
+```python
+import tensorflow as tf
+import hybridbackend.tensorflow as hb
+
+# Define data frame fields.
+fields = [
+    hb.data.DataFrame.Field('A', tf.int64),  # scalar
+    hb.data.DataFrame.Field('B', tf.int64, shape=[32]),  # fixed-length list
+    hb.data.DataFrame.Field('C', tf.int64, ragged_rank=1),  # variable-length list
+    hb.data.DataFrame.Field('D', tf.int64, ragged_rank=1)]  # variable-length list
+# Read from parquet files by reading upstream filename dataset.
+ds = hb.data.ParquetDataset(
+    '/path/to/f1.parquet',
+    fields=fields,
+    batch_size=1024)
+ds = ds.apply(hb.data.parse(pad={'D': True}))
+ds = ds.prefetch(4)
+it = tf.data.make_one_shot_iterator(ds)
+batch = it.get_next()
+# {'A': scalar_tensor, 'B': list_tensor, 'C': sparse_tensor, 'D': padded_list_tensor}
+...
+```
+
+### 2.7 Example: Remove dataset ops in exported saved model
+
+```python
+import tensorflow as tf
+from tensorflow.tools.graph_transforms import TransformGraph
+import hybridbackend.tensorflow as hb
+
+# ...
+model_inputs = {t.name.split(":")[0]: t for t in model.inputs}
+model_outputs = {t.name.split(":")[0]: t for t in model.outputs}
+train_graph_def = tf.get_default_graph().as_graph_def()
+predict_graph_def = TransformGraph(
+  train_graph_def,
+  list(model_inputs.keys()),
+  list(model_outputs.keys()),
+  ['strip_unused_nodes'])
+with tf.Graph().as_default() as predict_graph:
+  tf.import_graph_def(predict_graph_def, name='')
+  with tf.Session(graph=predict_graph) as predict_sess:
+    tf.saved_model.simple_save(
+      predict_sess, export_dir,
+      inputs=model_inputs,
+      outputs=model_outputs)
+```
+
+### 2.8 Benchmark
 
 In benchmark for reading 20k samples from 200 columns of a Parquet file,
 `hb.data.ParquetDataset` is about **21.51x faster** than
@@ -145,7 +195,7 @@ Parquet (SNAPPY) | 3346.10   | HybridBackend | 20       | 21.67
    Set `MALLOC_CONF` to `"background_thread:true,metadata_thp:auto"` to speed
    up memory access.
 .. note::
-   Set `ARROW_NUM_THREADS` to read different columns in parallel.
+   Set `ARROW_NUM_THREADS` to parse different columns in parallel.
 ```
 
 ## 3. Data Pipeline Functions
@@ -155,7 +205,7 @@ HybridBackend supports various data pipeline functions for common tasks.
 ### 3.1 APIs
 
 ```{eval-rst}
-.. autofunction:: hybridbackend.tensorflow.data.to_sparse
+.. autofunction:: hybridbackend.tensorflow.data.parse
 .. autofunction:: hybridbackend.tensorflow.data.rebatch
 ```
 
@@ -171,7 +221,7 @@ ds = hb.data.ParquetDataset(
     batch_size=1024,
     fields=['a', 'c'])
 # Convert results to sparse tensors.
-ds = ds.apply(hb.data.to_sparse())
+ds = ds.apply(hb.data.parse())
 ds = ds.prefetch(4)
 it = tf.data.make_one_shot_iterator(ds)
 batch = it.get_next()
@@ -196,7 +246,7 @@ ds = ds.shuffle(2048 // 256)
 # Change batch size to 1024.
 ds = ds.apply(hb.data.rebatch(1024, fields=fields))
 # Convert results to sparse tensors.
-ds = ds.apply(hb.data.to_sparse())
+ds = ds.apply(hb.data.parse())
 ds = ds.prefetch(4)
 it = tf.data.make_one_shot_iterator(ds)
 batch = it.get_next()

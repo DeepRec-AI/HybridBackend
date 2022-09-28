@@ -7,6 +7,5 @@ introduction
 architecture
 data
 distributed
-model
-advanced
+high_level_api
 ```

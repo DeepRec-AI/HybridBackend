@@ -24,8 +24,10 @@ from __future__ import print_function
 
 import argparse
 import json
+import logging
+import multiprocessing as mp
 import os
-from six.moves import xrange  # pylint: disable=redefined-builtin
+import signal
 import subprocess
 import sys
 import time
@@ -34,48 +36,60 @@ import time
 def _query_visible_devices():
   r'''Query visible devices.
   '''
-  visible_devices = os.getenv('CUDA_VISIBLE_DEVICES', '')
-  if not visible_devices:
-    visible_devices = os.getenv('NVIDIA_VISIBLE_DEVICES', '')
-  if not visible_devices:
-    raise ValueError(
-      'Neither `CUDA_VISIBLE_DEVICES` nor `NVIDIA_VISIBLE_DEVICES` found')
-  if visible_devices != 'all':
-    return [int(d) for d in visible_devices.split(',')]
-  num_devices = 0
-  query_devices = 'nvidia-smi -L 2>/dev/null | grep \'GPU [0-9]\' | wc -l'
+  visible_devices_str = os.getenv('CUDA_VISIBLE_DEVICES', '')
+  if not visible_devices_str:
+    visible_devices_str = os.getenv('NVIDIA_VISIBLE_DEVICES', '')
+  if not visible_devices_str or visible_devices_str == 'void':
+    return []
+  if visible_devices_str != 'all':
+    try:
+      return visible_devices_str.split(',')
+    except:  # pylint: disable=bare-except
+      logging.exception('Parse NVIDIA_VISIBLE_DEVICES failed:')
+      return []
+  query_devices_command = (
+    'nvidia-smi --query-gpu=uuid --format=csv,noheader 2>/dev/null')
   try:
     with subprocess.Popen(
-        query_devices,
+        query_devices_command,
         shell=True,
         stderr=subprocess.STDOUT,
         stdout=subprocess.PIPE,
+        universal_newlines=True,
         bufsize=1) as proc:
-      num_devices = int(proc.stdout.readline())
+      return [d for d in iter(proc.stdout.readline, b'') if d]
   except (OSError, ValueError):
     return []
-  return list(xrange(num_devices))
 
 
-def _main(args):
-  r'''Entry function.
+def run(command):
+  r'''Run function or command in subprocesses.
+
+  Args:
+    command: Function or command to run
   '''
   visible_devices = _query_visible_devices()
   port = int(os.getenv('HB_RUN_BASE_PORT', '20001'))
-  gpu_id_ports = []
-  for gid in visible_devices:
-    gpu_id_ports.append([gid, port])
+  device_to_ports = []
+  for d in visible_devices:
+    device_to_ports.append([d, port])
     port += 1
 
-  if len(gpu_id_ports) < 1:
+  if len(device_to_ports) < 1:
     os.environ['CUDA_VISIBLE_DEVICES'] = ''
     os.environ['HB_OP_OPTIMIZATION_DISABLED'] = '1'
-    subprocess.check_call([args.command] + args.args)
+    if callable(command):
+      command()
+      return
+    subprocess.check_call(command)
     return
 
-  if len(gpu_id_ports) == 1:
+  if len(device_to_ports) == 1:
     os.environ['CUDA_VISIBLE_DEVICES'] = '0'
-    subprocess.check_call([args.command] + args.args)
+    if callable(command):
+      command()
+      return
+    subprocess.check_call(command)
     return
 
   tf_config = json.loads(os.getenv('TF_CONFIG', '{}'))
@@ -96,7 +110,7 @@ def _main(args):
     workers.extend(cluster['worker'])
   worker_hosts = [w.split(':')[0] for w in workers]
   new_workers = [
-    f'{h}:{p}' for h in worker_hosts for _, p in gpu_id_ports]
+    f'{h}:{p}' for h in worker_hosts for _, p in device_to_ports]
   new_cluster = cluster.copy()
   if 'chief' in cluster:
     new_cluster['chief'] = [new_workers[0]]
@@ -114,23 +128,26 @@ def _main(args):
     os.environ['TF_CONFIG'] = json.dumps(new_tf_config)
     os.environ['CUDA_VISIBLE_DEVICES'] = ''
     os.environ['HB_OP_OPTIMIZATION_DISABLED'] = '1'
-    subprocess.check_call([args.command] + args.args)
+    if callable(command):
+      command()
+    subprocess.check_call(command)
     return
 
   cpu_count = os.cpu_count()
   interop_threads = os.getenv('TF_NUM_INTEROP_THREADS', cpu_count)
   interop_threads_gpu = None
   if interop_threads:
-    interop_threads_gpu = int(int(interop_threads) / len(gpu_id_ports))
+    interop_threads_gpu = int(int(interop_threads) / len(device_to_ports))
     interop_threads_gpu = max(interop_threads_gpu, 4)
   intraop_threads = os.getenv('TF_NUM_INTRAOP_THREADS', cpu_count)
   intraop_threads_gpu = None
   if intraop_threads:
-    intraop_threads_gpu = int(int(intraop_threads) / len(gpu_id_ports))
+    intraop_threads_gpu = int(int(intraop_threads) / len(device_to_ports))
     intraop_threads_gpu = max(intraop_threads_gpu, 1)
   gpu_procs = {}
+  gpu_envs = {}
   local_host = cluster[task_type][task_id].split(':')[0]
-  for gid, port in gpu_id_ports:
+  for device, port in device_to_ports:
     gpu_addr = f'{local_host}:{port}'
     gpu_index = new_workers.index(gpu_addr)
     gpu_tf_config = {}
@@ -148,14 +165,43 @@ def _main(args):
       gpu_tf_config['task']['index'] = gpu_index
     gpu_env = os.environ.copy()
     gpu_env['TF_CONFIG'] = json.dumps(gpu_tf_config)
-    gpu_env['CUDA_VISIBLE_DEVICES'] = str(gid)
+    gpu_env['CUDA_VISIBLE_DEVICES'] = device
     if interop_threads_gpu:
       gpu_env['TF_NUM_INTEROP_THREADS'] = str(interop_threads_gpu)
     if intraop_threads_gpu:
       gpu_env['TF_NUM_INTRAOP_THREADS'] = str(intraop_threads_gpu)
+    gpu_envs[device] = gpu_env
+
+  if callable(command):
+    procs = {}
+    for device, _ in device_to_ports:
+      def _target(env):
+        os.environ = env
+        command()
+      proc = mp.Process(target=_target, args=(gpu_envs[device],))
+      proc.start()
+      procs[device] = proc
+    done_procs = []
+    for device, proc in procs.items():
+      proc.join()
+      done_procs.append(device)
+      if proc.exitcode is not None and proc.exitcode != 0:
+        for term_gid, term_proc in procs.items():
+          if term_gid not in done_procs:
+            term_proc.terminate()
+            done_procs.append(term_gid)
+        if proc.exitcode < 0:
+          sys.exit(
+            f'Process {proc.pid} killed by '
+            f'{signal.Signals(-proc.exitcode).name}')
+        else:
+          sys.exit(f'Process {proc.pid} exits unexpectedly: {proc.exitcode}')
+    return
+
+  for device, _ in device_to_ports:
     gpu_proc = subprocess.Popen(  # pylint: disable=consider-using-with
-      [args.command] + args.args,
-      env=gpu_env,
+      command,
+      env=gpu_envs[device],
       stdout=sys.stdout,
       stderr=sys.stderr)
     gpu_procs[gpu_proc.pid] = gpu_proc
@@ -181,4 +227,5 @@ if __name__ == '__main__':
                       help='Command to launch script')
   parser.add_argument('args', nargs=argparse.REMAINDER,
                       help='Arguments of the command')
-  _main(parser.parse_args())
+  args = parser.parse_args()
+  run([args.command] + args.args)

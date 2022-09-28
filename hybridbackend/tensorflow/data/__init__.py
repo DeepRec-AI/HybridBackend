@@ -22,7 +22,7 @@ from __future__ import division
 from __future__ import print_function
 
 from hybridbackend.tensorflow.data.dataframe import DataFrame
-from hybridbackend.tensorflow.data.dataframe import to_sparse
+from hybridbackend.tensorflow.data.dataframe import parse
 from hybridbackend.tensorflow.data.dataframe import unbatch_and_to_sparse
 from hybridbackend.tensorflow.data.parquet.dataset import ParquetDataset
 from hybridbackend.tensorflow.data.parquet.dataset import read_parquet

@@ -17,6 +17,7 @@
 set -eo pipefail
 
 echo "Build wheel..."
+git config --global --add safe.directory $(pwd)
 make -j$(nproc) \
 HYBRIDBACKEND_DEBUG=OFF \
 HYBRIDBACKEND_WITH_BUILDINFO=ON \
@@ -24,5 +25,3 @@ HYBRIDBACKEND_CHECK_INSTANCE=ON \
 $@
 
 tools/repair env/dist env/build
-
-make doc

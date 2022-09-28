@@ -27,7 +27,7 @@ import tensorflow as tf
 import hybridbackend.tensorflow as hb
 
 ds = hb.data.ParquetDataset(filenames, batch_size=batch_size)
-ds = ds.apply(hb.data.to_sparse())
+ds = ds.apply(hb.data.parse())
 # ...
 
 with tf.device('/gpu:0'):
@@ -78,7 +78,7 @@ if your organization is interested in adoption. We will discuss
 [RoadMap](https://github.com/alibaba/HybridBackend/blob/main/ROADMAP.md) with
 registered adopters in advance.
 
-- Please cite HybridBackend in your publications if it helps:
+- Please cite [HybridBackend](https://ieeexplore.ieee.org/document/9835450) in your publications if it helps:
 
   ```text
   @inproceedings{zhang2022picasso,

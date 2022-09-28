@@ -17,6 +17,9 @@ limitations under the License.
 #include <pybind11/pybind11.h>
 #include <pybind11/stl.h>
 
+#if HYBRIDBACKEND_CUDA
+#include <cuda.h>
+#endif
 #include <iostream>
 #include <string>
 #include <tuple>
@@ -29,24 +32,29 @@ std::string make_buildinfo() {
   std::string message = "HybridBackend";
 #if HYBRIDBACKEND_BUILDINFO
   message += " " HYBRIDBACKEND_BUILD_VERSION "-" HYBRIDBACKEND_BUILD_COMMIT "";
-  message += " glibc=" HYBRIDBACKEND_BUILD_GLIBC "";
-  message += "; cxx=" HYBRIDBACKEND_BUILD_CXX "";
-  message += "; cxx11_abi_flag=" HYBRIDBACKEND_BUILD_CXX11_ABI "";
-#if HYBRIDBACKEND_CUDA
-  message += "; gpu=" HYBRIDBACKEND_CUDA_GENCODE "";
-  message += "; nvcc=" HYBRIDBACKEND_CUDA_CC "";
+  message += "; " HYBRIDBACKEND_BUILD_FRAMEWORK "";
+  message += "; " HYBRIDBACKEND_BUILD_CXX "";
+#if HYBRIDBACKEND_BUILD_CXX11_ABI > 0
+  message += " (C++11 ABI)";
 #endif
-  message += "; framework=" HYBRIDBACKEND_BUILD_FRAMEWORK "";
+#if HYBRIDBACKEND_CUDA
+  message += "; CUDA " + std::to_string(CUDA_VERSION / 1000) + "." +
+             std::to_string((CUDA_VERSION / 10) % 100);
+  message += " (" HYBRIDBACKEND_CUDA_GENCODE ")";
+#endif
 #endif
   return message;
 }
+
 std::string buildinfo() {
   static std::string kBuildInfo = make_buildinfo();
   return kBuildInfo;
 }
+
 typedef std::tuple<std::string, std::string, int> parquet_file_field_t;
 std::vector<parquet_file_field_t> parquet_file_get_fields(
     const std::string& filename) {
+#if HYBRIDBACKEND_ARROW
   std::vector<std::string> field_names;
   std::vector<std::string> field_dtypes;
   std::vector<int> field_ragged_ranks;
@@ -61,6 +69,9 @@ std::vector<parquet_file_field_t> parquet_file_get_fields(
     fields.emplace_back(field_names[i], field_dtypes[i], field_ragged_ranks[i]);
   }
   return fields;
+#else
+  return {};
+#endif
 }
 }  // namespace
 

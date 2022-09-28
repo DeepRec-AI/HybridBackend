@@ -22,12 +22,15 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import os
+
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.data.ops import readers
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_spec
 from tensorflow.python.framework import type_spec
+from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.util import nest
 
 from hybridbackend.tensorflow.common import oplib as _ops
@@ -173,7 +176,8 @@ class ParquetDatasetV2(dataset_ops.DatasetV2):  # pylint: disable=abstract-metho
       partition_index=0,
       drop_remainder=False,
       num_parallel_reads=None,
-      num_sequential_reads=1):
+      num_sequential_reads=1,
+      num_parallel_parser_calls=None):
     r'''Create a `ParquetDataset`.
 
     Args:
@@ -190,11 +194,41 @@ class ParquetDatasetV2(dataset_ops.DatasetV2):  # pylint: disable=abstract-metho
         sequentially.
       num_sequential_reads: (Optional.) A `tf.int64` scalar representing the
         number of batches to read in sequential. Defaults to 1.
+      num_parallel_parser_calls: (Optional.) An integer representing the number
+        of columns to parse in parallel. Defaults to parse columns sequentially.
+        Note: All parquet datasets shares same parser pool, thus this argument
+        can only be set once. if `tf.data.experimental.AUTOTUNE` is used, the
+        number of parsers would be set for best performance.
     '''
     filenames, self._fields = parquet_filenames_and_fields(filenames, fields)
     self._partition_count = partition_count
     self._partition_index = partition_index
     self._drop_remainder = drop_remainder
+
+    if num_parallel_reads == dataset_ops.AUTOTUNE:
+      if isinstance(filenames, (tuple, list)):
+        num_parallel_reads = len(filenames)
+      else:
+        num_parallel_reads = None
+    if num_parallel_parser_calls == dataset_ops.AUTOTUNE:
+      num_parallel_parser_calls = len(self._fields)
+    if num_parallel_parser_calls is not None:
+      max_parser_calls = os.cpu_count() - 2  # at least 2 cores for computation
+      if num_parallel_reads is not None:
+        max_parser_calls //= num_parallel_reads
+      num_parallel_parser_calls = min(
+        num_parallel_parser_calls, max_parser_calls)
+      if num_parallel_parser_calls < 2:
+        num_parallel_parser_calls = None
+    if num_parallel_parser_calls is not None:
+      if 'ARROW_NUM_THREADS' in os.environ:
+        logging.warning(
+          'num_parallel_parser_calls ignored since ARROW_NUM_THREADS '
+          'is already set to %s', os.environ['ARROW_NUM_THREADS'])
+      else:
+        os.environ['ARROW_NUM_THREADS'] = str(int(num_parallel_parser_calls))
+    if 'MALLOC_CONF' not in os.environ:
+      os.environ['MALLOC_CONF'] = 'background_thread:true,metadata_thp:auto'
 
     def _create_dataset(f):
       f = ops.convert_to_tensor(f, dtypes.string, name='filename')

@@ -22,7 +22,6 @@ from __future__ import print_function
 
 import argparse
 import math
-import os
 import re
 
 import tensorflow as tf
@@ -38,7 +37,7 @@ def build_bench_op(params):
       batch_size=params.batch_size,
       num_parallel_reads=len(params.filenames),
       drop_remainder=True)
-    ds = ds.apply(hb.data.to_sparse())
+    ds = ds.apply(hb.data.parse())
 
     def map_fn(batch):
       labels = {}
@@ -153,15 +152,7 @@ def benchmark(params):
 
 
 if __name__ == '__main__':
-  os.environ['TF_CPP_VMODULE'] = (
-    'optimize_embedding_ops=2,'
-    'optimize_unique=2,'
-    'optimize_sparse_segment_reduction=2,'
-    'optimize_sparse_fill_empty_rows=2,'
-    'replacing=2,'
-    'horizontal_fusion=2,'
-    'pruning=2,'
-    'relocation=2')
+  hb.enable_optimization(logging_level=2)
   tf.logging.set_verbosity(tf.logging.INFO)
   parser = argparse.ArgumentParser()
   parser.add_argument('--lr', type=float, default=1.)

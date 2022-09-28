@@ -118,7 +118,8 @@ class EvaluationHook(session_run_hook.SessionRunHook):
                fn,
                steps=100,
                every_n_iter=1000,
-               summary_dir=None):
+               summary_dir=None,
+               history=None):
     r'''Initializes a `EvaluationHook`.
 
     Args:
@@ -126,7 +127,8 @@ class EvaluationHook(session_run_hook.SessionRunHook):
       steps: Number of steps for which to evaluate model. If `None`, evaluates
         until evaluation datasets raises an end-of-input exception.
       every_n_iter: `int`, runs the evaluator once every N training iteration.
-      summary_dir: a folder to store the evaluation summaries
+      summary_dir: a folder to store the evaluation summaries.
+      history: History of eval metrics. history should support `append` method.
 
     Raises:
       ValueError: if `every_n_iter` is non-positive or it's not a single machine
@@ -138,6 +140,7 @@ class EvaluationHook(session_run_hook.SessionRunHook):
       raise ValueError(f'invalid every_n_iter={every_n_iter}.')
     self._every_n_iter = every_n_iter
     self._summary_dir = summary_dir
+    self._history = history
 
     self._hooks = []
     self._timer = basic_session_run_hooks.SecondOrStepTimer(
@@ -281,6 +284,8 @@ class EvaluationHook(session_run_hook.SessionRunHook):
         self._run(run_context, self._update_op)
     metric_values = self._run(run_context, self._metrics)
     if metric_values is not None:
+      if self._history is not None:
+        self._history.append(metric_values)
       self._write_dict_to_summary(metric_values)
     self._timer.update_last_triggered_step(self._iter_count)
 

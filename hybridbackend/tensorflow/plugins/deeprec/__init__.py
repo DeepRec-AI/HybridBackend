@@ -39,6 +39,8 @@ _ = (
 # pylint: disable=ungrouped-imports
 try:
   from .ev import EmbeddingBackendDeepRecEV  # pylint: disable=unused-import
+  from .ev import \
+    EmbeddingLookupPatchingForDeepRecEV  # pylint: disable=unused-import
 except ImportError:
   pass
 # pylint: enable=ungrouped-imports

@@ -34,6 +34,7 @@ cd env/
 
 DOCKER_BUILDKIT=1 docker build \
 --build-arg BUILDKIT_INLINE_CACHE=1 \
+--network host \
 -t ${DOCKERIMAGE} -f ${DOCKERFILE} \
 $@ .
 

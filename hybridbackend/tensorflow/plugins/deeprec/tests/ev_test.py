@@ -40,10 +40,11 @@ def _test_get_dense_tensor(_):
   embedding_dimension = 2
 
   with tf.Graph().as_default():
-    with hb.scope(emb_backend='PAIEV', emb_device='/cpu:0'):
+    with hb.scope(
+        emb_backend='PAIEV', emb_device='/cpu:0', paiev_enabled={'aaa': 0}):
       # Build columns.
       categorical_column = tf.feature_column.categorical_column_with_identity(
-        'aaa', num_buckets=sys.maxsize)
+        'aaa', num_buckets=10)
       emb_col = tf.feature_column.embedding_column(
         categorical_column,
         embedding_dimension,

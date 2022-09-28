@@ -33,7 +33,7 @@ std::string EnvHttpGet(const std::string& url, const std::string& default_val,
 int EnvHttpGetInt(const std::string& url, const int default_val,
                   const long timeout);
 
-std::string EnvGetInstanceType(const long timeout);
+bool EnvCheckInstance(const long timeout);
 
 int EnvGetGpuCount();
 

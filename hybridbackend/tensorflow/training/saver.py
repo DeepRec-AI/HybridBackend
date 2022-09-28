@@ -43,6 +43,7 @@ except ImportError:
 
 from hybridbackend.tensorflow.framework.context import Context
 from hybridbackend.tensorflow.framework.ops import GraphKeys
+from hybridbackend.tensorflow.training.function import Patching
 
 
 class HybridBackendSaverBuilderBase(object):  # pylint: disable=useless-object-inheritance
@@ -53,6 +54,9 @@ class HybridBackendSaverBuilderBase(object):  # pylint: disable=useless-object-i
 def wraps_saver_builder(cls):
   r'''Wraps a saver builder to support hybrid parallelism.
   '''
+  if issubclass(cls, HybridBackendSaverBuilderBase):
+    return cls
+
   class HybridBackendSaverBuilder(cls, HybridBackendSaverBuilderBase):
     r'''Wrapped SaverBuilder with support for hybrid parallelism.
     '''
@@ -216,6 +220,9 @@ class HybridBackendSaverBase(object):  # pylint: disable=useless-object-inherita
 def wraps_saver(cls):
   r'''Wraps a saver to support hybrid parallelism.
   '''
+  if issubclass(cls, HybridBackendSaverBase):
+    return cls
+
   class HybridBackendSaver(cls, HybridBackendSaverBase):
     r'''SaverBuilder with support for hybrid parallelism.
     '''
@@ -326,3 +333,41 @@ def replace_default_saver():
       save_fn(self, *args, **kwargs)
     return wrapped_save
   default_saver.save = _wraps_save(default_saver.save)
+
+
+class PatchingSavers(Patching):
+  r'''Patching savers.
+  '''
+  def __init__(self):
+    super().__init__()
+    self._prev_add_weight = None
+
+  def wraps_saver_init(self, fn):
+    r'''Wraps saver init function.
+    '''
+    def wrapped_saver_init(cls, *args, **kwargs):
+      keep_checkpoint_max = Context.get().options.keep_checkpoint_max
+      keep_checkpoint_every_n_hours = \
+        Context.get().options.keep_checkpoint_every_n_hours
+      if keep_checkpoint_max is not None:
+        kwargs['max_to_keep'] = keep_checkpoint_max
+      if keep_checkpoint_every_n_hours is not None:
+        kwargs['keep_checkpoint_every_n_hours'] = \
+          keep_checkpoint_every_n_hours
+      kwargs['save_relative_paths'] = True
+      fn(cls, *args, **kwargs)
+    return wrapped_saver_init
+
+  def patch(self):
+    r'''Patches APIs.
+    '''
+    self._prev_saver_init = saver.Saver.__init__
+    saver.Saver.__init__ = self.wraps_saver_init(self._prev_saver_init)
+
+  def unpatch(self):
+    r'''Revert API patching.
+    '''
+    saver.Saver.__init__ = self._prev_saver_init
+
+
+Patching.register(PatchingSavers)

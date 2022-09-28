@@ -3,7 +3,7 @@ TENSORFLOW_SRC := hybridbackend/tensorflow/
 ifeq ($(HYBRIDBACKEND_WITH_BUILDINFO),ON)
 HYBRIDBACKEND_BUILD_FRAMEWORK := $(shell \
 	$(PYTHON) -c \
-	"import tensorflow as tf; print('tensorflow-%s' % tf.__git_version__)" \
+	"import tensorflow as tf; print('tf{}-{}'.format(tf.__version__, tf.__git_version__))" \
 	2>/dev/null)
 CFLAGS := $(CFLAGS) \
 	-DHYBRIDBACKEND_BUILD_FRAMEWORK="\"$(HYBRIDBACKEND_BUILD_FRAMEWORK)\""
