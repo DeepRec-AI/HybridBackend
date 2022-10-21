@@ -24,4 +24,4 @@ HYBRIDBACKEND_WITH_BUILDINFO=ON \
 HYBRIDBACKEND_CHECK_INSTANCE=ON \
 $@
 
-tools/repair env/dist env/build
+tools/repair build/wheel build/auditwheel

@@ -46,8 +46,8 @@ else
   fi
 fi
 
-if [[ ! -f "env/dockerfiles/Dockerfile.developer-${TAG}" ]]; then
-  echo >&2 "env/dockerfiles/Dockerfile.developer-${TAG} not found"
+if [[ ! -f "build/dockerfiles/Dockerfile.developer-${TAG}" ]]; then
+  echo >&2 "build/dockerfiles/Dockerfile.developer-${TAG} not found"
   exit 1
 fi
 

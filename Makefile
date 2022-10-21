@@ -125,7 +125,7 @@ endif
 
 ifneq ($(OS),Darwin)
 D_FILES := $(shell \
-    find \( -path ./env -o -path ./build -o -path ./dist \) \
+    find \( -path ./build \) \
 	-prune -false -o -type f -name '*.d' \
 	-exec realpath {} --relative-to . \;)
 
@@ -134,7 +134,7 @@ endif
 
 THIRDPARTY_DEPS :=
 ifeq ($(HYBRIDBACKEND_WITH_ARROW),ON)
-ARROW_HOME ?= env/arrow/dist
+ARROW_HOME ?= build/arrow/dist
 ARROW_API_H := $(ARROW_HOME)/include/arrow/api.h
 THIRDPARTY_DEPS := $(THIRDPARTY_DEPS) $(ARROW_API_H)
 CFLAGS := $(CFLAGS) \
@@ -195,7 +195,7 @@ COMMON_LDFLAGS := $(COMMON_LDFLAGS) \
 endif
 
 ifeq ($(HYBRIDBACKEND_WITH_SPARSEHASH),ON)
-SPARSEHASH_HOME ?= env/sparsehash/dist
+SPARSEHASH_HOME ?= build/sparsehash/dist
 SPARSEHASH_DENSE_HASH_MAP := $(SPARSEHASH_HOME)/include/sparsehash/dense_hash_map
 THIRDPARTY_DEPS := $(THIRDPARTY_DEPS) $(SPARSEHASH_DENSE_HASH_MAP)
 CFLAGS := $(CFLAGS) \
@@ -213,8 +213,7 @@ ifeq ($(HYBRIDBACKEND_WITH_TENSORFLOW),ON)
 TENSORFLOW_LIB := $(LIBNAME)/tensorflow/lib$(LIBNAME)_tensorflow.so
 -include $(LIBNAME)/tensorflow/Makefile
 CORE_DEPS := $(CORE_DEPS) $(TENSORFLOW_LIB)
-CFLAGS := $(CFLAGS) \
-	-DHYBRIDBACKEND_TENSORFLOW="$(TENSORFLOW_DISTRO)"
+CFLAGS := $(CFLAGS) -DHYBRIDBACKEND_TENSORFLOW=1
 ifeq ($(HYBRIDBACKEND_WITH_TENSORFLOW_HALF),ON)
 CFLAGS := $(CFLAGS) -DHYBRIDBACKEND_TENSORFLOW_HALF=1
 endif
@@ -226,13 +225,13 @@ build: $(CORE_DEPS)
 	WHEEL_BUILD="$(HYBRIDBACKEND_WHEEL_BUILD)" \
 	WHEEL_REQUIRES="$(HYBRIDBACKEND_WHEEL_REQUIRES)" \
 	WHEEL_DEBUG="$(HYBRIDBACKEND_WHEEL_DEBUG)" \
-	$(PYTHON) setup.py bdist_wheel -d env/dist
-	@ls env/dist/*.whl
+	$(PYTHON) setup.py bdist_wheel -d build/wheel
+	@ls build/wheel/*.whl
 
 .PHONY: doc
 doc:
-	mkdir -p env/dist
-	sphinx-build -M html docs/ env/dist/doc
+	mkdir -p build/doc
+	sphinx-build -M html docs/ build/doc
 
 TESTS := $(shell find hybridbackend/ -type f -name "*_test.py")
 
@@ -246,8 +245,13 @@ test:
 
 .PHONY: clean
 clean:
-	rm -fr env/dist/
-	rm -fr build/
+	rm -fr build/doc/
+	rm -fr build/reports/
+	rm -fr build/wheel/
+	rm -fr build/auditwheel/
+	rm -fr build/lib.*
+	rm -fr build/bdist.*
+	rm -fr build/temp.*
 	rm -fr *.egg-info/
 	rm -rf .pylint.d/
 	find -name *.c -exec rm -fr {} \;

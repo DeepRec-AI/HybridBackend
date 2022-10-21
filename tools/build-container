@@ -23,8 +23,8 @@ if [[ -z "$TAG" ]]; then
 fi
 DOCKERIMAGE="${REPO}:developer-${TAG}"
 DOCKERFILE="dockerfiles/Dockerfile.developer-${TAG}"
-if [[ ! -f "env/${DOCKERFILE}" ]]; then
-  echo >&2 "env/${DOCKERFILE} not found"
+if [[ ! -f "build/${DOCKERFILE}" ]]; then
+  echo >&2 "build/${DOCKERFILE} not found"
   exit 1
 fi
 
@@ -34,22 +34,22 @@ fi
 
 set -eo pipefail
 
-rm -rf env/dist env/build
+rm -rf build/wheel build/auditwheel
 
 export COMMIT=$(git rev-parse --short HEAD 2>/dev/null)
 export COMMIT_TIME=$(git show -s --format=%ct HEAD 2>/dev/null)
 
 if [[ -z "$RELEASE" ]]; then
-  env/run tools/distbuild HYBRIDBACKEND_WHEEL_BUILD=".dev${COMMIT_TIME}"
+  build/run tools/distbuild HYBRIDBACKEND_WHEEL_BUILD=".dev${COMMIT_TIME}"
 else
-  env/run tools/distbuild
+  build/run tools/distbuild
 fi
 
 if [[ -z "$NOTESTS" ]]; then
-  env/run tools/distcheck
+  build/run tools/distcheck
 fi
 
-cd env/
+cd build/
 mkdir -p build
 
 sed "s|{{baseimage}}|${DOCKERIMAGE}|g" dockerfiles/Dockerfile.jinja2 \
