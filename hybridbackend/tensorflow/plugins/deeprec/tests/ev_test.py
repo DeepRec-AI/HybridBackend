@@ -58,7 +58,7 @@ def _test_get_dense_tensor(_):
         dense_shape=[4, 5])
       embedding_lookup = hb.keras.layers.DenseFeatures(
         [emb_col])({'aaa': sparse_input})
-      with hb.train.monitored_session() as sess:
+      with tf.train.MonitoredTrainingSession('') as sess:
         return sess.run(embedding_lookup)
 
 
@@ -86,7 +86,7 @@ def _test_get_dense_tensor_sharded(_):
 
       embedding_lookup = hb.keras.layers.DenseFeatures(
         [emb_col])({'aaa': sparse_input})
-      with hb.train.monitored_session() as sess:
+      with tf.train.MonitoredTrainingSession('') as sess:
         return sess.run(embedding_lookup)
 
 
@@ -117,7 +117,7 @@ def _test_get_dense_tensor_with_varscope(_):
 
         embedding_lookup = hb.keras.layers.DenseFeatures(
           [emb_col])({'aaa': sparse_input})
-        with hb.train.monitored_session() as sess:
+        with tf.train.MonitoredTrainingSession('') as sess:
           return sess.run(embedding_lookup)
 
 
@@ -164,9 +164,9 @@ def _test_embedding_column_with_optimizer(_, lr):
       train_op = opt.minimize(loss, global_step=step)
 
       final_loss = None
-      with hb.train.monitored_session(
+      with tf.train.MonitoredTrainingSession(
+          '',
           hooks=[
-            opt.make_session_run_hook(),
             tf.train.StopAtStepHook(last_step=100),
             tf.train.NanTensorHook(loss),
             tf.train.LoggingTensorHook(
@@ -209,7 +209,7 @@ def _test_get_dense_tensor_disable_concat(_):
       }
       embs = hb.keras.layers.DenseFeatures(columns)(features)
 
-      with hb.train.monitored_session() as sess:
+      with tf.train.MonitoredTrainingSession('') as sess:
         return sess.run(embs)
 
 
@@ -257,7 +257,8 @@ def _test_embedding_column_with_coalescing(_, lr):
       train_op = opt.minimize(loss, global_step=step)
 
       final_loss = None
-      with hb.train.monitored_session(
+      with tf.train.MonitoredTrainingSession(
+          '',
           hooks=[
             tf.train.StopAtStepHook(last_step=100),
             tf.train.NanTensorHook(loss),
@@ -277,11 +278,6 @@ def _test_embedding_column_with_function(_, lr):
 
   import hybridbackend.tensorflow as hb
 
-  @hb.function(
-    seed=42,
-    emb_num_groups=2,
-    emb_backend='PAIEV',
-    emb_device='/cpu:0')
   def train_fn():
     columns = [
       tf.feature_column.embedding_column(
@@ -318,19 +314,25 @@ def _test_embedding_column_with_function(_, lr):
     step = tf.train.get_or_create_global_step()
     return loss, opt.minimize(loss, global_step=step)
 
-  loss, train_op = train_fn()
-  final_loss = None
-  with hb.train.monitored_session(
-      hooks=[
-        tf.train.StopAtStepHook(last_step=100),
-        tf.train.NanTensorHook(loss),
-        tf.train.LoggingTensorHook(
-          tensors={'loss': loss},
-          every_n_iter=20)]) as sess:
-    while not sess.should_stop():
-      final_loss = sess.run(loss)
-      sess.run(train_op)
-  return final_loss
+  with hb.scope(
+      seed=42,
+      emb_num_groups=2,
+      emb_backend='PAIEV',
+      emb_device='/cpu:0'):
+    loss, train_op = train_fn()
+    final_loss = None
+    with tf.train.MonitoredTrainingSession(
+        '',
+        hooks=[
+          tf.train.StopAtStepHook(last_step=100),
+          tf.train.NanTensorHook(loss),
+          tf.train.LoggingTensorHook(
+            tensors={'loss': loss},
+            every_n_iter=20)]) as sess:
+      while not sess.should_stop():
+        final_loss = sess.run(loss)
+        sess.run(train_op)
+    return final_loss
 
 
 def _test_embedding_column_with_function_unique(_, lr):
@@ -340,11 +342,6 @@ def _test_embedding_column_with_function_unique(_, lr):
 
   import hybridbackend.tensorflow as hb
 
-  @hb.function(seed=42,
-               emb_num_groups=2,
-               emb_backend='PAIEV',
-               emb_device='/cpu:0',
-               emb_unique={'ad0': True})
   def train_fn():
     columns = [
       tf.feature_column.embedding_column(
@@ -381,19 +378,26 @@ def _test_embedding_column_with_function_unique(_, lr):
     step = tf.train.get_or_create_global_step()
     return loss, opt.minimize(loss, global_step=step)
 
-  loss, train_op = train_fn()
-  final_loss = None
-  with hb.train.monitored_session(
-      hooks=[
-        tf.train.StopAtStepHook(last_step=100),
-        tf.train.NanTensorHook(loss),
-        tf.train.LoggingTensorHook(
-          tensors={'loss': loss},
-          every_n_iter=20)]) as sess:
-    while not sess.should_stop():
-      final_loss = sess.run(loss)
-      sess.run(train_op)
-  return final_loss
+  with hb.scope(
+      seed=42,
+      emb_num_groups=2,
+      emb_backend='PAIEV',
+      emb_device='/cpu:0',
+      emb_unique={'ad0': True}):
+    loss, train_op = train_fn()
+    final_loss = None
+    with tf.train.MonitoredTrainingSession(
+        '',
+        hooks=[
+          tf.train.StopAtStepHook(last_step=100),
+          tf.train.NanTensorHook(loss),
+          tf.train.LoggingTensorHook(
+            tensors={'loss': loss},
+            every_n_iter=20)]) as sess:
+      while not sess.should_stop():
+        final_loss = sess.run(loss)
+        sess.run(train_op)
+    return final_loss
 
 
 def _test_get_dense_tensor_with_segment_rank(_):
@@ -403,9 +407,6 @@ def _test_get_dense_tensor_with_segment_rank(_):
 
   embedding_dimension = 2
 
-  @hb.function(emb_segment_rank={'aaa': 1},
-               emb_backend='PAIEV',
-               emb_device='/cpu:0')
   def lookup_fn():
     sparse_input = tf.sparse.SparseTensor(
       values=[2, 0, 1, 1],
@@ -421,9 +422,13 @@ def _test_get_dense_tensor_with_segment_rank(_):
     return hb.keras.layers.DenseFeatures([emb_col])({'aaa': sparse_input})
 
   with tf.Graph().as_default():
-    embs = lookup_fn()
-    with hb.train.monitored_session() as sess:
-      return sess.run(embs)
+    with hb.scope(
+        emb_segment_rank={'aaa': 1},
+        emb_backend='PAIEV',
+        emb_device='/cpu:0'):
+      embs = lookup_fn()
+      with tf.train.MonitoredTrainingSession('') as sess:
+        return sess.run(embs)
 
 
 def _test_shared_embedding_column(_, lr):
@@ -465,9 +470,9 @@ def _test_shared_embedding_column(_, lr):
       train_op = opt.minimize(loss, global_step=step)
 
       final_loss = None
-      with hb.train.monitored_session(
+      with tf.train.MonitoredTrainingSession(
+          '',
           hooks=[
-            opt.make_session_run_hook(),
             tf.train.StopAtStepHook(last_step=100),
             tf.train.NanTensorHook(loss),
             tf.train.LoggingTensorHook(

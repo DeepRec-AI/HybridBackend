@@ -24,8 +24,8 @@ from tensorflow.python.training import monitored_session as _monitored_session
 from tensorflow.python.training import server_lib
 
 from hybridbackend.tensorflow.framework.context import Context
+from hybridbackend.tensorflow.framework.rewriting import scope
 from hybridbackend.tensorflow.training.config import configure
-from hybridbackend.tensorflow.training.function import scope
 
 
 class HybridBackendServerBase(object):  # pylint: disable=useless-object-inheritance

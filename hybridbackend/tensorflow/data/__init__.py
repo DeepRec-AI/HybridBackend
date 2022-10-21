@@ -34,3 +34,9 @@ from hybridbackend.tensorflow.data.rebatch.dataset import rebatch
 # make AWS SDK implementation correct.
 from hybridbackend.tensorflow.data.iterators import make_initializable_iterator
 from hybridbackend.tensorflow.data.iterators import make_one_shot_iterator
+from hybridbackend.tensorflow.framework.context import Context as _ctx
+
+_ = (
+  _ctx.get().options
+  .register('data_batch_count', 1)
+  .register('data_sync_drop_remainder', True))

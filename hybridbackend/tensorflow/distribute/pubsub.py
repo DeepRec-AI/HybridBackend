@@ -107,7 +107,7 @@ class PubSub(object):  # pylint: disable=useless-object-inheritance
       else:
         call = PubSub._name_to_call[name]
 
-    with ops.name_scope(f'{name}/{self._rank}'):
+    with ops.name_scope(f'{name}/replica{self._rank}'):
       if self._root_rank != self._rank:
         with ops.device(self._bcast_device):
           return collective_ops.broadcast_recv(

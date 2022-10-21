@@ -66,7 +66,7 @@ class ParquetDatasetReshapeTest(unittest.TestCase):
           hb.data.DataFrame.Field('col2'),
           hb.data.DataFrame.Field('col0', shape=[4])])
       ds = ds.prefetch(4)
-      batch = hb.data.make_one_shot_iterator(ds).get_next()
+      batch = tf.data.make_one_shot_iterator(ds).get_next()
       batch = hb.data.DataFrame.parse(batch)
 
     c = self._df['col0']

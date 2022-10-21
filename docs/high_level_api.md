@@ -134,29 +134,3 @@ def model_fn(features, labels, mode, params):
       loss=loss,
       train_op=train_op)
 ```
-
-### 2.4 Example: Use user-defined embedding backend
-
-```python
-import tensorflow as tf
-import hybridbackend.tensorflow as hb
-
-class MyEmbeddingBackend(hb.embedding.Backend):
-  NAME = 'MYEMB'
-
-  def build(self, column, name, shape, **kwargs):
-    return mymodule.get_my_emb(name, shape, **kwargs)
-
-  def lookup(self, column, weight, inputs, sharded=False, buffered=False):
-    r'''Lookup for embedding vectors.
-    '''
-    return mymodule.lookup(weight, inputs)
-
-hb.embedding.Backend.register(MyEmbeddingBackend())
-```
-
-```python
-from mymodule import MyEmbeddingBackend
-
-hb.context.options.emb_backend = 'PAIEV'
-```

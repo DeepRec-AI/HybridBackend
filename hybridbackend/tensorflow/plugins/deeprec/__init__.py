@@ -40,7 +40,7 @@ _ = (
 try:
   from .ev import EmbeddingBackendDeepRecEV  # pylint: disable=unused-import
   from .ev import \
-    EmbeddingLookupPatchingForDeepRecEV  # pylint: disable=unused-import
+    EmbeddingLookupRewritingForDeepRecEV  # pylint: disable=unused-import
 except ImportError:
   pass
 # pylint: enable=ungrouped-imports

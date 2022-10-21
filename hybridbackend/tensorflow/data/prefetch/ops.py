@@ -33,11 +33,11 @@ from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.ops import array_ops
 from tensorflow.python.platform import tf_logging as logging
-from tensorflow.python.training import session_run_hook
 from tensorflow.python.util import nest
 
 from hybridbackend.tensorflow.common import oplib as _ops
-from hybridbackend.tensorflow.framework.context import Context
+from hybridbackend.tensorflow.framework.ops import ModeKeys
+from hybridbackend.tensorflow.framework.rewriting import SessionRunRewriting
 
 ops.NotDifferentiable('HbPrefetchBufferPut')
 ops.NotDifferentiable('HbPrefetchBufferTake')
@@ -173,7 +173,6 @@ class Iterator(object):  # pylint: disable=useless-object-inheritance
 
     self._created_threads = False
     ops.add_to_collection(self.__class__.__name__, self)
-    Context.get().add_training_hook(IteratorHook(self))
 
   @property
   def name(self):
@@ -348,11 +347,6 @@ class Iterator(object):  # pylint: disable=useless-object-inheritance
     self._created_threads = True
     return ret_threads
 
-  def make_session_run_hook(self):
-    r'''Creates a hook to start threads.
-    '''
-    return IteratorHook(self)
-
   @classmethod
   def start(cls, sess, coord=None):
     r'''Start threads to prefetch tensors for the given session.
@@ -386,44 +380,12 @@ class Iterator(object):  # pylint: disable=useless-object-inheritance
           sess, coord=coord, daemon=True, start=True))
     return threads
 
-  class Hook(session_run_hook.SessionRunHook):
+  class Hook(SessionRunRewriting):
     r'''SessionRunHook that starts prefetching threads after session creation.
     '''
     def after_create_session(self, session, coord):
       Iterator.start(session, coord=coord)
 
 
-class IteratorHook(session_run_hook.SessionRunHook):
-  r'''SessionRunHook that starts prefetching threads after session creation.
-  '''
-  def __init__(self, iterator):
-    r'''SessionRunHook that starts prefetching threads for specific iterator.
-
-    Args:
-      iterator: Specific iterator.
-    '''
-    super().__init__()
-    self._iterator = iterator
-
-  def after_create_session(self, session, coord):
-    r'''After session was created.
-    '''
-    if session is None:
-      session = ops.get_default_session()
-      if not session:
-        raise ValueError(
-          'Cannot start threads: No default session is registered. Use '
-          '`with session.as_default()` or use explicit session in '
-          'create_threads')
-
-    if not isinstance(session, session_lib.SessionInterface):
-      if session.__class__.__name__ in (
-          'MonitoredSession', 'SingularMonitoredSession'):
-        return []
-      raise TypeError(
-        'session must be a `tf.Session` object. '
-        f'Given class: {session.__class__}')
-
-    with session.graph.as_default():
-      return self._iterator.create_threads(
-        session, coord=coord, daemon=True, start=True)
+SessionRunRewriting.register(
+  Iterator.Hook, [ModeKeys.TRAIN, ModeKeys.EVAL, ModeKeys.PREDICT])

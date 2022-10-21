@@ -70,7 +70,7 @@ class ParquetDatasetRebatchTest(unittest.TestCase):
       ds = hb.data.ParquetDataset(self._filename, batch_size)
       ds = ds.apply(hb.data.rebatch(batch_size))
       ds = ds.prefetch(4)
-      batch = hb.data.make_one_shot_iterator(ds).get_next()
+      batch = tf.data.make_one_shot_iterator(ds).get_next()
 
     a = self._df['A']
     c = self._df['C']
@@ -89,7 +89,7 @@ class ParquetDatasetRebatchTest(unittest.TestCase):
       ds = hb.data.ParquetDataset(self._filename, micro_batch_size)
       ds = ds.apply(hb.data.rebatch(batch_size))
       ds = ds.prefetch(4)
-      batch = hb.data.make_one_shot_iterator(ds).get_next()
+      batch = tf.data.make_one_shot_iterator(ds).get_next()
 
     a = self._df['A']
     c = self._df['C']
@@ -109,7 +109,7 @@ class ParquetDatasetRebatchTest(unittest.TestCase):
       ds = hb.data.ParquetDataset(self._filename, micro_batch_size)
       ds = ds.apply(hb.data.rebatch(batch_size, min_batch_size))
       ds = ds.prefetch(4)
-      batch = hb.data.make_one_shot_iterator(ds).get_next()
+      batch = tf.data.make_one_shot_iterator(ds).get_next()
 
     a = self._df['A']
     c = self._df['C']
@@ -132,7 +132,7 @@ class ParquetDatasetRebatchTest(unittest.TestCase):
       ds = hb.data.ParquetDataset(self._filename, micro_batch_size)
       ds = ds.apply(hb.data.rebatch(batch_size))
       ds = ds.prefetch(4)
-      batch = hb.data.make_one_shot_iterator(ds).get_next()
+      batch = tf.data.make_one_shot_iterator(ds).get_next()
 
     b = self._df['B']
     with tf.Session(graph=graph) as sess:
@@ -162,7 +162,7 @@ class ParquetDatasetRebatchTest(unittest.TestCase):
       ds = ds.apply(hb.data.rebatch(batch_size))
       ds = ds.apply(hb.data.parse())
       ds = ds.prefetch(4)
-      batch = hb.data.make_one_shot_iterator(ds).get_next()
+      batch = tf.data.make_one_shot_iterator(ds).get_next()
 
     b = self._df['B']
     with tf.Session(graph=graph) as sess:
@@ -195,7 +195,7 @@ class ParquetDatasetRebatchTest(unittest.TestCase):
         hb.data.rebatch(batch_size, fields=srcds.fields, num_parallel_scans=2))
       ds = ds.apply(hb.data.parse())
       ds = ds.prefetch(4)
-      batch = hb.data.make_one_shot_iterator(ds).get_next()
+      batch = tf.data.make_one_shot_iterator(ds).get_next()
 
     with tf.Session(graph=graph) as sess:
       for _ in xrange(3):
@@ -208,7 +208,7 @@ class ParquetDatasetRebatchTest(unittest.TestCase):
       ds = hb.data.ParquetDataset(self._filename, micro_batch_size)
       ds = ds.apply(hb.data.rebatch(batch_size, num_parallel_scans=3))
       ds = ds.prefetch(4)
-      batch = hb.data.make_one_shot_iterator(ds).get_next()
+      batch = tf.data.make_one_shot_iterator(ds).get_next()
 
     b = self._df['B']
     with tf.Session(graph=graph) as sess:
@@ -240,7 +240,7 @@ class ParquetDatasetRebatchTest(unittest.TestCase):
         fields=[hb.data.DataFrame.Field('D', shape=[4])])
       ds = ds.apply(hb.data.rebatch(batch_size))
       ds = ds.prefetch(4)
-      batch = hb.data.make_one_shot_iterator(ds).get_next()
+      batch = tf.data.make_one_shot_iterator(ds).get_next()
 
     d = self._df['D']
     with tf.Session(graph=graph) as sess:

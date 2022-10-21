@@ -49,26 +49,27 @@ def benchmark(params):
         batch_size=params.batch_size)
       if params.rebatch_size is not None:
         ds = ds.apply(hb.data.rebatch(params.rebatch_size))
-      batch = hb.data.make_one_shot_iterator(ds).get_next()
+      batch = tf.data.make_one_shot_iterator(ds).get_next()
       count_op = tf.shape(list(batch.values())[0])[0]
       train_op = tf.group(list(batch.values()) + [step.assign_add(1)])
     elif params.filename.endswith('.csv'):
       ds = tf.data.TextLineDataset([params.filename] * params.epochs)
       ds = ds.batch(params.batch_size)
       ds = ds.map(lambda line: tf.io.decode_csv(line, describe_csv()))
-      batch = hb.data.make_one_shot_iterator(ds).get_next()
+      batch = tf.data.make_one_shot_iterator(ds).get_next()
       count_op = tf.shape(batch[0])[0]
       train_op = tf.group(batch + [step.assign_add(1)])
     elif params.filename.endswith('.tfrecord'):
       ds = tf.data.TFRecordDataset([params.filename] * params.epochs)
       ds = ds.batch(params.batch_size)
       ds = ds.map(lambda line: tf.parse_example(line, describe_tfrecord()))
-      batch = hb.data.make_one_shot_iterator(ds).get_next()
+      batch = tf.data.make_one_shot_iterator(ds).get_next()
       count_op = tf.shape(batch[0])[0]
       train_op = tf.group(batch + [step.assign_add(1)])
     else:
       raise ValueError(f'File {params.filename} not supported.')
-    with hb.train.monitored_session(
+    with tf.train.MonitoredTrainingSession(
+        '',
         hooks=[
           tf.train.StopAtStepHook(params.num_steps),
           hb.train.StepStatHook(count=count_op)]) as sess:

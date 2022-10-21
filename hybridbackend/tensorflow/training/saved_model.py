@@ -48,7 +48,6 @@ from tensorflow.python.training import monitored_session
 from tensorflow.python.util import compat
 
 from hybridbackend.tensorflow.framework.context import Context
-from hybridbackend.tensorflow.framework.context import context_scope
 from hybridbackend.tensorflow.framework.ops import ModeKeys
 
 
@@ -89,62 +88,63 @@ def export_all(
     return None
 
   export_dir = get_timestamped_export_dir(export_dir_base)
-  with ops.Graph().as_default(), context_scope(mode=ModeKeys.PREDICT):
-    # Build graph.
-    signature_def_map = signature_defs_and_main_op_fn()
-    main_op = None
-    if isinstance(signature_def_map, (tuple, list)):
-      if len(signature_def_map) > 1:
-        main_op = signature_def_map[1]
-      signature_def_map = signature_def_map[0]
-    if not main_op:
-      main_op = monitored_session.Scaffold.default_local_init_op()
-    if modes is None:
-      modes = [ModeKeys.PREDICT, ModeKeys.TRAIN, ModeKeys.EVAL]
-    modes = [
-      m for m in modes
-      if SIGNATURE_KEY_MAP[m] in signature_def_map]
-    signature_def_map = {
-      k: signature_def_map[k] for k in signature_def_map
-      if k in [SIGNATURE_KEY_MAP[m] for m in modes]}
-    signature_tags = [EXPORT_TAG_MAP[m][0] for m in modes]
+  with ops.Graph().as_default():
+    with Context.scope(mode=ModeKeys.PREDICT, comm_pool_name=ModeKeys.PREDICT):
+      # Build graph.
+      signature_def_map = signature_defs_and_main_op_fn()
+      main_op = None
+      if isinstance(signature_def_map, (tuple, list)):
+        if len(signature_def_map) > 1:
+          main_op = signature_def_map[1]
+        signature_def_map = signature_def_map[0]
+      if not main_op:
+        main_op = monitored_session.Scaffold.default_local_init_op()
+      if modes is None:
+        modes = [ModeKeys.PREDICT, ModeKeys.TRAIN, ModeKeys.EVAL]
+      modes = [
+        m for m in modes
+        if SIGNATURE_KEY_MAP[m] in signature_def_map]
+      signature_def_map = {
+        k: signature_def_map[k] for k in signature_def_map
+        if k in [SIGNATURE_KEY_MAP[m] for m in modes]}
+      signature_tags = [EXPORT_TAG_MAP[m][0] for m in modes]
 
-    b = builder.SavedModelBuilder(export_dir, **kwargs)
-    b._has_saved_variables = True  # pylint: disable=protected-access
+      b = builder.SavedModelBuilder(export_dir, **kwargs)
+      b._has_saved_variables = True  # pylint: disable=protected-access
 
-    # Copy variables.
-    saved_model_utils.get_or_create_variables_dir(export_dir)
-    export_checkpoint_path = saved_model_utils.get_variables_path(export_dir)
-    checkpoint_files = [
-      *gfile.Glob(f'{checkpoint_path}.index'),
-      *gfile.Glob(f'{checkpoint_path}.data-?????-of-?????')]
-    for f in checkpoint_files:
-      export_ckpt = re.sub(
-        compat.as_text(checkpoint_path),
-        compat.as_text(export_checkpoint_path),
-        f)
-      gfile.Copy(f, export_ckpt)
+      # Copy variables.
+      saved_model_utils.get_or_create_variables_dir(export_dir)
+      export_checkpoint_path = saved_model_utils.get_variables_path(export_dir)
+      checkpoint_files = [
+        *gfile.Glob(f'{checkpoint_path}.index'),
+        *gfile.Glob(f'{checkpoint_path}.data-?????-of-?????')]
+      for f in checkpoint_files:
+        export_ckpt = re.sub(
+          compat.as_text(checkpoint_path),
+          compat.as_text(export_checkpoint_path),
+          f)
+        gfile.Copy(f, export_ckpt)
 
-    # Add MetaGraph.
-    b.add_meta_graph(
-      tags=signature_tags,
-      signature_def_map=signature_def_map,
-      assets_collection=ops.get_collection(ops.GraphKeys.ASSET_FILEPATHS),
-      clear_devices=clear_devices,
-      main_op=main_op,
-      strip_default_attrs=strip_default_attrs)
+      # Add MetaGraph.
+      b.add_meta_graph(
+        tags=signature_tags,
+        signature_def_map=signature_def_map,
+        assets_collection=ops.get_collection(ops.GraphKeys.ASSET_FILEPATHS),
+        clear_devices=clear_devices,
+        main_op=main_op,
+        strip_default_attrs=strip_default_attrs)
 
-    # Save model.
-    b.save(as_text=as_text)
+      # Save model.
+      b.save(as_text=as_text)
 
-    # Save extras.
-    if assets_extra:
-      assets_extra_path = os.path.join(
-        export_dir, constants.EXTRA_ASSETS_DIRECTORY)
-      for dst, src in assets_extra.items():
-        target = os.path.join(assets_extra_path, compat.as_bytes(dst))
-        gfile.MakeDirs(os.path.dirname(target))
-        gfile.Copy(src, target)
+      # Save extras.
+      if assets_extra:
+        assets_extra_path = os.path.join(
+          export_dir, constants.EXTRA_ASSETS_DIRECTORY)
+        for dst, src in assets_extra.items():
+          target = os.path.join(assets_extra_path, compat.as_bytes(dst))
+          gfile.MakeDirs(os.path.dirname(target))
+          gfile.Copy(src, target)
 
   return export_dir
 

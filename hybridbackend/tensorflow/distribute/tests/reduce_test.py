@@ -55,7 +55,7 @@ class ReduceTest(unittest.TestCase):
     b = 22
     devices = ['/gpu:0', '/gpu:1']
     shared_name = 'comm'
-    with tf.Graph().as_default():
+    with tf.Graph().as_default(), hb.scope():
       with tf.device('/gpu:0'):
         comm0 = hb.distribute.Communicator.build(shared_name, devices)
         input0 = tf.constant(a)
@@ -64,7 +64,7 @@ class ReduceTest(unittest.TestCase):
         comm1 = hb.distribute.Communicator.build(shared_name, devices)
         input1 = tf.constant(b)
         sum1 = comm1.reduce(input1, root_rank=root_rank)
-      with hb.train.monitored_session() as sess:
+      with tf.train.MonitoredTrainingSession('') as sess:
         s0, s1 = sess.run([sum0, sum1])
         if root_rank == 0:
           np.testing.assert_allclose(s0, a + b, rtol=1e-6)
@@ -81,12 +81,12 @@ class ReduceTest(unittest.TestCase):
     a = 13
     devices = ['/gpu:0']
     shared_name = 'comm_onedevice'
-    with tf.Graph().as_default():
+    with tf.Graph().as_default(), hb.scope():
       with tf.device('/gpu:0'):
         comm0 = hb.distribute.Communicator.build(shared_name, devices)
         input0 = tf.constant(a)
         sum0 = comm0.reduce(input0)
-      with hb.train.monitored_session() as sess:
+      with tf.train.MonitoredTrainingSession('') as sess:
         np.testing.assert_allclose(sess.run(sum0), a, rtol=1e-6)
 
   def test_reduce_max(self):
@@ -96,7 +96,7 @@ class ReduceTest(unittest.TestCase):
     b = 22
     devices = ['/gpu:0', '/gpu:1']
     shared_name = 'comm'
-    with tf.Graph().as_default():
+    with tf.Graph().as_default(), hb.scope():
       with tf.device('/gpu:0'):
         comm0 = hb.distribute.Communicator.build(shared_name, devices)
         input0 = tf.constant(a)
@@ -105,7 +105,7 @@ class ReduceTest(unittest.TestCase):
         comm1 = hb.distribute.Communicator.build(shared_name, devices)
         input1 = tf.constant(b)
         max1 = comm1.reduce(input1, reduce_op=hb.distribute.ops.MAX)
-      with hb.train.monitored_session() as sess:
+      with tf.train.MonitoredTrainingSession('') as sess:
         s0, _ = sess.run([max0, max1])
         np.testing.assert_allclose(s0, b, rtol=1e-6)
 
@@ -115,7 +115,7 @@ class ReduceTest(unittest.TestCase):
     a = 13
     b = 22
     devices = ['/gpu:0', '/gpu:1']
-    with tf.Graph().as_default():
+    with tf.Graph().as_default(), hb.scope():
       reduce_ops_rank0 = []
       reduce_ops_rank1 = []
       for icomm in xrange(10):
@@ -130,7 +130,7 @@ class ReduceTest(unittest.TestCase):
           sum1 = comm1.reduce(input1)
         reduce_ops_rank0.append(sum0)
         reduce_ops_rank1.append(sum1)
-      with hb.train.monitored_session() as sess:
+      with tf.train.MonitoredTrainingSession('') as sess:
         results_rank0, _ = sess.run([reduce_ops_rank0, reduce_ops_rank1])
         for r in results_rank0:
           np.testing.assert_allclose(r, a + b, rtol=1e-6)
@@ -165,7 +165,7 @@ class ReduceTest(unittest.TestCase):
 
     devices = ['/gpu:0', '/gpu:1']
     shared_name = 'comm'
-    with tf.Graph().as_default():
+    with tf.Graph().as_default(), hb.scope():
       with tf.device('/gpu:0'):
         a = tf.constant(1.0, shape=[2, 10])
         comm0 = hb.distribute.Communicator.build(shared_name, devices)
@@ -182,7 +182,7 @@ class ReduceTest(unittest.TestCase):
         grad1 = tf.gradients(
           [loss1], [b], [2.0],
           colocate_gradients_with_ops=True)
-      with hb.train.monitored_session() as sess:
+      with tf.train.MonitoredTrainingSession('') as sess:
         vals = sess.run({'g0': grad0, 'g1': grad1})
         np.testing.assert_allclose(vals['g0'][0], [[1.5] * 10] * 2, rtol=1e-6)
 

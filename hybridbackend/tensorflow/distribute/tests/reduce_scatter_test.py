@@ -56,7 +56,7 @@ class ReduceScatterTest(unittest.TestCase):
     all_inputs = []
     all_sums = []
 
-    with tf.Graph().as_default():
+    with tf.Graph().as_default(), hb.scope():
       for i in xrange(num_comms):
         comm_inputs = []
         comm_sums = []
@@ -76,7 +76,7 @@ class ReduceScatterTest(unittest.TestCase):
         [tf.split(tf.add_n(all_inputs[i]), num_devices, axis=0)
          for i in xrange(num_comms)]
         if islegal else [])
-      with hb.train.monitored_session() as sess:
+      with tf.train.MonitoredTrainingSession('') as sess:
         expects = sess.run(baselines)
         actuals = sess.run(all_sums)
       for i in xrange(num_comms):
@@ -118,7 +118,7 @@ class ReduceScatterTest(unittest.TestCase):
 
     devices = ['/gpu:0', '/gpu:1']
     shared_name = 'comm'
-    with tf.Graph().as_default():
+    with tf.Graph().as_default(), hb.scope():
       with tf.device('/gpu:0'):
         a = tf.constant(1.0, shape=[4, 8])
         comm0 = hb.distribute.Communicator.build(shared_name, devices)
@@ -131,7 +131,7 @@ class ReduceScatterTest(unittest.TestCase):
         loss1 = tf.reduce_mean(recv1) * 10.0
       loss = loss0 * loss1 + loss1 * 2.0
       grad0, grad1 = tf.gradients([loss], [a, b], [2.0])
-      with hb.train.monitored_session() as sess:
+      with tf.train.MonitoredTrainingSession('') as sess:
         g0, g1 = sess.run([grad0, grad1])
         np.testing.assert_allclose(
           g0,

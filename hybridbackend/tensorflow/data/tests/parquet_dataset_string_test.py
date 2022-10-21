@@ -68,7 +68,7 @@ class ParquetDatasetStringTest(unittest.TestCase):
         [self._filename],
         batch_size=batch_size)
       ds = ds.prefetch(4)
-      batch = hb.data.make_one_shot_iterator(ds).get_next()
+      batch = tf.data.make_one_shot_iterator(ds).get_next()
 
     c = self._df['col0']
     with tf.Session(graph=graph) as sess:
@@ -100,7 +100,7 @@ class ParquetDatasetStringTest(unittest.TestCase):
       ds = hb.data.ParquetDataset(self._filename, batch_size=batch_size)
       ds = ds.map(hb.data.DataFrame.parse)
       ds = ds.prefetch(4)
-      batch = hb.data.make_one_shot_iterator(ds).get_next()
+      batch = tf.data.make_one_shot_iterator(ds).get_next()
 
     c = self._df['col0']
     with tf.Session(graph=graph) as sess:
@@ -131,7 +131,7 @@ class ParquetDatasetStringTest(unittest.TestCase):
       ds = hb.data.ParquetDataset(self._filename)
       ds = ds.map(hb.data.DataFrame.unbatch_and_to_sparse)
       ds = ds.prefetch(4)
-      batch = hb.data.make_one_shot_iterator(ds).get_next()
+      batch = tf.data.make_one_shot_iterator(ds).get_next()
 
     c = self._df['col0']
     with tf.Session(graph=graph) as sess:

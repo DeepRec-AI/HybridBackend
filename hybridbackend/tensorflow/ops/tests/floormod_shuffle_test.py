@@ -46,11 +46,11 @@ class FloorModShuffleTest(unittest.TestCase):
       dtype=np.int32)
     num_partitions = 5
 
-    with tf.Graph().as_default():
+    with tf.Graph().as_default(), hb.scope():
       xi = tf.constant(x)
       y_list, idx_list = hb.floormod_partition(xi, num_partitions)
       y, ysizes, idx = hb.floormod_shuffle(xi, num_partitions)
-      with hb.train.monitored_session() as sess:
+      with tf.train.MonitoredTrainingSession('') as sess:
         tf_y_list, tf_idx_list, tf_y, tf_ysizes, tf_idx = sess.run(
           [y_list, idx_list, y, ysizes, idx])
 
@@ -71,11 +71,11 @@ class FloorModShuffleTest(unittest.TestCase):
     x = np.array([], np.int64)
     num_partitions = 7
 
-    with tf.Graph().as_default():
+    with tf.Graph().as_default(), hb.scope():
       with tf.device('/gpu:0'):
         xi = tf.constant(x)
         y, ysizes, idx = hb.floormod_shuffle(xi, num_partitions)
-      with hb.train.monitored_session() as sess:
+      with tf.train.MonitoredTrainingSession('') as sess:
         tf_y, tf_ysizes, tf_idx = sess.run([y, ysizes, idx])
 
     np.testing.assert_equal(len(tf_y), len(tf_idx))
@@ -95,12 +95,12 @@ class FloorModShuffleTest(unittest.TestCase):
         dtype=np.int64)
       for i in range(num_columns)]
 
-    with tf.Graph().as_default():
+    with tf.Graph().as_default(), hb.scope():
       with tf.device('/gpu:0'):
         xt = [tf.constant(t) for t in x]
         y, ysizes, idx = hb.floormod_shuffle_n(
           xt, num_partitions)
-        with hb.train.monitored_session() as sess:
+        with tf.train.MonitoredTrainingSession('') as sess:
           result = sess.run({'y': y, 'ysizes': ysizes, 'idx': idx})
 
     for c in range(num_columns):
@@ -113,12 +113,12 @@ class FloorModShuffleTest(unittest.TestCase):
     num_partitions = 7
     x = [np.array([], np.int64) for i in range(num_columns)]
 
-    with tf.Graph().as_default():
+    with tf.Graph().as_default(), hb.scope():
       with tf.device('/gpu:0'):
         xt = [tf.constant(t) for t in x]
         y, ysizes, idx = hb.floormod_shuffle_n(
           xt, num_partitions)
-      with hb.train.monitored_session() as sess:
+      with tf.train.MonitoredTrainingSession('') as sess:
         result = sess.run({'y': y, 'ysizes': ysizes, 'idx': idx})
 
     for c in range(num_columns):

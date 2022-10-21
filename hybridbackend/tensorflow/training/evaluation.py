@@ -20,9 +20,9 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import contextlib
+import collections
+import os
 import six
-import threading
 
 from google.protobuf import message
 import numpy as np
@@ -30,6 +30,7 @@ from tensorflow.core.framework import summary_pb2
 from tensorflow.core.protobuf import config_pb2
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_util
+from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import variable_scope as vs
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import tf_logging as logging
@@ -41,132 +42,151 @@ from tensorflow.python.training import slot_creator
 from tensorflow.python.training import training_util
 
 from hybridbackend.tensorflow.framework.context import Context
-from hybridbackend.tensorflow.framework.context import context_scope
+from hybridbackend.tensorflow.framework.device import device_function
 from hybridbackend.tensorflow.framework.ops import ModeKeys
+from hybridbackend.tensorflow.framework.rewriting import GraphRewriting
+from hybridbackend.tensorflow.framework.rewriting import scope
 from hybridbackend.tensorflow.training.variables import disable_variable_update
 from hybridbackend.tensorflow.training.variables import reuse_variables
 
 
-class PatchTensorflowAPIForEval(object):  # pylint: disable=useless-object-inheritance
-  r'''Context manager that patches TF APIs for evaluation.
+class EvaluationRewriting(GraphRewriting):
+  r'''Rewriting evaluation.
   '''
-  _lock = threading.Lock()
-  _stack_depth = 0
+  def __init__(self, ):
+    super().__init__()
+    self._prev_create_slot_var = None
+    self._prev_assign_moving_average = None
+    self._patched = False
 
-  def __init__(self, namescope):
-    self._namescope = namescope
+  def wraps_create_slot_var(self, fn):
+    r'''wraps create slot var to eliminate out scope
+    '''
+    def wrapped_create_slot_var(primary, *args, **kwargs):
+      variable_scope_name = vs.get_variable_scope()._name  # pylint: disable=protected-access
+      if (not isinstance(primary, variables.Variable)
+          and ModeKeys.EVAL in variable_scope_name):
+        vs.get_variable_scope()._name = variable_scope_name.replace(  # pylint: disable=protected-access
+          ModeKeys.EVAL, '')
+      return fn(primary, *args, **kwargs)
+    return wrapped_create_slot_var
 
-  def __enter__(self):
-    with PatchTensorflowAPIForEval._lock:
-      PatchTensorflowAPIForEval._stack_depth += 1
-      if PatchTensorflowAPIForEval._stack_depth <= 1:
-        def wraps_create_slot_var(create_slot_var_fn):
-          r'''wraps create slot var to eliminate out scope
-          '''
-          def wrapped_create_slot_var(
-              primary, *args, **kwargs):
-            variable_scope_name = vs.get_variable_scope()._name  # pylint: disable=protected-access
-            if (not isinstance(primary, variables.Variable)
-                and self._namescope in variable_scope_name):
-              vs.get_variable_scope()._name = variable_scope_name.replace(  # pylint: disable=protected-access
-                self._namescope, '')
-            return create_slot_var_fn(
-              primary, *args, **kwargs)
-          return wrapped_create_slot_var
-        self._prev_create_slot_var = slot_creator._create_slot_var  # pylint: disable=protected-access
-        slot_creator._create_slot_var = wraps_create_slot_var(  # pylint: disable=protected-access
-          self._prev_create_slot_var)
+  def wraps_assign_moving_average(self, assign_moving_avg_fn):
+    r'''disable the update of slot variables within moving average
+    '''
+    def wrapped_assign_moving_average(
+        variable, value, decay, zero_debias=True, name=None):
+      with disable_variable_update():
+        return assign_moving_avg_fn(
+          variable, value, decay, zero_debias=zero_debias, name=name)
+    return wrapped_assign_moving_average
 
-        def wraps_assign_moving_average(assign_moving_avg_fn):
-          r'''disable the update of slot variables within moving average
-          '''
-          def wrapped_assign_moving_average(
-              variable, value, decay, zero_debias=True, name=None):
-            with disable_variable_update():
-              return assign_moving_avg_fn(
-                variable, value, decay, zero_debias=zero_debias, name=name)
-          return wrapped_assign_moving_average
-        self._prev_assign_moving_average = moving_averages.assign_moving_average
-        moving_averages.assign_moving_average = wraps_assign_moving_average(
-          self._prev_assign_moving_average)
+  def begin(self):
+    r'''Rewrites API.
+    '''
+    if Context.get().options.mode == ModeKeys.EVAL:
+      self._prev_create_slot_var = slot_creator._create_slot_var  # pylint: disable=protected-access
+      slot_creator._create_slot_var = self.wraps_create_slot_var(  # pylint: disable=protected-access
+        self._prev_create_slot_var)
+      self._prev_assign_moving_average = moving_averages.assign_moving_average
+      moving_averages.assign_moving_average = self.wraps_assign_moving_average(
+        self._prev_assign_moving_average)
+      self._patched = True
 
-      return self
-
-  def __exit__(self, exc_type, exc_val, exc_tb):
-    with PatchTensorflowAPIForEval._lock:
-      if PatchTensorflowAPIForEval._stack_depth <= 1:
-        slot_creator._create_slot_var = self._prev_create_slot_var  # pylint: disable=protected-access
-        moving_averages.assign_moving_average = self._prev_assign_moving_average
-      PatchTensorflowAPIForEval._stack_depth -= 1
+  def end(self):
+    r'''Revert API rewriting.
+    '''
+    if self._patched:
+      slot_creator._create_slot_var = self._prev_create_slot_var  # pylint: disable=protected-access
+      moving_averages.assign_moving_average = self._prev_assign_moving_average
 
 
-@contextlib.contextmanager
-def eval_scope():
-  r'''Context manager that decorates for evaluation.
-  '''
-  with context_scope(mode=ModeKeys.EVAL) as ctx:
-    with reuse_variables(vs.AUTO_REUSE):
-      with PatchTensorflowAPIForEval(ModeKeys.EVAL):
-        with ops.name_scope(ModeKeys.EVAL):
-          yield ctx
+GraphRewriting.register(EvaluationRewriting)
+
+
+EvaluationSpec = collections.namedtuple(
+  'EvaluationSpec', ['name', 'hooks', 'update_op', 'eval_dict'])
 
 
 class EvaluationHook(session_run_hook.SessionRunHook):
   r'''Hook to make evaluation along with training.
   '''
-  def __init__(self,
-               fn,
-               steps=100,
-               every_n_iter=1000,
-               summary_dir=None,
-               history=None):
-    r'''Initializes a `EvaluationHook`.
+  def __init__(
+      self, fn,
+      steps=100,
+      every_n_iter=1000,
+      history=None):
+    r'''Evaluates specific function.
 
     Args:
       fn: Function returns update_op, metric ops and hooks.
-      steps: Number of steps for which to evaluate model. If `None`, evaluates
-        until evaluation datasets raises an end-of-input exception.
+      steps: Number of steps for which to evaluate model.
       every_n_iter: `int`, runs the evaluator once every N training iteration.
-      summary_dir: a folder to store the evaluation summaries.
       history: History of eval metrics. history should support `append` method.
-
     Raises:
       ValueError: if `every_n_iter` is non-positive or it's not a single machine
         training
     '''
-    self._fn = fn
-    self._steps = steps
     if every_n_iter is None or every_n_iter <= 0:
       raise ValueError(f'invalid every_n_iter={every_n_iter}.')
+    self._fn = fn
+    self._steps = steps
     self._every_n_iter = every_n_iter
-    self._summary_dir = summary_dir
     self._history = history
-
-    self._hooks = []
-    self._timer = basic_session_run_hooks.SecondOrStepTimer(
-      every_steps=every_n_iter)
 
   def begin(self):
     r'''Preprocess global step and evaluation's hooks.
     '''
-    self._timer.reset()
-    self._iter_count = 0
+    self._evaluation_specs = ops.get_collection_ref(EvaluationSpec.__name__)
+    if len(self._evaluation_specs) > 0:
+      raise ValueError('Only one evaluation spec allowed in a graph')
 
-    with eval_scope():
-      fn_update_op, fn_metrics, fn_hooks = self._fn()
-      ctx_hooks = Context.get().evaluation_hooks
-      if fn_hooks:
-        self._hooks.extend(fn_hooks)
-      if ctx_hooks:
-        self._hooks.extend(ctx_hooks)
-      if ops.GraphKeys.GLOBAL_STEP not in fn_metrics:
-        global_step_tensor = training_util.get_global_step(
-          ops.get_default_graph())
-        fn_metrics[ops.GraphKeys.GLOBAL_STEP] = global_step_tensor
-      for h in self._hooks:
-        h.begin()
-      self._update_op = fn_update_op
-      self._metrics = fn_metrics
+    self._timer = None
+    self._iter_count = 0
+    self._hooks = []
+
+    self._timer = basic_session_run_hooks.SecondOrStepTimer(
+      every_steps=self._every_n_iter)
+    self._timer.reset()
+    self._summary_dir = Context.get().options.eval_dir or '.'
+
+    with ops.device(device_function), reuse_variables(vs.AUTO_REUSE):
+      with scope(mode=ModeKeys.EVAL, comm_pool_name=ModeKeys.EVAL):
+        with ops.name_scope(ModeKeys.EVAL):
+          eval_spec = self._fn()
+          if isinstance(eval_spec, dict):
+            eval_dict = {}
+            update_ops = []
+            for metric_name, metric_val_and_update in eval_spec.items():
+              if not isinstance(metric_name, six.string_types):
+                raise ValueError(f'Metric name {metric_name} should be a str')
+              if (not isinstance(metric_val_and_update, (tuple, list))
+                  or len(metric_val_and_update) != 2):
+                raise ValueError(
+                  f'{metric_val_and_update} should be a tuple '
+                  'of (metric, update_op)')
+              eval_dict[metric_name] = metric_val_and_update[0]
+              update_ops.append(metric_val_and_update[1])
+            update_op = control_flow_ops.group(update_ops)
+            eval_spec = EvaluationSpec(
+              name=EvaluationSpec.__name__,
+              hooks=None,
+              update_op=update_op,
+              eval_dict=eval_dict)
+          if not isinstance(eval_spec, EvaluationSpec):
+            raise ValueError('eval_fn should return a dict or a EvaluationSpec')
+          self._evaluation_specs.append(eval_spec)
+          if eval_spec.hooks:
+            self._hooks.extend(eval_spec.hooks)
+          eval_dict = dict(eval_spec.eval_dict)
+          if ops.GraphKeys.GLOBAL_STEP not in eval_dict:
+            global_step_tensor = training_util.get_global_step(
+              ops.get_default_graph())
+            eval_dict[ops.GraphKeys.GLOBAL_STEP] = global_step_tensor
+          for h in self._hooks:
+            h.begin()
+          self._update_op = eval_spec.update_op
+          self._metrics = eval_dict
 
   def after_create_session(self, session, coord):  # pylint: disable=unused-argument
     r'''Call evaluation's hooks.
@@ -177,6 +197,16 @@ class EvaluationHook(session_run_hook.SessionRunHook):
         'variables.')
     for h in self._hooks:
       h.after_create_session(session, coord)
+
+  def after_run(self, run_context, run_values):  # pylint: disable=unused-argument
+    r'''Runs evaluator after session run.
+    '''
+    self._iter_count += 1
+    if self._timer.should_trigger_for_step(self._iter_count):
+      ctx_stop_requested = run_context.stop_requested
+      run_context._stop_requested = False  # pylint: disable=protected-access
+      self._evaluate(run_context)
+      run_context._stop_requested = ctx_stop_requested  # pylint: disable=protected-access
 
   def _call_before_run_hooks(
       self, run_context, fetch_dict, user_feed_dict=None):
@@ -235,7 +265,10 @@ class EvaluationHook(session_run_hook.SessionRunHook):
     np.set_printoptions(**prev_np_printoptions)
     logging.info('Saving metrics for step %d: %s', current_global_step, stats)
 
-    summary_writer = core_summary.FileWriterCache.get(self._summary_dir)
+    summary_dir = self._summary_dir
+    if Context.get().world_size > 1:
+      summary_dir = os.path.join(summary_dir, f'{Context.get().rank}')
+    summary_writer = core_summary.FileWriterCache.get(summary_dir)
     summary_proto = summary_pb2.Summary()
 
     for key in dictionary:
@@ -279,6 +312,8 @@ class EvaluationHook(session_run_hook.SessionRunHook):
     summary_writer.flush()
 
   def _evaluate(self, run_context):
+    r'''Evaluate on run context.
+    '''
     for _ in range(self._steps):
       if not run_context.stop_requested:
         self._run(run_context, self._update_op)
@@ -288,16 +323,3 @@ class EvaluationHook(session_run_hook.SessionRunHook):
         self._history.append(metric_values)
       self._write_dict_to_summary(metric_values)
     self._timer.update_last_triggered_step(self._iter_count)
-
-  def after_run(self, run_context, run_values):  # pylint: disable=unused-argument
-    r'''Runs evaluator after session run.
-    '''
-    self._iter_count += 1
-    if self._timer.should_trigger_for_step(self._iter_count):
-      ctx_stop_requested = run_context.stop_requested
-      run_context._stop_requested = False  # pylint: disable=protected-access
-      self._evaluate(run_context)
-      run_context._stop_requested = ctx_stop_requested  # pylint: disable=protected-access
-
-  def end(self, session):  # pylint: disable=unused-argument
-    Context.get().evaluation_hooks.clear()

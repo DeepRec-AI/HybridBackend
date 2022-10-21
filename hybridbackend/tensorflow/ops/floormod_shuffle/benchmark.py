@@ -92,6 +92,7 @@ def build_bench_op(params):
   return bench_op
 
 
+@hb.function()
 def benchmark(params):
   bench_op = build_bench_op(params)
   hooks = [tf.train.StopAtStepHook(params.num_steps)]
@@ -99,7 +100,7 @@ def benchmark(params):
     hb.train.StepStatHook(
       count=params.column_ids * params.num_columns / 1000000.,
       unit='Mlookups'))
-  with hb.train.monitored_session(hooks=hooks) as sess:
+  with tf.train.MonitoredTrainingSession('', hooks=hooks) as sess:
     while not sess.should_stop():
       sess.run(bench_op)
 

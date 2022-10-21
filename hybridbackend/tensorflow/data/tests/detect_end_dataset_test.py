@@ -44,9 +44,9 @@ def _test_single(_):
       with tf.device('/cpu:0'):
         ds = tf.data.Dataset.range(100)
         ds = ds.batch(batch_size=batch_size)
-        iterator = hb.data.make_one_shot_iterator(ds)
+        iterator = tf.data.make_one_shot_iterator(ds)
         batch = iterator.get_next()
-      with hb.train.monitored_session() as sess:
+      with tf.train.MonitoredTrainingSession('') as sess:
         final_result = None
         while not sess.should_stop():
           final_result = sess.run(batch)
@@ -68,9 +68,9 @@ def _test_distributed(rank):
       with tf.device('/cpu:0'):
         ds = tf.data.Dataset.range(100 + rank * 50)
         ds = ds.batch(batch_size=batch_size)
-        iterator = hb.data.make_one_shot_iterator(ds)
+        iterator = tf.data.make_one_shot_iterator(ds)
         batch = iterator.get_next()
-      with hb.train.monitored_session() as sess:
+      with tf.train.MonitoredTrainingSession('') as sess:
         final_result = None
         while not sess.should_stop():
           final_result = sess.run(batch)

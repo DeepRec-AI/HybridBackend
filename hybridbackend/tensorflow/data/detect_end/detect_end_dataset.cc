@@ -46,7 +46,7 @@ class DetectEndDatasetOp : public UnaryDatasetOpKernel {
     Dataset(OpKernelContext* ctx, const DatasetBase* input)
         : DatasetBase(DatasetContext(ctx)), input_(input) {
       input_->Ref();
-      output_dtypes_.emplace_back(DT_BOOL);
+      output_dtypes_.emplace_back(DT_INT32);
       output_dtypes_.insert(output_dtypes_.end(),
                             input_->output_dtypes().begin(),
                             input_->output_dtypes().end());
@@ -116,7 +116,7 @@ class DetectEndDatasetOp : public UnaryDatasetOpKernel {
           }
         }
 
-        out_tensors->emplace_back(Tensor(DT_BOOL, {}));
+        out_tensors->emplace_back(Tensor(DT_INT32, {}));
         out_tensors->insert(out_tensors->end(), buf_->begin(), buf_->end());
         if (input_impl_) {
           TF_RETURN_IF_ERROR(input_impl_->GetNext(ctx, &buf, end_of_sequence));
@@ -124,7 +124,7 @@ class DetectEndDatasetOp : public UnaryDatasetOpKernel {
           *end_of_sequence = true;
         }
 
-        out_tensors->begin()->scalar<bool>()() = *end_of_sequence;
+        out_tensors->begin()->scalar<int32>()() = *end_of_sequence;
         if (*end_of_sequence) {
           input_impl_.reset();
         } else {

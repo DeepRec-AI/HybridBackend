@@ -47,94 +47,59 @@ python -m hybridbackend.run python /path/to/main.py
 
 ## 2. Data Parallelism
 
-HybridBackend provides `hb.functions` and `hb.scope` to rewrite variables and
-optimizers for supporting data paralleism. Also `hb.wraps` could be used for
-user-defined optimizers.
+HybridBackend provides `hb.scope` to rewrite variables and optimizers for
+supporting data paralleism.
 
 ### 2.1 APIs
 
 ```{eval-rst}
-.. autofunction:: hybridbackend.tensorflow.function
 .. autofunction:: hybridbackend.tensorflow.scope
-.. autofunction:: hybridbackend.tensorflow.wraps
 ```
 
-### 2.2 Example: Training inside a function
+### 2.2 Example: Training within a scope
 
 ```python
 import tensorflow as tf
 import hybridbackend.tensorflow as hb
 
-@hb.function(grad_nbuckets=2)
-def foo():
+with hb.scope():
   # ...
   loss = tf.losses.get_total_loss()
   # predefined optimizer
   opt = tf.train.GradientDescentOptimizer(learning_rate=lr)
 ```
 
-### 2.3 Example: Training within a scope
-
-```python
-import tensorflow as tf
-import hybridbackend.tensorflow as hb
-
-with hb.scope(grad_nbuckets=2):
-  # ...
-  loss = tf.losses.get_total_loss()
-  # predefined optimizer
-  opt = tf.train.GradientDescentOptimizer(learning_rate=lr)
-```
-
-### 2.4 Example: Defines a new optimizer
-
-```python
-import tensorflow as tf
-import hybridbackend.tensorflow as hb
-
-@hb.wraps
-class MyOptimizer(tf.train.Optimizer):
-  # ...
-
-# ...
-def foo():
-  loss = tf.losses.get_total_loss()
-  opt = MyOptimizer(learning_rate=lr)
-  train_op = opt.minimize(loss)
-```
-
-## 2. Model Parallelism
+## 2. Embedding-Sharded Data Parallelism
 
 HybridBackend provides option `sharding` to shard variables and support
-model-parallel embedding layers.
+embedding-sharded data paralleism.
 
 ### 2.1 APIs
 
 ```{eval-rst}
-.. autofunction:: hybridbackend.tensorflow.data.make_one_shot_iterator
-.. autofunction:: hybridbackend.tensorflow.data.make_initializable_iterator
-.. autofunction:: hybridbackend.tensorflow.train.export
 .. autofunction:: hybridbackend.tensorflow.metrics.accuracy
 .. autofunction:: hybridbackend.tensorflow.metrics.auc
+.. autofunction:: hybridbackend.tensorflow.train.EvaluationHook
+.. autofunction:: hybridbackend.tensorflow.train.export
 ```
 
-### 2.2 Example: Sharding inside a function
+### 2.2 Example: Sharding embedding weights within a scope
 
 ```python
 import tensorflow as tf
 import hybridbackend.tensorflow as hb
 
-@hb.function(grad_nbuckets=2)
 def foo():
   # ...
-  with hb.scope(sharding=True):
-    embedding_weights = tf.get_variable(
-      'emb_weights', shape=[bucket_size, dim_size])
-  embedding = tf.nn.embedding_lookup(embedding_weights, ids)
-  # ...
-  loss = tf.losses.get_total_loss()
-  # predefined optimizer
-  opt = tf.train.GradientDescentOptimizer(learning_rate=lr)
+  with hb.scope():
+    with hb.scope(sharding=True):
+      embedding_weights = tf.get_variable(
+        'emb_weights', shape=[bucket_size, dim_size])
+    embedding = tf.nn.embedding_lookup(embedding_weights, ids)
+    # ...
+    loss = tf.losses.get_total_loss()
+    # predefined optimizer
+    opt = tf.train.GradientDescentOptimizer(learning_rate=lr)
 ```
 
 ### 2.3 Example: Evaluation
@@ -152,19 +117,16 @@ def eval_fn():
 
 with tf.Graph().as_default():
   with hb.scope():
-    batch = hb.data.make_one_shot_iterator(train_ds).get_next()
+    batch = tf.data.make_one_shot_iterator(train_ds).get_next()
     # ...
     with hb.scope(sharding=True):
       embedding_weights = tf.get_variable(
         'emb_weights', shape=[bucket_size, dim_size])
     embedding = tf.nn.embedding_lookup(embedding_weights, ids)
     # ...
+    hooks.append(hb.train.EvaluationHook(eval_fn, every_n_iter=1000))
 
-    with tf.train.MonitoredTrainingSession(
-        '',
-        hooks=hooks,
-        eval_every_n_iter=1000,
-        eval_fn=eval_fn) as sess:
+    with tf.train.MonitoredTrainingSession('', hooks=hooks) as sess:
       while not sess.should_stop():
         sess.run(train_op)
 ```

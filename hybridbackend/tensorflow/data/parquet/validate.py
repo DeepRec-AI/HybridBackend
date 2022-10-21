@@ -77,7 +77,7 @@ def _main(args):
     peek_ops = []
     for f in args.input_files:
       ds = hb.data.ParquetDataset(f, batch_size=args.peek, fields=prev_fields)
-      batch = hb.data.make_one_shot_iterator(ds).get_next()
+      batch = tf.data.make_one_shot_iterator(ds).get_next()
       peek_ops.append(batch)
 
     with tf.Session(graph=graph) as sess:

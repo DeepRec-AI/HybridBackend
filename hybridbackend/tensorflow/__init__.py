@@ -25,15 +25,13 @@ from hybridbackend.tensorflow.feature_column.dense_features import \
   dense_features
 from hybridbackend.tensorflow.framework.context import Context
 from hybridbackend.tensorflow.framework.context import context
-from hybridbackend.tensorflow.framework.context import context_scope
+from hybridbackend.tensorflow.framework.rewriting import function
+from hybridbackend.tensorflow.framework.rewriting import scope
 from hybridbackend.tensorflow.ops import *
-from hybridbackend.tensorflow.training.function import function
-from hybridbackend.tensorflow.training.function import scope
 from hybridbackend.tensorflow.wraps import wraps
 
 from . import data
 from . import distribute
-from . import embedding
 from . import estimator
 from . import feature_column
 from . import keras

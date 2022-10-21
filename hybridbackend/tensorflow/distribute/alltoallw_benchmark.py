@@ -46,15 +46,17 @@ def build_bench_op(params):
 
 
 def benchmark(params):
-  bench_op = build_bench_op(params)
-  with hb.train.monitored_session(
-      hooks=[
-        tf.train.StopAtStepHook(params.num_steps),
-        hb.train.StepStatHook(
-          count=params.kilobytes / 1024.,
-          unit='MB')]) as sess:
-    while not sess.should_stop():
-      sess.run(bench_op)
+  with hb.scope():
+    bench_op = build_bench_op(params)
+    with tf.train.MonitoredTrainingSession(
+        '',
+        hooks=[
+          tf.train.StopAtStepHook(params.num_steps),
+          hb.train.StepStatHook(
+            count=params.kilobytes / 1024.,
+            unit='MB')]) as sess:
+      while not sess.should_stop():
+        sess.run(bench_op)
 
 
 if __name__ == '__main__':

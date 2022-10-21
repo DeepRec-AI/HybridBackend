@@ -25,6 +25,8 @@ import contextlib
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.keras.backend import reset_uids as reset_keras_uids
+from tensorflow.python.keras.engine import base_layer
+from tensorflow.python.layers import base
 from tensorflow.python.ops import embedding_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import state_ops
@@ -32,8 +34,9 @@ from tensorflow.python.ops import variable_scope as vs
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import tf_logging as logging
 
-from hybridbackend.tensorflow.training.embedding import EmbeddingLookupPatching
-from hybridbackend.tensorflow.training.function import Patching
+from hybridbackend.tensorflow.framework.rewriting import GraphRewriting
+from hybridbackend.tensorflow.training.embedding import \
+  EmbeddingLookupRewriting
 
 
 class ReuseVariables(object):  # pylint: disable=useless-object-inheritance
@@ -103,19 +106,49 @@ def disable_variable_update():
     state_ops.assign_add = prev_assign_add
 
 
-class EmbeddingLookupPatchingForVariables(Patching, EmbeddingLookupPatching):
-  r'''Embedding lookup patching for variables.
+class LayerRewriting(GraphRewriting):
+  r'''Rewriting layers.
+  '''
+  def __init__(self):
+    super().__init__()
+    self._prev_add_weight = None
+
+  def wraps_add_weight(self, fn):
+    def wrapped_add_weight(layer, name, shape, **kwargs):
+      kwargs['getter'] = vs.get_variable
+      if isinstance(layer, base.Layer):
+        return fn(layer, name, shape, **kwargs)
+      with vs.variable_scope(layer._name):  # pylint: disable=protected-access
+        return fn(layer, name, shape, **kwargs)
+    return wrapped_add_weight
+
+  def begin(self):
+    r'''Rewrites API.
+    '''
+    self._prev_add_weight = base_layer.Layer.add_weight
+    base_layer.Layer.add_weight = self.wraps_add_weight(self._prev_add_weight)
+
+  def end(self):
+    r'''Revert API rewriting.
+    '''
+    base_layer.Layer.add_weight = self._prev_add_weight
+
+
+GraphRewriting.register(LayerRewriting)
+
+
+class EmbeddingLookupRewritingForVariables(EmbeddingLookupRewriting):
+  r'''Embedding lookup rewriting for variables.
   '''
   def __init__(self):
     super().__init__()
     self._prev_lookup = None
     self._prev_get_variable = None
 
-  @property
-  def name(self):
-    r'''Name of the patching.
+  def build_sharded_ids(self, ids):
+    r'''Shard IDs to lookup sharded embedding weights.
     '''
-    return EmbeddingLookupPatchingForVariables.__name__
+    return ids // self.num_shards
 
   def build_sharded_weights(self, shard, num_shards, fn, name, *args, **kwargs):
     r'''Build sharded embedding weights.
@@ -164,26 +197,8 @@ class EmbeddingLookupPatchingForVariables(Patching, EmbeddingLookupPatching):
 
     return embedding_weights
 
-  def weights_sharded(self, weights):
-    r'''Check whether the embedding weights are sharded.
-    '''
-    sharded_variables = self.weights_list
-    if isinstance(weights, (list, tuple)) and len(weights) == 1:
-      weights = weights[0]
-      if isinstance(weights, ops.Tensor):
-        vname = weights.name.split('/read')[0]
-        for v in sharded_variables:
-          if vname == v.name.split(':')[0]:
-            return True
-    return False
-
-  def shard_ids(self, ids):
-    r'''Shard IDs to lookup sharded embedding weights.
-    '''
-    return ids // self.num_shards
-
-  def patch(self):
-    r'''Patches APIs.
+  def begin(self):
+    r'''Rewrites API.
     '''
     import tensorflow as tf  # pylint: disable=import-outside-toplevel
     self._prev_lookup = embedding_ops.embedding_lookup
@@ -193,13 +208,13 @@ class EmbeddingLookupPatchingForVariables(Patching, EmbeddingLookupPatching):
       embedding_ops.embedding_lookup)
 
     self._prev_get_variable = vs.get_variable
-    vs.get_variable = self.wraps_build_weights(
+    vs.get_variable = self.wraps_build_embedding_weights(
       self._prev_get_variable)
-    tf.get_variable = self.wraps_build_weights(
+    tf.get_variable = self.wraps_build_embedding_weights(
       self._prev_get_variable)
 
-  def unpatch(self):
-    r'''Revert API patching.
+  def end(self):
+    r'''Revert API rewriting.
     '''
     import tensorflow as tf  # pylint: disable=import-outside-toplevel
     vs.get_variable = self._prev_get_variable
@@ -208,4 +223,4 @@ class EmbeddingLookupPatchingForVariables(Patching, EmbeddingLookupPatching):
     tf.nn.embedding_lookup = self._prev_lookup
 
 
-Patching.register(EmbeddingLookupPatchingForVariables)
+EmbeddingLookupRewriting.register(EmbeddingLookupRewritingForVariables)

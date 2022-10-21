@@ -15,7 +15,7 @@
 
 r'''DetectEndDataset that reports the existence of next element.
 
-This class is compatible with Tensorflow 1.15.
+This class is compatible with Tensorflow 1.12.
 '''
 from __future__ import absolute_import
 from __future__ import division
@@ -23,29 +23,39 @@ from __future__ import print_function
 
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.framework import dtypes
-from tensorflow.python.framework import tensor_spec
+from tensorflow.python.framework import ops
+from tensorflow.python.framework import tensor_shape
 
 from hybridbackend.tensorflow.common import oplib as _ops
 
 
-class DetectEndDatasetV2(dataset_ops.DatasetV2):
+class DetectEndDatasetV1(dataset_ops.Dataset):
   r'''Wrapping a dataset to notify whether it still has next input.
   '''
   def __init__(self, input_dataset):
-    r'''Create a `_DetectEndDatasetV2`.
+    r'''Create a `_DetectEndDatasetV1`.
 
     Args:
       input_dataset: A `dataset` to be wrapped to verify its last element.
     '''
     self._input_dataset = input_dataset
-    self._marker_spec = tensor_spec.TensorSpec(shape=[], dtype=dtypes.bool)
-    variant_tensor = _ops.hb_detect_end_dataset(
-      self._input_dataset._variant_tensor)  # pylint: disable=protected-access
-    super().__init__(variant_tensor)
+    super().__init__()
+
+  def _as_variant_tensor(self):
+    return _ops.hb_detect_end_dataset(
+      self._input_dataset._as_variant_tensor())  # pylint: disable=protected-access
 
   def _inputs(self):
     return [self._input_dataset]
 
   @property
-  def element_spec(self):
-    return self._marker_spec, self._input_dataset.element_spec  # pylint: disable=protected-access
+  def output_shapes(self):
+    return tensor_shape.TensorShape([]), self._input_dataset.output_shapes
+
+  @property
+  def output_types(self):
+    return dtypes.int32, self._input_dataset.output_types
+
+  @property
+  def output_classes(self):
+    return ops.Tensor, self._input_dataset.output_classes

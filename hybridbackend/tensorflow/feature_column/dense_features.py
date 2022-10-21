@@ -25,8 +25,7 @@ from tensorflow.python.feature_column import feature_column_v2 as fc
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
 
-from hybridbackend.tensorflow.embedding.backend import EmbeddingBackend
-from hybridbackend.tensorflow.embedding.lookup import EmbeddingLookupCoalesced
+from hybridbackend.tensorflow.feature_column.backend import EmbeddingBackend
 from hybridbackend.tensorflow.feature_column.feature_column import \
   _get_sparse_tensors
 from hybridbackend.tensorflow.feature_column.feature_column import \
@@ -35,7 +34,9 @@ from hybridbackend.tensorflow.feature_column.feature_column import \
   SharedEmbeddingColumn
 from hybridbackend.tensorflow.feature_column.feature_column import \
   StateManagerImpl
-from hybridbackend.tensorflow.framework.context import context_scope
+from hybridbackend.tensorflow.feature_column.lookup import \
+  EmbeddingLookupCoalesced
+from hybridbackend.tensorflow.framework.context import Context
 
 # pylint: disable=ungrouped-imports
 try:
@@ -172,7 +173,7 @@ class DenseFeatures(_DenseFeatures):
           c.categorical_column, 'num_buckets',
           getattr(c.categorical_column, '_num_buckets', None))
         for c in coalesced_columns}
-      with context_scope(
+      with Context.scope(
           emb_dimension=column_dimension,
           emb_combiner=column_combiner,
           emb_num_buckets=column_num_buckets):

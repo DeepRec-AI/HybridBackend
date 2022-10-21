@@ -23,11 +23,15 @@ from __future__ import print_function
 from tensorflow.python.training import training as _training
 
 from hybridbackend.tensorflow.framework.context import Context as _ctx
-from hybridbackend.tensorflow.training.function import Patching
+from hybridbackend.tensorflow.framework.ops import ModeKeys as _mode_keys
+from hybridbackend.tensorflow.framework.rewriting import GraphRewriting
+from hybridbackend.tensorflow.framework.rewriting import SessionRunRewriting
+from hybridbackend.tensorflow.training.evaluation import EvaluationHook
+from hybridbackend.tensorflow.training.evaluation import EvaluationSpec
+from hybridbackend.tensorflow.training.hooks import Policy
+from hybridbackend.tensorflow.training.hooks import StepStatHook
 from hybridbackend.tensorflow.training.optimizer import \
   wraps_optimizer as _wraps
-from hybridbackend.tensorflow.training.perf import StepStatHook
-from hybridbackend.tensorflow.training.policy import Policy
 from hybridbackend.tensorflow.training.saved_model import export
 from hybridbackend.tensorflow.training.saved_model import export_all
 from hybridbackend.tensorflow.training.saver import replace_default_saver
@@ -39,7 +43,7 @@ from hybridbackend.tensorflow.training.server import wraps_server
 from hybridbackend.tensorflow.training.session import \
   wraps_monitored_training_session
 from hybridbackend.tensorflow.training.variables import \
-  EmbeddingLookupPatchingForVariables as _patch_variables
+  EmbeddingLookupRewritingForVariables as _patch_variables
 
 _ = (
   _ctx.get().options
@@ -48,9 +52,10 @@ _ = (
   .register('sharding', False)
   .register('batch_size', -1)
   .register('model_dir', None)
+  .register('eval_dir', None)
   .register('keep_checkpoint_max', None)
   .register('keep_checkpoint_every_n_hours', None)
-  .register('mode', None))
+  .register('mode', _mode_keys.TRAIN))
 
 
 for c in _training.__dict__.values():

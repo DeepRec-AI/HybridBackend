@@ -52,7 +52,7 @@ class AllreduceGradTest(unittest.TestCase):
 
     devices = ['/gpu:0', '/gpu:1']
     shared_name = 'comm'
-    with tf.Graph().as_default():
+    with tf.Graph().as_default(), hb.scope():
       with tf.device('/gpu:0'):
         a = tf.constant(1.0, shape=[2, 10])
         comm0 = hb.distribute.Communicator.build(shared_name, devices)
@@ -66,7 +66,7 @@ class AllreduceGradTest(unittest.TestCase):
       loss = loss0 * loss1
       grad0, grad1 = tf.gradients(
         [loss], [a, b], [2.0], colocate_gradients_with_ops=True)
-      with hb.train.monitored_session() as sess:
+      with tf.train.MonitoredTrainingSession() as sess:
         g0, g1 = sess.run([grad0, grad1])
         np.testing.assert_allclose(
           g0,
