@@ -36,7 +36,7 @@ def _test_sgd(_, lr):
 
   import hybridbackend.tensorflow as hb
 
-  with tf.Graph().as_default():
+  with tf.Graph().as_default(), hb.scope():
     with hb.scope():
       v = tf.get_variable(
         'v0',
@@ -45,7 +45,7 @@ def _test_sgd(_, lr):
       opt = tf.train.GradientDescentOptimizer(lr)
       train_op = opt.minimize(loss)
       steps = []
-      with hb.train.monitored_session() as sess:
+      with tf.train.MonitoredTrainingSession('') as sess:
         steps.append(sess.run(v))
         steps.append(sess.run(train_op))
         steps.append(sess.run(v))
@@ -69,7 +69,7 @@ def _test_adam(_, lr):
       opt = tf.train.AdamOptimizer(lr)
       train_op = opt.minimize(loss)
       steps = []
-      with hb.train.monitored_session() as sess:
+      with tf.train.MonitoredTrainingSession('') as sess:
         steps.append(sess.run(v))
         steps.append(sess.run(train_op))
         steps.append(sess.run(v))
@@ -92,10 +92,10 @@ def _test_adam_function(_, lr):
     opt = tf.train.AdamOptimizer(lr)
     return v, opt.minimize(loss)
 
-  with tf.Graph().as_default():
+  with tf.Graph().as_default(), hb.scope():
     v, train_op = model_fn()
     steps = []
-    with hb.train.monitored_session() as sess:
+    with tf.train.MonitoredTrainingSession('') as sess:
       steps.append(sess.run(v))
       steps.append(sess.run(train_op))
       steps.append(sess.run(v))

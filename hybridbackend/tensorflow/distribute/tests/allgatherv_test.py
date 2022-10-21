@@ -63,7 +63,7 @@ class AllgathervTest(unittest.TestCase):
       shape[0] *= (i + 1)
       return shape
 
-    with tf.Graph().as_default():
+    with tf.Graph().as_default(), hb.scope():
       prev_comm_gathervs = None
       for i in xrange(num_comms):
         comm_inputs = []
@@ -86,7 +86,7 @@ class AllgathervTest(unittest.TestCase):
       baselines = [tf.concat(all_inputs[i], axis=0)
                    for i in xrange(num_comms)]
 
-      with hb.train.monitored_session() as sess:
+      with tf.train.MonitoredTrainingSession('') as sess:
         expects = sess.run(baselines)
         actuals = sess.run(allgathervs)
       for i in xrange(num_comms):

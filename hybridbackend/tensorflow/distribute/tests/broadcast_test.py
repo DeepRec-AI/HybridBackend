@@ -41,8 +41,8 @@ def _test_broadcast(rank, a, b):
       comm = hb.distribute.Communicator.build('comm0', hb.context.devices)
       root = tf.constant(a) if rank == 0 else tf.constant(b)
       recv = comm.broadcast(root, root_rank=0)
-    with hb.train.monitored_session() as sess:
-      return sess.run(recv)
+      with tf.train.MonitoredTrainingSession('') as sess:
+        return sess.run(recv)
 
 
 # pylint: disable=missing-docstring

@@ -279,39 +279,40 @@ def _aggregate_sparse(grads):
   return aggregated_grads
 
 
-def aggregate_gradients(
-    grads_and_vars, replica_vars=None, shard_vars=None, num_buckets=1):
+def aggregate_gradients(grads_and_vars, num_buckets=1):
   r'''Aggregate gradients and variables.
   '''
   devices = Context.get().devices
   if len(devices) <= 1:
     return grads_and_vars
 
-  if replica_vars is None:
-    replica_vars = []
+  replica_vars_to_optimize = []
   replica_grads = []
   replica_grad_indices = []
-  if shard_vars is None:
-    shard_vars = []
+  sharded_vars_to_optimize = []
   shard_grads = []
   shard_grad_indices = []
-  sharded_vars = ops.get_default_graph().get_collection(
+  all_sharded_vars = ops.get_default_graph().get_collection(
     GraphKeys.SHARDED_VARIABLES)
-  sharded_vars += ops.get_default_graph().get_collection(
+  all_sharded_vars += ops.get_default_graph().get_collection(
     GraphKeys.NOT_REPLICATED)
   for i, gv in enumerate(grads_and_vars):
     if gv[0] is None:
       continue
-    if gv[1] in sharded_vars:
+    if gv[1] in all_sharded_vars:
       shard_grad_indices.append(i)
       shard_grads.append(gv[0])
-      shard_vars.append(gv[1])
+      sharded_vars_to_optimize.append(gv[1])
     else:
       replica_grad_indices.append(i)
       replica_grads.append(gv[0])
-      replica_vars.append(gv[1])
+      replica_vars_to_optimize.append(gv[1])
   replica_grads = _aggregate(replica_grads, shard_grads, num_buckets)
+  ops.get_collection_ref(GraphKeys.TRAINABLE_REPLICATED).extend(
+    replica_vars_to_optimize)
+  ops.get_collection_ref(GraphKeys.TRAINABLE_SHARDED).extend(
+    sharded_vars_to_optimize)
   return _pack_grads_and_vars(
     _mean(replica_grads, devices), _mean(shard_grads, devices),
-    replica_vars, shard_vars,
+    replica_vars_to_optimize, sharded_vars_to_optimize,
     replica_grad_indices, shard_grad_indices)

@@ -20,6 +20,8 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import collections
+
 from tensorflow._api.v1 import train as train_v1
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
@@ -28,15 +30,15 @@ from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import state_ops
 from tensorflow.python.ops import variables
 from tensorflow.python.training import distribution_strategy_context
-from tensorflow.python.training import session_run_hook
 from tensorflow.python.training import training
 
 from hybridbackend.tensorflow.distribute.gradient import aggregate_gradients
 from hybridbackend.tensorflow.distribute.pubsub import PubSub
 from hybridbackend.tensorflow.framework.context import Context
 from hybridbackend.tensorflow.framework.ops import GraphKeys
-from hybridbackend.tensorflow.training.function import Patching
-from hybridbackend.tensorflow.training.saver import replace_default_saver
+from hybridbackend.tensorflow.framework.ops import ModeKeys
+from hybridbackend.tensorflow.framework.rewriting import GraphRewriting
+from hybridbackend.tensorflow.framework.rewriting import SessionRunRewriting
 
 
 class HybridBackendOptimizerBase(object):  # pylint: disable=useless-object-inheritance
@@ -122,15 +124,7 @@ def wraps_optimizer(
         # Do nothing if this function resides in a distribution context.
         return grads_and_vars
 
-      grads_and_vars = aggregate_gradients(
-        grads_and_vars, self._replica_vars, self._shard_vars, num_buckets)
-      self._ctx.add_training_hook(
-        HybridBackendOptimizerHook(
-          self._replica_vars,
-          self._shard_vars,
-          self._ctx.devices,
-          self._ctx.current_device()))
-      return grads_and_vars
+      return aggregate_gradients(grads_and_vars, num_buckets)
 
     def compute_gradients(self, *args, **kwargs):
       r'''Compute gradients of "loss" for the variables in "var_list".
@@ -181,45 +175,56 @@ def wraps_optimizer(
       _, self._variables = zip(*grads_and_vars)
       return super().apply_gradients(grads_and_vars, global_step, name=name)
 
-    def make_session_run_hook(self):
-      r'''Creates a hook to handle hook ops such as initialization.
-      '''
-      return HybridBackendOptimizerHook(
-        self._replica_vars,
-        self._shard_vars,
-        self._ctx.devices,
-        self._ctx.current_device())
   return HybridBackendOptimizer
 
 
-class HybridBackendOptimizerHook(session_run_hook.SessionRunHook):
+class OptimizerRewriting(GraphRewriting):
+  r'''Rewriting optimizers.
+  '''
+  def __init__(self):
+    super().__init__()
+    self._prev_optimizers = {}
+
+  def begin(self):
+    r'''Rewrites API.
+    '''
+    for k, c in training.__dict__.items():
+      if (isinstance(c, type)
+          and issubclass(c, training.Optimizer)
+          and c not in (
+            training.Optimizer,
+            training.SyncReplicasOptimizer)):
+        self._prev_optimizers[k] = c
+        wrapped = wraps_optimizer(c)
+        setattr(training, k, wrapped)
+        setattr(train_v1, k, wrapped)
+
+  def end(self):
+    r'''Revert API rewriting.
+    '''
+    for c, opt in self._prev_optimizers.items():
+      setattr(training, c, opt)
+      setattr(train_v1, c, opt)
+
+
+GraphRewriting.register(OptimizerRewriting)
+
+
+class VariablesInitializationRewriting(SessionRunRewriting):
   r'''A SessionRunHook initializes variables across devices.
   '''
-  def __init__(self, replica_vars, shard_vars, devices, device):
-    r'''Creates hook to initialize variables across devices.
-
-    Args:
-      replica_vars: Replications of variables.
-      shard_vars: Shards of variables.
-      devices: Devices involved.
-      device: Optimizer device.
-    '''
-    super().__init__()
-    self._replica_vars = replica_vars
-    self._shard_vars = shard_vars
-    self._devices = devices
-    self._device = device
-
   def begin(self):
     r''' initialize replica variables and enable synchronous dataset wrapper
     '''
-    with ops.device(self._device):
-      for v in self._replica_vars:
+    with ops.device(Context.get().devices[Context.get().rank]):
+      replicated_variables = list(
+        collections.OrderedDict.fromkeys(
+          ops.get_collection_ref(GraphKeys.TRAINABLE_REPLICATED)))
+      for v in replicated_variables:
         try:
-          self._set_initializer(v)
+          self._set_initializer(v, Context.get().devices)
         except:  # pylint: disable=bare-except
           pass
-    replace_default_saver()
 
   def _get_initial_value(self, var):
     r'''Get initial value of a variable without uninitialized dependencies.
@@ -245,14 +250,14 @@ class HybridBackendOptimizerHook(session_run_hook.SessionRunHook):
     return state_ops.assign(var._variable, self._get_initial_value(var)).op
     # pylint:enable=protected-access
 
-  def _set_initializer(self, var, name=None):
+  def _set_initializer(self, var, devices, name=None):
     r'''Initialize variables.
     '''
     if name is None:
       name = var.name.split(':')[0]
     rank = Context.get().current_index()
-    with ops.name_scope('initializers'):
-      with ops.name_scope(name):
+    with ops.name_scope('initializers/'):
+      with ops.name_scope(f'{name}/initializer'):
         with ops.control_dependencies(None):
           with ops.device(var.device):
             initial_value = var.initial_value
@@ -262,43 +267,15 @@ class HybridBackendOptimizerHook(session_run_hook.SessionRunHook):
               ops.convert_to_tensor(initial_value))
             # pylint:disable=protected-access
             var._initial_value = initial_value
-            if len(self._devices) > 1:
-              var._initial_value = PubSub(self._devices, rank=rank)(
+            if len(devices) > 1:
+              var._initial_value = PubSub(devices, rank=rank)(
                 lambda: initial_value,
                 initial_value.shape,
                 initial_value.dtype,
-                name=f'{name}_initializer')
+                name=f'{name}_pubsub')
             var._initializer_op = self._get_initializer_op(var)
             # pylint:enable=protected-access
 
 
-class PatchingOptimizers(Patching):
-  r'''Patching optimizers.
-  '''
-  def __init__(self):
-    super().__init__()
-    self._prev_optimizers = {}
-
-  def patch(self):
-    r'''Patches APIs.
-    '''
-    for k, c in training.__dict__.items():
-      if (isinstance(c, type)
-          and issubclass(c, training.Optimizer)
-          and c not in (
-            training.Optimizer,
-            training.SyncReplicasOptimizer)):
-        self._prev_optimizers[k] = c
-        wrapped = wraps_optimizer(c)
-        setattr(training, k, wrapped)
-        setattr(train_v1, k, wrapped)
-
-  def unpatch(self):
-    r'''Revert API patching.
-    '''
-    for c, opt in self._prev_optimizers.items():
-      setattr(training, c, opt)
-      setattr(train_v1, c, opt)
-
-
-Patching.register(PatchingOptimizers)
+SessionRunRewriting.register(
+  VariablesInitializationRewriting, [ModeKeys.TRAIN])

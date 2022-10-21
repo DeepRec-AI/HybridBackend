@@ -58,7 +58,7 @@ class ParquetDatasetSequenceRebatchTest(unittest.TestCase):
     with tf.Graph().as_default() as graph:
       ds = hb.data.ParquetDataset(self._filename, batch_size=batch_size)
       ds = ds.apply(hb.data.rebatch(batch_size))
-      batch = hb.data.make_one_shot_iterator(ds).get_next()
+      batch = tf.data.make_one_shot_iterator(ds).get_next()
 
     clicks = self._data['clicks']
     with tf.Session(graph=graph) as sess:

@@ -27,7 +27,7 @@ from tensorflow.python.ops import variables
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.training import checkpoint_utils
 
-from hybridbackend.tensorflow.embedding.backend import EmbeddingBackend
+from hybridbackend.tensorflow.feature_column.backend import EmbeddingBackend
 from hybridbackend.tensorflow.framework.context import Context
 
 

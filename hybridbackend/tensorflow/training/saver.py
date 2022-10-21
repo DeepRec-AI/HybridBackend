@@ -43,7 +43,9 @@ except ImportError:
 
 from hybridbackend.tensorflow.framework.context import Context
 from hybridbackend.tensorflow.framework.ops import GraphKeys
-from hybridbackend.tensorflow.training.function import Patching
+from hybridbackend.tensorflow.framework.ops import ModeKeys
+from hybridbackend.tensorflow.framework.rewriting import GraphRewriting
+from hybridbackend.tensorflow.framework.rewriting import SessionRunRewriting
 
 
 class HybridBackendSaverBuilderBase(object):  # pylint: disable=useless-object-inheritance
@@ -230,6 +232,7 @@ def wraps_saver(cls):
       self._rank = Context.get().rank
       self._world_size = Context.get().world_size
       kwargs['sharded'] = True
+      kwargs['allow_empty'] = True
       with ops.device('/cpu:0'):
         super().__init__(*args, **kwargs)
 
@@ -335,8 +338,8 @@ def replace_default_saver():
   default_saver.save = _wraps_save(default_saver.save)
 
 
-class PatchingSavers(Patching):
-  r'''Patching savers.
+class SaverRewriting(GraphRewriting):
+  r'''Rewriting savers.
   '''
   def __init__(self):
     super().__init__()
@@ -358,16 +361,29 @@ class PatchingSavers(Patching):
       fn(cls, *args, **kwargs)
     return wrapped_saver_init
 
-  def patch(self):
-    r'''Patches APIs.
+  def begin(self):
+    r'''Rewrites API.
     '''
     self._prev_saver_init = saver.Saver.__init__
     saver.Saver.__init__ = self.wraps_saver_init(self._prev_saver_init)
 
-  def unpatch(self):
-    r'''Revert API patching.
+  def end(self):
+    r'''Revert API rewriting.
     '''
     saver.Saver.__init__ = self._prev_saver_init
 
 
-Patching.register(PatchingSavers)
+GraphRewriting.register(SaverRewriting)
+
+
+class DefaultSaverRewriting(SessionRunRewriting):
+  r'''A SessionRunHook replaces default saver.
+  '''
+  def begin(self):
+    r''' initialize replica variables and enable synchronous dataset wrapper
+    '''
+    replace_default_saver()
+
+
+SessionRunRewriting.register(
+  DefaultSaverRewriting, [ModeKeys.TRAIN])

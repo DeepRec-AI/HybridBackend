@@ -28,10 +28,9 @@ from tensorflow.python.platform import tf_logging as logging
 
 from hybridbackend.tensorflow.distribute.communicator_pool import \
   CommunicatorPool
-from hybridbackend.tensorflow.embedding.backend import EmbeddingBackend
-from hybridbackend.tensorflow.embedding.math_lib import segment_reduce
+from hybridbackend.tensorflow.feature_column.backend import EmbeddingBackend
+from hybridbackend.tensorflow.feature_column.math_lib import segment_reduce
 from hybridbackend.tensorflow.framework.context import Context
-from hybridbackend.tensorflow.framework.context import context_scope
 from hybridbackend.tensorflow.ops.floormod_shuffle.ops import floormod_shuffle
 from hybridbackend.tensorflow.ops.floormod_shuffle.ops import \
   floormod_shuffle_n
@@ -106,7 +105,7 @@ class EmbeddingLookup(object):  # pylint: disable=useless-object-inheritance
             trainable=False)
           shard_ids, shard_unique_index = array_ops.unique(shard_ids)
         with ops.device(self._impl.device(column)):
-          with context_scope(sharding=False):
+          with Context.scope(sharding=False):
             shard_embs = self._impl.lookup(
               column, weights, shard_ids, sharded=True)
         with ops.name_scope('shuffle_embeddings'):
@@ -119,7 +118,7 @@ class EmbeddingLookup(object):  # pylint: disable=useless-object-inheritance
             embs_shards, partition_index, name='restore_shuffle')
       else:
         with ops.device(self._impl.device(column)):
-          with context_scope(sharding=False):
+          with Context.scope(sharding=False):
             embeddings = self._impl.lookup(column, weights, ids)
       return segment_reduce(
         sparse_ids, embeddings,
@@ -252,7 +251,7 @@ class EmbeddingLookupCoalesced(object):  # pylint: disable=useless-object-inheri
             shard_ids = bucket_shard_ids[idx]
             shard_ids, shard_unique_index = array_ops.unique(shard_ids)
             with ops.device(self._impl.device(c)):
-              with context_scope(sharding=False):
+              with Context.scope(sharding=False):
                 shard_embs = self._impl.lookup(
                   c, bucket_weights[idx], shard_ids,
                   sharded=self._impl.sharded(c))

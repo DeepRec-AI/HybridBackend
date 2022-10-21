@@ -31,10 +31,9 @@ from tensorflow.python.framework import tensor_shape
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import check_ops
 
-from hybridbackend.tensorflow.embedding.backend import EmbeddingBackend
-from hybridbackend.tensorflow.embedding.lookup import EmbeddingLookup
+from hybridbackend.tensorflow.feature_column.backend import EmbeddingBackend
+from hybridbackend.tensorflow.feature_column.lookup import EmbeddingLookup
 from hybridbackend.tensorflow.framework.context import Context
-from hybridbackend.tensorflow.framework.context import context_scope
 from hybridbackend.tensorflow.framework.ops import GraphKeys
 
 
@@ -147,7 +146,7 @@ class StateManagerImpl(fc._StateManagerImpl):  # pylint: disable=protected-acces
     collections = [ops.GraphKeys.GLOBAL_VARIABLES]
     if impl.sharded(feature_column.categorical_column.name):
       collections.append(GraphKeys.SHARDED_VARIABLES)
-    with context_scope(sharding=False):
+    with Context.scope(sharding=False):
       var = impl.build(
         feature_column.categorical_column.name,
         name,
@@ -217,7 +216,7 @@ class EmbeddingColumn(fc.EmbeddingColumn):
         self.tensor_name_in_ckpt,
         embedding_weights)
 
-    with context_scope(
+    with Context.scope(
         emb_dimension=self.dimension,
         emb_combiner=self.combiner,
         emb_num_buckets=self.num_buckets):
@@ -338,7 +337,7 @@ class SharedEmbeddingColumn(fc_old._SharedEmbeddingColumn, fc.DenseColumn):  # p
         self.tensor_name_in_ckpt,
         embedding_weights)
 
-    with context_scope(
+    with Context.scope(
         emb_dimension=self.dimension,
         emb_combiner=self.combiner,
         emb_num_buckets=self.num_buckets):

@@ -93,17 +93,18 @@ class CommunicatorPool(object):  # pylint: disable=useless-object-inheritance
   def _build_communicator(self):
     r'''Create a new communicator.
     '''
+    comm_name = f'{Context.get().options.comm_pool_name}_comm'
     if 'GPU' not in Context.get().current_device().upper():
       local_gpus = [
         device_util.canonicalize(f'/gpu:{d}')
         for d in xrange(Context.get().num_gpus)]
       with ops.device(f'/gpu:{Context.get().rank}'):
         return Communicator.build(
-          ops.get_default_graph().get_name_scope(),
+          comm_name,
           local_gpus,
           impl=self._impl)
     return Communicator.build(
-      ops.get_default_graph().get_name_scope(),
+      comm_name,
       Context.get().devices,
       impl=self._impl)
 

@@ -80,12 +80,16 @@ class DataSpec(object):  # pylint: disable=useless-object-inheritance
     '''
     if not isinstance(items, (list, tuple)):
       raise ValueError('items must be a list')
+    self._disable_imputation = disable_imputation
+    self._disable_transform = disable_transform
+    self._override_embedding_size = override_embedding_size
     self._feature_specs = []
     for item in items:
       embedding = None
       if 'embedding' in item:
         embedding = EmbeddingSpec(
-          item['embedding']['size'],
+          item['embedding']['size'] if self._override_embedding_size is None
+          else self._override_embedding_size,
           item['embedding']['dimension'])
       self._feature_specs.append(
         FeatureSpec(
@@ -96,9 +100,6 @@ class DataSpec(object):  # pylint: disable=useless-object-inheritance
           item['norm'] if 'norm' in item else None,
           item['log'] if 'log' in item else None,
           embedding))
-    self._disable_imputation = disable_imputation
-    self._disable_transform = disable_transform
-    self._override_embedding_size = override_embedding_size
 
   def __iter__(self):
     return iter(self._feature_specs)
@@ -188,3 +189,16 @@ class DataSpec(object):  # pylint: disable=useless-object-inheritance
     return tf.nn.safe_embedding_lookup_sparse(
       embedding_weights, feature,
       default_id=default_value)
+
+  def build_placeholders(self):
+    r'''Build input placeholders.
+    '''
+    inputs = {}
+    for f in self._feature_specs:
+      if f.type == DataSpec.Types.SCALAR:
+        inputs[f.name] = tf.placeholder(
+          dtype=f.dtype, shape=[None])
+      elif f.type == DataSpec.Types.LIST:
+        inputs[f.name] = tf.sparse_placeholder(
+          dtype=f.dtype, shape=[None, None])
+    return inputs

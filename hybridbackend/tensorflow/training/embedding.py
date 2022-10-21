@@ -20,30 +20,40 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import abc
+
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import control_flow_ops
 
 from hybridbackend.tensorflow.distribute.embedding import \
   ParallelEmbeddingLookupContext
 from hybridbackend.tensorflow.framework.context import Context
-from hybridbackend.tensorflow.framework.context import context_scope
 from hybridbackend.tensorflow.framework.ops import GraphKeys
+from hybridbackend.tensorflow.framework.ops import ModeKeys
+from hybridbackend.tensorflow.framework.rewriting import GraphRewriting
 
 
-class EmbeddingLookupPatching(object):  # pylint: disable=useless-object-inheritance
-  r'''Patching embedding lookups.
+class EmbeddingLookupRewriting(GraphRewriting):  # pylint: disable=useless-object-inheritance
+  r'''Rewriting embedding lookups.
   '''
-  @property
-  def name(self):
-    r'''Name of the patching.
+  @classmethod
+  def register(cls, rewriting):
+    r'''Register implementation.
+
+    Args:
+      rewriting: Implementation class to register.
     '''
-    raise NotImplementedError
+    return GraphRewriting.register(rewriting)
 
   @property
-  def sharding(self):
-    r'''Whether sharding should be enabled.
+  def should_shard(self):
+    r'''Whether embedding weights sharding should be enabled.
     '''
-    return Context.get().world_size > 1 and Context.get().options.sharding
+    ctx = Context.get()
+    return (
+      ctx.world_size > 1
+      and ctx.options.sharding
+      and ctx.options.mode != ModeKeys.PREDICT)
 
   @property
   def num_shards(self):
@@ -53,27 +63,21 @@ class EmbeddingLookupPatching(object):  # pylint: disable=useless-object-inherit
   def shard(self):
     return Context.get().rank
 
-  def call(self, fn, *args, **kwargs):
-    r'''Call fn without sharding.
-    '''
-    with context_scope(sharding=False):
-      return fn(*args, **kwargs)
-
-  def wraps(self, fn):
+  def _nosharding(self, fn):
     r'''Wraps fn without sharding.
     '''
     def wrapped_fn(*args, **kwargs):
-      with context_scope(sharding=False):
+      with Context.scope(sharding=False):
         return fn(*args, **kwargs)
     return wrapped_fn
 
-  def weights_collections(self, collections):
+  def _sharded_embedding_weights_collections(self, collections):
     r'''Build collections for sharded weights.
     '''
     minimal_collections = [
       ops.GraphKeys.GLOBAL_VARIABLES,
       GraphKeys.SHARDED_VARIABLES,
-      self.name]
+      self.__class__.__name__]
     if collections is None:
       collections = list(minimal_collections)
     else:
@@ -81,11 +85,65 @@ class EmbeddingLookupPatching(object):  # pylint: disable=useless-object-inherit
       collections = list(set(collections))
     return collections
 
-  @property
-  def weights_list(self):
-    r'''List of sharded weights.
+  def _is_sharded(self, weights):
+    r'''Check whether the embedding weights are sharded.
     '''
-    return ops.get_default_graph().get_collection_ref(self.name)
+    sharded_weights_set = ops.get_default_graph().get_collection_ref(
+      self.__class__.__name__)
+    if weights in sharded_weights_set:
+      return True
+    if isinstance(weights, (list, tuple)) and len(weights) == 1:
+      weights = weights[0]
+      if isinstance(weights, ops.Tensor):
+        vname = weights.name.split('/read')[0]
+        for v in sharded_weights_set:
+          if vname == v.name.split(':')[0]:
+            return True
+    return False
+
+  def wraps_build_embedding_weights(self, fn):
+    r'''Rewrites weights building.
+    '''
+    def _wrapped_build_weights(name, *args, **kwargs):
+      r'''Build embedding weights.
+      '''
+      if not self.should_shard:
+        return self.build_unsharded_weights(fn, name, *args, **kwargs)
+
+      collections = kwargs.pop('collections', None)
+      kwargs['collections'] = self._sharded_embedding_weights_collections(
+        collections)
+      return self.build_sharded_weights(
+        self.shard, self.num_shards, self._nosharding(fn),
+        name, *args, **kwargs)
+    return _wrapped_build_weights
+
+  def wraps_embedding_lookup(self, fn):
+    r'''Rewrites embedding_lookup.
+    '''
+    def _wrapped_embedding_lookup(params, ids, **kwargs):
+      r'''Looks up `ids` in a list of embedding tensors.
+      '''
+      if not self._is_sharded(params):
+        with Context.scope(sharding=False):
+          return fn(params, ids, **kwargs)
+
+      current_device = control_flow_ops.no_op().device
+      with Context.scope(sharding=False):
+        with ops.device(Context.get().devices[Context.get().rank]):
+          ctx = ParallelEmbeddingLookupContext(current_device)
+          ids = ctx.exchange_ids(ids)
+          ids = self.build_sharded_ids(ids)
+          with ops.device(ctx.device):
+            embeddings = fn(params, ids, **kwargs)
+        return ctx.exchange_embeddings(embeddings)
+
+    return _wrapped_embedding_lookup
+
+  def build_sharded_ids(self, ids):
+    r'''Shard IDs to lookup sharded embedding weights.
+    '''
+    return ids
 
   def build_unsharded_weights(self, fn, name, *args, **kwargs):
     r'''Build unsharded embedding weights.
@@ -99,49 +157,12 @@ class EmbeddingLookupPatching(object):  # pylint: disable=useless-object-inherit
     del num_shards
     return fn(name, *args, **kwargs)
 
-  def wraps_build_weights(self, fn):
-    r'''Patches weights building.
+  @abc.abstractmethod
+  def begin(self):
+    r'''Rewrites API.
     '''
-    def _wrapped_build_weights(name, *args, **kwargs):
-      r'''Build embedding weights.
-      '''
-      if not self.sharding:
-        return self.build_unsharded_weights(fn, name, *args, **kwargs)
 
-      collections = kwargs.pop('collections', None)
-      kwargs['collections'] = self.weights_collections(collections)
-      return self.build_sharded_weights(
-        self.shard, self.num_shards, self.wraps(fn),
-        name, *args, **kwargs)
-    return _wrapped_build_weights
-
-  def weights_sharded(self, weights):
-    r'''Check whether the embedding weights are sharded.
+  @abc.abstractmethod
+  def end(self):
+    r'''Revert API rewriting.
     '''
-    _ = weights
-    return False
-
-  def shard_ids(self, ids):
-    r'''Shard IDs to lookup sharded embedding weights.
-    '''
-    return ids
-
-  def wraps_embedding_lookup(self, fn):
-    r'''Patches embedding_lookup.
-    '''
-    def _wrapped_embedding_lookup(params, ids, **kwargs):
-      r'''Looks up `ids` in a list of embedding tensors.
-      '''
-      if params not in self.weights_list and not self.weights_sharded(params):
-        return self.call(fn, params, ids, **kwargs)
-
-      current_device = control_flow_ops.no_op().device
-      with ops.device(Context.get().devices[Context.get().rank]):
-        ctx = ParallelEmbeddingLookupContext(current_device)
-        ids = ctx.exchange_ids(ids)
-        ids = self.shard_ids(ids)
-        with ops.device(ctx.device):
-          embeddings = self.call(fn, params, ids, **kwargs)
-        return ctx.exchange_embeddings(embeddings)
-
-    return _wrapped_embedding_lookup

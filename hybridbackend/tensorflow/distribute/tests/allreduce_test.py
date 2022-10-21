@@ -41,8 +41,8 @@ def _test_simple_allreduce(rank, a, b):
       comm0 = hb.distribute.Communicator.build('comm0', hb.context.devices)
       input0 = tf.constant(a) if rank == 0 else tf.constant(b)
       sum0 = comm0.allreduce(input0)
-    with hb.train.monitored_session() as sess:
-      return sess.run(sum0)
+      with tf.train.MonitoredTrainingSession('') as sess:
+        return sess.run(sum0)
 
 
 def _test_simple_allreduce_max(rank, a, b):
@@ -56,8 +56,8 @@ def _test_simple_allreduce_max(rank, a, b):
       comm0 = hb.distribute.Communicator.build('comm0', hb.context.devices)
       input0 = tf.constant(a) if rank == 0 else tf.constant(b)
       sum0 = comm0.allreduce(input0, reduce_op=hb.distribute.ops.MAX)
-    with hb.train.monitored_session() as sess:
-      return sess.run(sum0)
+      with tf.train.MonitoredTrainingSession('') as sess:
+        return sess.run(sum0)
 
 
 def _test_simple_allreduce_multicomm(rank, a, b, ncomms):
@@ -74,8 +74,8 @@ def _test_simple_allreduce_multicomm(rank, a, b, ncomms):
           f'comm{icomm}', hb.context.devices)
         inputi = tf.constant(a) if rank == 0 else tf.constant(b + icomm)
         sums.append(commi.allreduce(inputi))
-    with hb.train.monitored_session() as sess:
-      return sess.run(sums)
+      with tf.train.MonitoredTrainingSession('') as sess:
+        return sess.run(sums)
 
 
 @unittest.skipUnless(

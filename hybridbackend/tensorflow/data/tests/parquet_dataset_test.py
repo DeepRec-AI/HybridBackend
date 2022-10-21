@@ -62,7 +62,7 @@ class ParquetDatasetTest(unittest.TestCase):
         fields=[hb.data.DataFrame.Field('A', tf.int64),
                 hb.data.DataFrame.Field('C', tf.int64)])
       ds = ds.prefetch(4)
-      batch = hb.data.make_one_shot_iterator(ds).get_next()
+      batch = tf.data.make_one_shot_iterator(ds).get_next()
 
     a = self._df['A']
     c = self._df['C']
@@ -79,7 +79,7 @@ class ParquetDatasetTest(unittest.TestCase):
     with tf.Graph().as_default() as graph:
       ds = hb.data.ParquetDataset([self._filename], batch_size=batch_size)
       ds = ds.prefetch(4)
-      batch = hb.data.make_one_shot_iterator(ds).get_next()
+      batch = tf.data.make_one_shot_iterator(ds).get_next()
 
     c = self._df['C']
     with tf.Session(graph=graph) as sess:
@@ -97,7 +97,7 @@ class ParquetDatasetTest(unittest.TestCase):
         batch_size=batch_size,
         fields=['B', 'C'])
       ds = ds.prefetch(4)
-      batch = hb.data.make_one_shot_iterator(ds).get_next()
+      batch = tf.data.make_one_shot_iterator(ds).get_next()
 
     c = self._df['C']
     with tf.Session(graph=graph) as sess:
@@ -118,7 +118,7 @@ class ParquetDatasetTest(unittest.TestCase):
         batch_size=batch_size,
         fields=actual_fields)
       ds = ds.prefetch(4)
-      batch = hb.data.make_one_shot_iterator(ds).get_next()
+      batch = tf.data.make_one_shot_iterator(ds).get_next()
 
     c = self._df[fld]
     with tf.Session(graph=graph) as sess:
@@ -144,7 +144,7 @@ class ParquetDatasetTest(unittest.TestCase):
         hb.data.DataFrame.Field('C', tf.int64, 0)]
       ds = filenames.apply(hb.data.read_parquet(batch_size, fields=fields))
       ds = ds.prefetch(4)
-      batch = hb.data.make_one_shot_iterator(ds).get_next()
+      batch = tf.data.make_one_shot_iterator(ds).get_next()
 
     with tf.Session(graph=graph) as sess:
       for _ in xrange(len(self._df) * num_epochs // batch_size):
@@ -169,7 +169,7 @@ class ParquetDatasetTest(unittest.TestCase):
       ds = filenames.apply(
         hb.data.read_parquet(batch_size, fields=fields, num_parallel_reads=3))
       ds = ds.prefetch(4)
-      batch = hb.data.make_one_shot_iterator(ds).get_next()
+      batch = tf.data.make_one_shot_iterator(ds).get_next()
 
     with tf.Session(graph=graph) as sess:
       for _ in xrange(len(self._df) * num_epochs // batch_size):
@@ -195,7 +195,7 @@ class ParquetDatasetTest(unittest.TestCase):
         hb.data.read_parquet(
           batch_size, fields=fields, num_parallel_reads=AUTOTUNE))
       ds = ds.prefetch(4)
-      batch = hb.data.make_one_shot_iterator(ds).get_next()
+      batch = tf.data.make_one_shot_iterator(ds).get_next()
 
     with tf.Session(graph=graph) as sess:
       for _ in xrange(len(self._df) * num_epochs // batch_size):

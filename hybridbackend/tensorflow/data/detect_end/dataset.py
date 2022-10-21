@@ -23,12 +23,12 @@ from __future__ import print_function
 try:
   from tensorflow.python.data.ops.dataset_ops import DatasetV2 as _dataset  # pylint: disable=unused-import, ungrouped-imports
 
-  from hybridbackend.tensorflow.detect_end.dataset_v2 import \
+  from hybridbackend.tensorflow.data.detect_end.dataset_v2 import \
     DetectEndDatasetV2 as DetectEndDataset
   DetectEndDataset.__module__ = __name__
   DetectEndDataset.__name__ = 'DetectEndDataset'
 except ImportError:
-  from hybridbackend.tensorflow.detect_end.dataset_v1 import \
+  from hybridbackend.tensorflow.data.detect_end.dataset_v1 import \
     DetectEndDatasetV1 as DetectEndDataset
   DetectEndDataset.__module__ = __name__
   DetectEndDataset.__name__ = 'DetectEndDataset'

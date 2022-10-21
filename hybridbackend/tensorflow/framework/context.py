@@ -60,6 +60,20 @@ class Context(object):  # pylint: disable=useless-object-inheritance
     return cls._instance
 
   @classmethod
+  @contextlib.contextmanager
+  def scope(cls, **kwargs):
+    r'''Update params in context.
+    '''
+    prev_kwargs = {}
+    try:
+      c = cls.get()
+      prev_kwargs = c.options.update(**kwargs)
+      yield c
+    finally:
+      c.options.update(**prev_kwargs)
+      del prev_kwargs
+
+  @classmethod
   def current_device(cls):
     r'''Current device.
     '''
@@ -155,10 +169,6 @@ class Context(object):  # pylint: disable=useless-object-inheritance
       self._num_gpus = 1
     self._update()
     self._options = Options()
-    self._training_hooks = []
-    self._training_chief_hooks = []
-    self._evaluation_hooks = []
-    self._prediction_hooks = []
     self._saving_listener_registry = {}
 
   def __str__(self):
@@ -418,50 +428,6 @@ class Context(object):  # pylint: disable=useless-object-inheritance
     return self.options.update(**kwargs)
 
   @property
-  def training_hooks(self):
-    r'''Get all training hooks.
-    '''
-    return self._training_hooks
-
-  @property
-  def training_chief_hooks(self):
-    r'''Get all training chief hooks.
-    '''
-    return self._training_chief_hooks
-
-  @property
-  def evaluation_hooks(self):
-    r'''Get all evaluation hooks.
-    '''
-    return self._evaluation_hooks
-
-  @property
-  def prediction_hooks(self):
-    r'''Get all prediction hooks.
-    '''
-    return self._prediction_hooks
-
-  def add_training_hook(self, hook):
-    r'''Add training hook.
-    '''
-    self._training_hooks.append(hook)
-
-  def add_training_chief_hook(self, hook):
-    r'''Add training chief hook.
-    '''
-    self._training_chief_hooks.append(hook)
-
-  def add_evaluation_hook(self, hook):
-    r'''Add evaluation hook.
-    '''
-    self._evaluation_hooks.append(hook)
-
-  def add_prediction_hook(self, hook):
-    r'''Add prediction hook.
-    '''
-    self._prediction_hooks.append(hook)
-
-  @property
   def saving_listeners(self):
     r'''Get registered saving listeners.
     '''
@@ -478,17 +444,3 @@ context = Context.get()
 
 
 ctx = Context.get()
-
-
-@contextlib.contextmanager
-def context_scope(**kwargs):
-  r'''Update params in context.
-  '''
-  prev_kwargs = {}
-  try:
-    c = Context.get()
-    prev_kwargs = c.options.update(**kwargs)
-    yield c
-  finally:
-    c.options.update(**prev_kwargs)
-    del prev_kwargs

@@ -28,11 +28,12 @@ from tensorflow.python.ops import variable_scope as vs
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import tf_logging as logging
 
-from hybridbackend.tensorflow.embedding.backend import EmbeddingBackend
-from hybridbackend.tensorflow.embedding.default import EmbeddingBackendDefault
+from hybridbackend.tensorflow.feature_column.backend import EmbeddingBackend
+from hybridbackend.tensorflow.feature_column.default import \
+  EmbeddingBackendDefault
 from hybridbackend.tensorflow.framework.context import Context
-from hybridbackend.tensorflow.training.embedding import EmbeddingLookupPatching
-from hybridbackend.tensorflow.training.function import Patching
+from hybridbackend.tensorflow.training.embedding import \
+  EmbeddingLookupRewriting
 
 
 class EmbeddingBackendDeepRecEV(EmbeddingBackendDefault):  # pylint: disable=useless-object-inheritance
@@ -188,19 +189,13 @@ class EmbeddingBackendDeepRecEV(EmbeddingBackendDefault):  # pylint: disable=use
 EmbeddingBackend.register(EmbeddingBackendDeepRecEV())
 
 
-class EmbeddingLookupPatchingForDeepRecEV(Patching, EmbeddingLookupPatching):  # pylint: disable=useless-object-inheritance
+class EmbeddingLookupRewritingForDeepRecEV(EmbeddingLookupRewriting):  # pylint: disable=useless-object-inheritance
   r'''Embedding lookup decorator for DeepRec EV.
   '''
   def __init__(self):
     super().__init__()
     self._prev_lookup = None
     self._prev_get_embedding_variable = None
-
-  @property
-  def name(self):
-    r'''Name of the patching.
-    '''
-    return EmbeddingLookupPatchingForDeepRecEV.__name__
 
   def build_unsharded_weights(self, fn, name, *args, **kwargs):
     r'''Build unsharded embedding weights.
@@ -239,8 +234,8 @@ class EmbeddingLookupPatchingForDeepRecEV(Patching, EmbeddingLookupPatching):  #
 
     return embedding_weights
 
-  def patch(self):
-    r'''Patches APIs.
+  def begin(self):
+    r'''Rewrites API.
     '''
     try:
       import tensorflow as tf  # pylint: disable=import-outside-toplevel
@@ -251,15 +246,15 @@ class EmbeddingLookupPatchingForDeepRecEV(Patching, EmbeddingLookupPatching):  #
         embedding_ops.embedding_lookup)
 
       self._prev_get_embedding_variable = vs.get_embedding_variable
-      vs.get_embedding_variable = self.wraps_build_weights(
+      vs.get_embedding_variable = self.wraps_build_embedding_weights(
         self._prev_get_embedding_variable)
-      tf.get_embedding_variable = self.wraps_build_weights(
+      tf.get_embedding_variable = self.wraps_build_embedding_weights(
         self._prev_get_embedding_variable)
     except:  # pylint: disable=bare-except
       pass
 
-  def unpatch(self):
-    r'''Revert API patching.
+  def end(self):
+    r'''Revert API rewriting.
     '''
     try:
       import tensorflow as tf  # pylint: disable=import-outside-toplevel
@@ -272,4 +267,4 @@ class EmbeddingLookupPatchingForDeepRecEV(Patching, EmbeddingLookupPatching):  #
       pass
 
 
-Patching.register(EmbeddingLookupPatchingForDeepRecEV)
+EmbeddingLookupRewriting.register(EmbeddingLookupRewritingForDeepRecEV)

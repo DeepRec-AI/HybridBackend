@@ -54,7 +54,7 @@ class BroadcastInGraphTest(unittest.TestCase):
     b = 22
     devices = ['/gpu:0', '/gpu:1']
     shared_name = 'comm'
-    with tf.Graph().as_default():
+    with tf.Graph().as_default(), hb.scope():
       with tf.device('/gpu:0'):
         comm0 = hb.distribute.Communicator.build(shared_name, devices)
         root = tf.constant(a)
@@ -63,7 +63,7 @@ class BroadcastInGraphTest(unittest.TestCase):
         comm1 = hb.distribute.Communicator.build(shared_name, devices)
         noop = tf.constant(b)
         recv1 = comm1.broadcast(noop, root_rank=0)
-      with hb.train.monitored_session() as sess:
+      with tf.train.MonitoredTrainingSession('') as sess:
         s0, s1 = sess.run([recv0, recv1])
         np.testing.assert_allclose(s0, a, rtol=1e-6)
         np.testing.assert_allclose(s1, a, rtol=1e-6)

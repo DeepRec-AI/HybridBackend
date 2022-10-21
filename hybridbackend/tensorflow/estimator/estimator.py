@@ -21,15 +21,14 @@ from __future__ import division
 from __future__ import print_function
 
 import six
-import threading
 
-from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.distribute import estimator_training
 from tensorflow.python.eager import context as _context
 from tensorflow.python.estimator import estimator as _estimator
 from tensorflow.python.estimator import run_config
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import random_seed
+from tensorflow.python.ops import variable_scope as vs
 from tensorflow.python.platform import gfile
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.training import checkpoint_management
@@ -38,32 +37,29 @@ from tensorflow.python.training import server_lib
 
 try:
   from tensorflow_estimator.python.estimator import estimator as _estimator_lib
-  from tensorflow_estimator.python.estimator import util as estimator_util
   from tensorflow_estimator.python.estimator.export import export_lib
   from tensorflow_estimator.python.estimator.training import _TrainingExecutor
 except ImportError:
   # pylint: disable=ungrouped-imports
   from tensorflow.python.estimator import estimator as _estimator_lib  # pylint: disable=reimported
-  from tensorflow.python.estimator import util as estimator_util
   from tensorflow.python.estimator.export import export_lib
   from tensorflow.python.estimator.training import _TrainingExecutor
   # pylint: enable=ungrouped-imports
 
-from hybridbackend.tensorflow.data.iterators import make_one_shot_iterator
 from hybridbackend.tensorflow.framework.context import Context
-from hybridbackend.tensorflow.framework.context import context_scope
 from hybridbackend.tensorflow.framework.device import device_function
 from hybridbackend.tensorflow.framework.ops import ModeKeys
+from hybridbackend.tensorflow.framework.rewriting import scope
 from hybridbackend.tensorflow.training.config import configure
-from hybridbackend.tensorflow.training.eval import eval_scope
-from hybridbackend.tensorflow.training.eval import EvaluationHook
-from hybridbackend.tensorflow.training.function import scope
-from hybridbackend.tensorflow.training.policy import Policy
+from hybridbackend.tensorflow.training.evaluation import EvaluationHook
+from hybridbackend.tensorflow.training.evaluation import EvaluationSpec
+from hybridbackend.tensorflow.training.hooks import Policy
 from hybridbackend.tensorflow.training.saved_model import export_all
 from hybridbackend.tensorflow.training.saver import \
   HybridBackendSaverBuilderBase
 from hybridbackend.tensorflow.training.saver import Saver
 from hybridbackend.tensorflow.training.server import wraps_server
+from hybridbackend.tensorflow.training.variables import reuse_variables
 
 
 class RunConfig(run_config.RunConfig):
@@ -101,81 +97,42 @@ def wraps_model_fn(model_fn, model_dir, config):
     '''
     with scope(mode=mode, model_dir=model_dir):
       estimator_spec = model_fn(features, labels, mode, params)
-    if estimator_spec.scaffold.saver:
-      if not isinstance(
-          estimator_spec.scaffold.saver._builder,  # pylint: disable=protected-access
-          HybridBackendSaverBuilderBase):
-        raise ValueError(
-          'scaffold.saver in EstimatorSpec must be hb.train.Saver, '
-          'you can try call hb.train.replace_default_saver() before '
-          'creation of the scaffold.')
-    else:
-      estimator_spec.scaffold._saver = Saver(  # pylint: disable=protected-access
-        max_to_keep=config.keep_checkpoint_max,
-        keep_checkpoint_every_n_hours=config.keep_checkpoint_every_n_hours,
-        defer_build=True,
-        save_relative_paths=True)
-    training_hooks = list(estimator_spec.training_hooks) or []
-    training_hooks += Context.get().training_hooks
-    policies = [h for h in training_hooks if isinstance(h, Policy)]
-    if policies:
-      training_hooks.append(
-        Policy.Trigger(
-          policies,
-          scaffold=estimator_spec.scaffold,
-          output_dir=model_dir))
-    training_chief_hooks = list(estimator_spec.training_chief_hooks) or []
-    training_chief_hooks += Context.get().training_chief_hooks
-    chief_policies = [h for h in training_chief_hooks if isinstance(h, Policy)]
-    if chief_policies:
-      training_chief_hooks.append(
-        Policy.Trigger(
-          chief_policies,
-          scaffold=estimator_spec.scaffold,
-          output_dir=model_dir))
-    estimator_spec = estimator_spec._replace(  # pylint: disable=protected-access
-      training_hooks=training_hooks,
-      training_chief_hooks=training_chief_hooks)
-    return estimator_spec
+      if estimator_spec.scaffold.saver:
+        if not isinstance(
+            estimator_spec.scaffold.saver._builder,  # pylint: disable=protected-access
+            HybridBackendSaverBuilderBase):
+          raise ValueError(
+            'scaffold.saver in EstimatorSpec must be hb.train.Saver, '
+            'you can try call hb.train.replace_default_saver() before '
+            'creation of the scaffold.')
+      else:
+        estimator_spec.scaffold._saver = Saver(  # pylint: disable=protected-access
+          max_to_keep=config.keep_checkpoint_max,
+          keep_checkpoint_every_n_hours=config.keep_checkpoint_every_n_hours,
+          defer_build=True,
+          save_relative_paths=True)
+      training_hooks = list(estimator_spec.training_hooks) or []
+      policies = [h for h in training_hooks if isinstance(h, Policy)]
+      if policies:
+        training_hooks.append(
+          Policy.Trigger(
+            policies,
+            scaffold=estimator_spec.scaffold,
+            output_dir=model_dir))
+      training_chief_hooks = list(estimator_spec.training_chief_hooks) or []
+      chief_policies = [
+        h for h in training_chief_hooks if isinstance(h, Policy)]
+      if chief_policies:
+        training_chief_hooks.append(
+          Policy.Trigger(
+            chief_policies,
+            scaffold=estimator_spec.scaffold,
+            output_dir=model_dir))
+      estimator_spec = estimator_spec._replace(  # pylint: disable=protected-access
+        training_hooks=training_hooks,
+        training_chief_hooks=training_chief_hooks)
+      return estimator_spec
   return wrapped_model_fn
-
-
-class PatchTensorflowAPIForEstimator(object):  # pylint: disable=useless-object-inheritance
-  r'''Context manager that patches TF APIs for estimator.
-  '''
-  _lock = threading.Lock()
-  _stack_depth = 0
-
-  def __init__(self, drop_remainder):
-    self._drop_remainder = drop_remainder
-
-  def __enter__(self):
-    with PatchTensorflowAPIForEstimator._lock:
-      PatchTensorflowAPIForEstimator._stack_depth += 1
-      if PatchTensorflowAPIForEstimator._stack_depth <= 1:
-        def wraps_parse_input_fn_result(parse_fn):  # pylint: disable=unused-argument
-          r'''replaces iterator.
-          '''
-          def wrapped_parse_input_fn_result(result):
-            r'''Wrapped parse_input_fn_result.
-            '''
-            input_hooks = []
-            if isinstance(result, (dataset_ops.Dataset, dataset_ops.DatasetV2)):
-              iterator = make_one_shot_iterator(result, self._drop_remainder)
-              result = iterator.get_next()
-            return estimator_util.parse_iterator_result(result) + (input_hooks,)
-          return wrapped_parse_input_fn_result
-        self._prev_parse_input_fn_result = estimator_util.parse_input_fn_result
-        estimator_util.parse_input_fn_result = wraps_parse_input_fn_result(
-          self._prev_parse_input_fn_result)
-
-      return self
-
-  def __exit__(self, exc_type, exc_val, exc_tb):
-    with PatchTensorflowAPIForEstimator._lock:
-      if PatchTensorflowAPIForEstimator._stack_depth <= 1:
-        estimator_util.parse_input_fn_result = self._prev_parse_input_fn_result
-      PatchTensorflowAPIForEstimator._stack_depth -= 1
 
 
 class HybridBackendEstimatorBase(object):  # pylint: disable=useless-object-inheritance
@@ -217,18 +174,18 @@ def wraps_estimator(cls):
 
     def train(
         self, input_fn, hooks=None, max_steps=None, saving_listeners=None):
-      r'''support detect_end_dataset in training.
+      r'''support sync_dataset in training.
       '''
       if saving_listeners is None:
         saving_listeners = []
       saving_listeners.extend(Context.get().saving_listeners)
-      with context_scope(
+      with scope(
           mode=ModeKeys.TRAIN,
-          model_dir=self._model_dir):
-        with PatchTensorflowAPIForEstimator(self._train_drop_remainder):
-          return super().train(
-            input_fn, hooks=hooks, max_steps=max_steps,
-            saving_listeners=saving_listeners)
+          model_dir=self._model_dir,
+          data_sync_drop_remainder=self._train_drop_remainder):
+        return super().train(
+          input_fn, hooks=hooks, max_steps=max_steps,
+          saving_listeners=saving_listeners)
 
     def _actual_eval(
         self, input_fn, strategy=None, steps=None, hooks=None,
@@ -238,7 +195,7 @@ def wraps_estimator(cls):
       if strategy:
         raise ValueError('DistributionStrategy not supported')
 
-      with _context.graph_mode(), context_scope(
+      with _context.graph_mode(), Context.scope(
           comm_pool_capacity=1,
           comm_pool_name=ModeKeys.EVAL,
           mode=ModeKeys.EVAL,
@@ -253,19 +210,21 @@ def wraps_estimator(cls):
           checkpoint_path = latest_path
 
         with ops.Graph().as_default() as g, g.device(self._device_fn):  # pylint: disable=protected-access
-          with eval_scope(), PatchTensorflowAPIForEstimator(
-              self._eval_drop_remainder):
-            (scaffold, update_op, eval_dict, all_hooks) = (
-              self._evaluate_build_graph(  # pylint: disable=protected-access
-                input_fn,
-                hooks, checkpoint_path))
-            return self._evaluate_run(  # pylint: disable=protected-access
-              checkpoint_path=checkpoint_path,
-              scaffold=scaffold,
-              update_op=update_op,
-              eval_dict=eval_dict,
-              all_hooks=all_hooks,
-              output_dir=self.eval_dir(name))
+          with scope(
+              mode=ModeKeys.EVAL,
+              data_sync_drop_remainder=self._eval_drop_remainder):
+            with ops.name_scope(ModeKeys.EVAL), reuse_variables(vs.AUTO_REUSE):
+              (scaffold, update_op, eval_dict, all_hooks) = (
+                self._evaluate_build_graph(  # pylint: disable=protected-access
+                  input_fn,
+                  hooks, checkpoint_path))
+              return self._evaluate_run(  # pylint: disable=protected-access
+                checkpoint_path=checkpoint_path,
+                scaffold=scaffold,
+                update_op=update_op,
+                eval_dict=eval_dict,
+                all_hooks=all_hooks,
+                output_dir=self.eval_dir(name))
 
     def train_and_evaluate(
         self, train_spec, eval_spec,
@@ -279,42 +238,48 @@ def wraps_estimator(cls):
         eval_history: History of eval metrics. eval_history should support
           `append` method.
       '''
-      ctx = Context.get()
+      train_hooks = []
       if eval_every_n_iter is not None:
         def _eval_fn():
-          with PatchTensorflowAPIForEstimator(self._eval_drop_remainder):
-            with context_scope(model_dir=self._model_dir):
-              (_, evaluation_hooks, input_hooks, update_op, metrics) = (
-                self._call_model_fn_eval(  # pylint: disable=protected-access
-                  eval_spec.input_fn, self.config))
-              hooks = list(evaluation_hooks) or []
-              hooks.extend(list(input_hooks) or [])
-              return update_op, metrics, hooks
-        eval_summary_dir = self.eval_dir(
-          name=f'{ctx.rank}' if ctx.world_size > 1 else '')
-        ctx.add_training_hook(
-          EvaluationHook(
+          with scope(
+              model_dir=self._model_dir,
+              data_sync_drop_remainder=self._eval_drop_remainder):
+            (_, evaluation_hooks, input_hooks, update_op, eval_dict) = (
+              self._call_model_fn_eval(  # pylint: disable=protected-access
+                eval_spec.input_fn, self.config))
+            hooks = list(evaluation_hooks) or []
+            hooks.extend(list(input_hooks) or [])
+            return EvaluationSpec(
+              name=EvaluationSpec.__name__,
+              hooks=hooks,
+              update_op=update_op,
+              eval_dict=eval_dict)
+        with Context.scope(eval_dir=self.eval_dir()):
+          eval_hook = EvaluationHook(
             _eval_fn,
             steps=eval_spec.steps,
             every_n_iter=eval_every_n_iter,
-            summary_dir=eval_summary_dir,
-            history=eval_history))
+            history=eval_history)
+          train_hooks.append(eval_hook)
 
       if self.config.cluster_spec:
         executor = TrainingExecutor(
           estimator=self,
           train_spec=train_spec,
-          eval_spec=eval_spec)
+          eval_spec=eval_spec,
+          train_hooks=train_hooks)
         if estimator_training.should_run_distribute_coordinator(self.config):
           raise ValueError(
             'Running `train_and_evaluate` with Distribute Coordinator '
             'not supported.')
-        return executor.run()
+        with Context.scope(eval_dir=self.eval_dir()):
+          return executor.run()
 
-      return self.train(
-        train_spec.input_fn,
-        hooks=train_spec.hooks,
-        max_steps=train_spec.max_steps)
+      with Context.scope(eval_dir=self.eval_dir()):
+        return self.train(
+          train_spec.input_fn,
+          hooks=tuple(train_spec.hooks) + tuple(train_hooks),
+          max_steps=train_spec.max_steps)
 
     def export_saved_model(
         self, export_dir_base, serving_input_receiver_fn,
@@ -435,9 +400,10 @@ def wraps_estimator(cls):
       r'''Predict method of estimator in HB.
       '''
       _estimator_lib._estimator_api_gauge.get_cell('predict').set(True)  # pylint: disable=protected-access
-      with _context.graph_mode(), context_scope(
+      with _context.graph_mode(), Context.scope(
           mode=ModeKeys.PREDICT,
           model_dir=self._model_dir,
+          eval_dir=self.eval_dir(),
           comm_pool_capacity=1,
           comm_pool_name=ModeKeys.PREDICT):
         hooks = _estimator_lib._check_hooks_type(hooks)  # pylint: disable=protected-access

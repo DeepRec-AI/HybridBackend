@@ -64,7 +64,7 @@ class ParquetDatasetRaggedTest(unittest.TestCase):
         batch_size=batch_size,
         fields=['col2', 'col0'])
       ds = ds.prefetch(4)
-      batch = hb.data.make_one_shot_iterator(ds).get_next()
+      batch = tf.data.make_one_shot_iterator(ds).get_next()
 
     c = self._df['col0']
     with tf.Session(graph=graph) as sess:
@@ -94,7 +94,7 @@ class ParquetDatasetRaggedTest(unittest.TestCase):
         batch_size=batch_size,
         fields=['col2', 'col0'])
       ds = ds.prefetch(4)
-      batch = hb.data.make_one_shot_iterator(ds).get_next()
+      batch = tf.data.make_one_shot_iterator(ds).get_next()
       batch = hb.data.DataFrame.parse(batch)
 
     c = self._df['col0']
@@ -127,7 +127,7 @@ class ParquetDatasetRaggedTest(unittest.TestCase):
         fields=['col2', 'col0'])
       ds = ds.map(hb.data.DataFrame.parse)
       ds = ds.prefetch(4)
-      batch = hb.data.make_one_shot_iterator(ds).get_next()
+      batch = tf.data.make_one_shot_iterator(ds).get_next()
 
     c = self._df['col0']
     with tf.Session(graph=graph) as sess:
@@ -159,7 +159,7 @@ class ParquetDatasetRaggedTest(unittest.TestCase):
         fields=['col2', 'col0'])
       ds = ds.apply(hb.data.parse())
       ds = ds.prefetch(4)
-      batch = hb.data.make_one_shot_iterator(ds).get_next()
+      batch = tf.data.make_one_shot_iterator(ds).get_next()
 
     c = self._df['col0']
     with tf.Session(graph=graph) as sess:
@@ -191,7 +191,7 @@ class ParquetDatasetRaggedTest(unittest.TestCase):
         fields=['col2', 'col0'])
       ds = ds.apply(hb.data.parse())
       ds = ds.prefetch(4)
-      it = hb.data.make_one_shot_iterator(ds)
+      it = tf.data.make_one_shot_iterator(ds)
       handle_tensor = it.string_handle()
       feedable_handle = tf.placeholder(tf.string, shape=[])
       feedable_it = tf.data.Iterator.from_string_handle(
@@ -235,7 +235,7 @@ class ParquetDatasetRaggedTest(unittest.TestCase):
         return values['col0'], values['col2']
       ds = ds.map(_parse)
       ds = ds.prefetch(4)
-      batch = hb.data.make_one_shot_iterator(ds).get_next()
+      batch = tf.data.make_one_shot_iterator(ds).get_next()
 
     c = self._df['col0']
     with tf.Session(graph=graph) as sess:
