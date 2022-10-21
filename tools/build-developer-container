@@ -23,14 +23,14 @@ if [[ -z "$TAG" ]]; then
 fi
 DOCKERIMAGE="${REPO}:developer-${TAG}"
 DOCKERFILE="dockerfiles/Dockerfile.developer-${TAG}"
-if [[ ! -f "env/${DOCKERFILE}" ]]; then
-  echo >&2 "env/${DOCKERFILE} not found"
+if [[ ! -f "build/${DOCKERFILE}" ]]; then
+  echo >&2 "build/${DOCKERFILE} not found"
   exit 1
 fi
 
 set -eo pipefail
 
-cd env/
+cd build/
 
 DOCKER_BUILDKIT=1 docker build \
 --build-arg BUILDKIT_INLINE_CACHE=1 \

@@ -37,7 +37,7 @@ jobs:
     - name: Download
       run: |-
         kubectl exec -it ${PODNAME} -- \
-        sh -c 'tar -czf hybridbackend.tgz -C env/build/ .' && \
+        sh -c 'tar -czf hybridbackend.tgz -C build/auditwheel/ .' && \
         kubectl cp ${PODNAME}:hybridbackend.tgz ./hybridbackend.tgz --retries=3 && \
         mkdir -p dist && tar -xzf ./hybridbackend.tgz -C dist/
     - name: Publish

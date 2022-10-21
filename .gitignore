@@ -4,8 +4,13 @@
 *.o
 *.d
 *.log
-build/
-dist/
+build/lib.*
+build/bdist.*
+build/temp.*
+build/reports/
+build/doc/
+build/wheel/
+build/auditwheel/
 *.egg-info/
 __pycache__/
 .pylint.d/

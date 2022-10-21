@@ -95,4 +95,4 @@ registered adopters in advance.
 If you would like to share your experiences with others, you are welcome to
 contact us in DingTalk:
 
-[<img src="https://github.com/alibaba/HybridBackend/raw/main/images/dingtalk.png" alt="dingtalk" width="200"/>](https://h5.dingtalk.com/circle/healthCheckin.html?dtaction=os&corpId=ding14f3e2ea4b79994cadf6428847a62d4a&51951ad=a84b419&cbdbhh=qwertyuiop)
+[<img src="https://github.com/alibaba/HybridBackend/raw/main/docs/images/dingtalk.png" alt="dingtalk" width="200"/>](https://h5.dingtalk.com/circle/healthCheckin.html?dtaction=os&corpId=ding14f3e2ea4b79994cadf6428847a62d4a&51951ad=a84b419&cbdbhh=qwertyuiop)

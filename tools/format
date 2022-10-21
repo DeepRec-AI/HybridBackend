@@ -22,8 +22,8 @@ isort --resolve-all-configs .
 
 echo "Format C/C++ files..."
 
-HEADERS=$(find \( -path ./env -o -path ./build -o -path ./dist \) -prune -false -o -type f -name '*.h')
-SOURCES=$(find \( -path ./env -o -path ./build -o -path ./dist \) -prune -false -o -type f -name '*.cc')
+HEADERS=$(find \( -path ./build \) -prune -false -o -type f -name '*.h')
+SOURCES=$(find \( -path ./build \) -prune -false -o -type f -name '*.cc')
 
 if [[ ! -z ${HEADERS} ]] || [[ ! -z ${SOURCES} ]]; then
     clang-format -i ${HEADERS} ${SOURCES}

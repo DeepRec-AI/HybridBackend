@@ -7,7 +7,7 @@
 [Docker is the future](https://docs.docker.com/engine/install/)
 
 ```bash
-env/run make -j$(nproc)
+build/run make -j$(nproc)
 ```
 
 ### 1.2 Use customized container image for developers
@@ -32,7 +32,7 @@ Build HybridBackend on customized developer image, or build and push customized
 image from counterpart developer image:
 
 ```bash
-env/run make -j$(nproc)
+build/run make -j$(nproc)
 ```
 
 Or
@@ -77,7 +77,7 @@ Requirements:
 Build & install arrow:
 
 ```bash
-cd env/arrow/
+cd build/arrow/
 ARROW_USE_CXX11_ABI=${HYBRIDBACKEND_USE_CXX11_ABI} \
 ARROW_HDFS=ON \
 ARROW_S3=ON \
@@ -87,12 +87,12 @@ ARROW_S3=ON \
 Build & install sparsehash:
 
 ```bash
-cd env/sparsehash
+cd build/sparsehash
 ./build.sh
 ```
 
 Install TensorFlow and other requirements, see
-[Dockerfiles](env/dockerfiles/) for more detail.
+[Dockerfiles](build/dockerfiles/) for more detail.
 
 Configure & build:
 
@@ -122,7 +122,7 @@ Requirements:
 Build & install arrow:
 
 ```bash
-cd env/arrow/
+cd build/arrow/
 ARROW_USE_CXX11_ABI=${HYBRIDBACKEND_USE_CXX11_ABI} \
 ARROW_HDFS=ON \
 ARROW_S3=ON \
@@ -132,7 +132,7 @@ ARROW_S3=ON \
 Build & install sparsehash:
 
 ```bash
-cd env/sparsehash
+cd build/sparsehash
 ./build.sh
 ```
 

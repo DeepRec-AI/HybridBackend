@@ -18,7 +18,7 @@ set -eo pipefail
 
 unset PYTHONPATH
 
-pip install -U env/build/*.whl
+pip install -U build/auditwheel/*.whl
 
 make test HB_TEST_LOGDIR=build/reports
 tar -czf build/reports.tar.gz -C build/ reports
