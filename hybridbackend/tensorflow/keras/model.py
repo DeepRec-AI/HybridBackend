@@ -20,6 +20,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import re
 import sys
 import threading
 
@@ -31,6 +32,7 @@ try:
 except ImportError:
   distribution_strategy_context = None
 from tensorflow.python.data.ops import dataset_ops
+from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
 from tensorflow.python.keras import backend as K
 from tensorflow.python.keras import callbacks
@@ -38,11 +40,18 @@ from tensorflow.python.keras import optimizers
 from tensorflow.python.keras.engine import training as _keras_training
 from tensorflow.python.keras.engine import training_arrays as _training_arrays
 from tensorflow.python.keras.engine import training_utils as _training_utils
+from tensorflow.python.keras.utils import tf_utils
+from tensorflow.python.keras.utils.mode_keys import ModeKeys as _ModeKeys
+from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import gen_resource_variable_ops
+from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import state_ops
+from tensorflow.python.ops import variables as _variables
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.saved_model import signature_constants
 from tensorflow.python.training import basic_session_run_hooks
 from tensorflow.python.training import checkpoint_management
+from tensorflow.python.training import checkpoint_utils
 from tensorflow.python.training import session_run_hook
 from tensorflow.python.training import training_util
 
@@ -54,9 +63,62 @@ from tensorflow.python.util import nest
 
 from hybridbackend.tensorflow.framework.context import Context
 from hybridbackend.tensorflow.framework.device import device_function
+from hybridbackend.tensorflow.framework.ops import GraphKeys as _GraphKeys
 from hybridbackend.tensorflow.framework.ops import ModeKeys
+from hybridbackend.tensorflow.framework.rewriting import GraphRewriting
 from hybridbackend.tensorflow.training.saved_model import export_all
 from hybridbackend.tensorflow.training.server import monitored_session
+
+
+class PatchGetSessionForKerasModel(object):  # pylint: disable=useless-object-inheritance
+  r'''Context manager that patches TF APIs for `keras.Model`.
+  '''
+  _lock = threading.Lock()
+  _stack_depth = 0
+  _sess_map = {}
+
+  def __init__(
+      self, name, checkpoint_dir,
+      keep_checkpoint_max,
+      keep_checkpoint_every_n_hours):
+    self._name = name
+    self._checkpoint_dir = checkpoint_dir
+    self._keep_checkpoint_max = keep_checkpoint_max
+    self._keep_checkpoint_every_n_hours = keep_checkpoint_every_n_hours
+    PatchGetSessionForKerasModel._sess_map[self._name] = None
+
+  def __enter__(self):
+    with PatchGetSessionForKerasModel._lock:
+      PatchGetSessionForKerasModel._stack_depth += 1
+      if PatchGetSessionForKerasModel._stack_depth <= 1:
+
+        def wraps_get_session(fn):  # pylint: disable=unused-argument
+          r'''replace the default session.
+          '''
+
+          def wrapped_get_session(op_input_list=()):  # pylint: disable=unused-argument
+            if PatchGetSessionForKerasModel._sess_map[self._name] is None:
+              PatchGetSessionForKerasModel._sess_map[self._name] \
+                = monitored_session(
+                  checkpoint_dir=self._checkpoint_dir,
+                  save_checkpoint_steps=sys.maxsize,
+                  keep_checkpoint_max=self._keep_checkpoint_max,
+                  keep_checkpoint_every_n_hours=self.
+                  _keep_checkpoint_every_n_hours,
+                  log_step_count_steps=None)
+            return PatchGetSessionForKerasModel._sess_map[self._name]
+          return wrapped_get_session
+        self._prev_get_session = K._get_session
+        K._get_session = wraps_get_session(self._prev_get_session)
+
+      return self
+
+  def __exit__(self, exc_type, exc_val, exc_tb):
+    with PatchGetSessionForKerasModel._lock:
+      if PatchGetSessionForKerasModel._stack_depth <= 1:
+        K._get_session = self._prev_get_session
+        PatchGetSessionForKerasModel._sess_map[self._name] = None
+      PatchGetSessionForKerasModel._stack_depth -= 1
 
 
 class PatchCallbacksForKerasModel(object):  # pylint: disable=useless-object-inheritance
@@ -153,7 +215,7 @@ class PatchCallbacksForKerasModel(object):  # pylint: disable=useless-object-inh
             r'''trigger the end() method for each hooks of session.
             '''
             fn(cks, mode, *args, **kwargs)
-            if self._mode == ModeKeys.TRAIN and mode == ModeKeys.TRAIN:
+            if self._mode == _ModeKeys.TRAIN and mode == _ModeKeys.TRAIN:
               self._close_hooks()
           return wrapped_call_end_hook
         self._prev_call_end_hook = callbacks.CallbackList._call_end_hook
@@ -174,49 +236,27 @@ class PatchTensorflowAPIForKerasModel(object):  # pylint: disable=useless-object
   '''
   _lock = threading.Lock()
   _stack_depth = 0
-  _sess_map = {}
 
   def __init__(
-      self, checkpoint_dir=None,
+      self, model=None, checkpoint_dir=None,
       keep_checkpoint_max=None,
       keep_checkpoint_every_n_hours=None,
-      mode=None,
       monitor=None,
       save_best_only=None,
       save_best_mode=None):
+    self._model = model
     self._checkpoint_dir = checkpoint_dir
     self._keep_checkpoint_max = keep_checkpoint_max
     self._keep_checkpoint_every_n_hours = keep_checkpoint_every_n_hours
-    self._mode = mode
     self._monitor = monitor
     self._save_best_only = save_best_only
     self._save_best_mode = save_best_mode
-    PatchTensorflowAPIForKerasModel._sess_map[self._mode] = None
 
   def __enter__(self):
     with PatchTensorflowAPIForKerasModel._lock:
       PatchTensorflowAPIForKerasModel._stack_depth += 1
       if PatchTensorflowAPIForKerasModel._stack_depth <= 1:
         K.manual_variable_initialization(True)
-
-        def wraps_get_session(fn):  # pylint: disable=unused-argument
-          r'''replace the default session.
-          '''
-
-          def wrapped_get_session(op_input_list=()):  # pylint: disable=unused-argument
-            if PatchTensorflowAPIForKerasModel._sess_map[self._mode] is None:
-              PatchTensorflowAPIForKerasModel._sess_map[self._mode] \
-                = monitored_session(
-                  checkpoint_dir=self._checkpoint_dir,
-                  save_checkpoint_steps=sys.maxsize,
-                  keep_checkpoint_max=self._keep_checkpoint_max,
-                  keep_checkpoint_every_n_hours=self.
-                  _keep_checkpoint_every_n_hours,
-                  log_step_count_steps=None)
-            return PatchTensorflowAPIForKerasModel._sess_map[self._mode]
-          return wrapped_get_session
-        self._prev_get_session = K._get_session
-        K._get_session = wraps_get_session(self._prev_get_session)
 
         def wraps_should_trigger_for_step(fn):  # pylint: disable=unused-argument
           r'''handle cases where self._every_steps is set to be sys.maxsize
@@ -244,14 +284,15 @@ class PatchTensorflowAPIForKerasModel(object):  # pylint: disable=useless-object
         basic_session_run_hooks.SecondOrStepTimer.should_trigger_for_step = \
           wraps_should_trigger_for_step(self._prev_should_trigger_for_step)
 
-        def decorate_call_fn(fn):
+        def decorate_call_fn(model):
           r'''decorete the __call__ fo GraphExecutionFunction
           '''
           def decorated(cls, inputs):
             sess = K._get_session(inputs)._sess._sess._sess  # pylint: disable=protected-access
 
             if sess.should_stop():
-              raise RuntimeError('Run called even after should_stop requested.')
+              raise errors.OutOfRangeError(
+                None, None, 'Reach the end of Dataset')
             actual_fetches = {}
             run_context = session_run_hook.SessionRunContext(
               original_args=session_run_hook.SessionRunArgs(
@@ -262,7 +303,9 @@ class PatchTensorflowAPIForKerasModel(object):  # pylint: disable=useless-object
             feed_dict = sess._call_hook_before_run(  # pylint: disable=protected-access
               run_context, actual_fetches, None, options)
             run_metadata = config_pb2.RunMetadata()
-            ret = fn(cls, inputs)
+            actual_fetches['loss'] = model.total_loss
+            actual_fetches['metrics'] = model.total_metrics
+            actual_fetches['updates_op'] = cls.updates_op
             outputs = sess._sess.run(  # pylint: disable=protected-access
               fetches=actual_fetches,
               feed_dict=feed_dict,
@@ -276,29 +319,38 @@ class PatchTensorflowAPIForKerasModel(object):  # pylint: disable=useless-object
                   options=options,
                   run_metadata=run_metadata))
             sess._should_stop = sess._should_stop or run_context.stop_requested  # pylint: disable=protected-access
+            if sess._should_stop:  # pylint: disable=protected-access
+              model.stop_training = True
+            ret = []
+            ret.extend(nest.flatten(outputs['loss']))
+            ret.extend(nest.flatten(outputs['metrics']))
             return ret
           return decorated
         self._prev_call_fn = K.GraphExecutionFunction.__call__
-        K.GraphExecutionFunction.__call__ = decorate_call_fn(self._prev_call_fn)
+        K.GraphExecutionFunction.__call__ = decorate_call_fn(self._model)
 
-        def wraps_model_iteration(fn):
+        def wraps_model_iteration(fn, mode):
           r'''replace the default model_iteration.
           '''
 
           def wrapped_model_iteration(*args, **kwargs):
-            with PatchCallbacksForKerasModel(
-                self._mode,
-                self._monitor,
-                self._save_best_only,
-                self._save_best_mode):
-              return fn(*args, **kwargs)
+            with PatchGetSessionForKerasModel(
+                mode, self._checkpoint_dir,
+                self._keep_checkpoint_max,
+                self._keep_checkpoint_every_n_hours):
+              with PatchCallbacksForKerasModel(
+                  mode,
+                  self._monitor,
+                  self._save_best_only,
+                  self._save_best_mode):
+                return fn(*args, **kwargs)
           return wrapped_model_iteration
         self._prev_fit_loop = _training_arrays.fit_loop
         self._prev_test_loop = _training_arrays.test_loop
         _training_arrays.fit_loop = wraps_model_iteration(
-          self._prev_fit_loop)
+          self._prev_fit_loop, _ModeKeys.TRAIN)
         _training_arrays.test_loop = wraps_model_iteration(
-          self._prev_test_loop)
+          self._prev_test_loop, _ModeKeys.TEST)
 
       return self
 
@@ -306,8 +358,6 @@ class PatchTensorflowAPIForKerasModel(object):  # pylint: disable=useless-object
     with PatchTensorflowAPIForKerasModel._lock:
       if PatchTensorflowAPIForKerasModel._stack_depth <= 1:
         K.manual_variable_initialization(False)
-        K._get_session = self._prev_get_session
-        PatchTensorflowAPIForKerasModel._sess_map[self._mode] = None
         K.GraphExecutionFunction.__call__ = self._prev_call_fn
         basic_session_run_hooks.SecondOrStepTimer.should_trigger_for_step = \
           self._prev_should_trigger_for_step
@@ -338,9 +388,45 @@ def wraps_keras_model(cls):
       self._train_drop_remainder = kwargs.pop('train_drop_remainder', None)
       self._eval_drop_remainder = kwargs.pop('eval_drop_remainder', None)
       self._predict_drop_remainder = kwargs.pop('predict_drop_remainder', None)
+      self._load_weights_dir = None
+      self._load_weights_scope = None
+      self._load_weights_skip_mismatched = True
+      self._should_load_weights = False
+      self._compile_triggered = False
+      with PatchTensorflowAPIForKerasModel(model=self):
+        # Signature detection
+        output_target = None
+        if len(args) == 2:
+          input_target, output_target = args
+        elif len(args) == 1 and 'outputs' in kwargs:
+          input_target = args[0]
+          output_target = kwargs.pop('outputs', None)
+        elif 'inputs' in kwargs and 'outputs' in kwargs:
+          input_target = kwargs.pop('inputs', None)
+          output_target = kwargs.pop('outputs', None)
+        else:
+          input_target = None
+          output_target = None
 
-      with PatchTensorflowAPIForKerasModel():
-        super().__init__(*args, **kwargs)
+        if input_target is not None and output_target is not None:
+          def wraps_model_call_fn(fn):  # pylint: disable=unused-argument
+            def wrapped_model_call_fn(*args, **kwargs):  # pylint: disable=unused-argument
+              return output_target
+            return wrapped_model_call_fn
+          self._prev_call = self.call  # pylint: disable=access-member-before-definition
+          self.call = wraps_model_call_fn(self._prev_call)
+
+        super()._init_subclassed_network(**kwargs)
+
+        tf_utils.assert_no_legacy_layers(super().layers)
+        _keras_training._keras_api_gauge.get_cell('model').set(True)
+        self._distribution_strategy = None
+        self._compile_time_distribution_strategy = None
+        self._compile_distribution = False
+        self._run_eagerly = None
+        self._experimental_run_tf_function = False
+        if input_target is not None:
+          self._set_inputs(input_target)
 
     @trackable.no_automatic_dependency_tracking
     def compile(self,
@@ -355,6 +441,7 @@ def wraps_keras_model(cls):
                 **kwargs):
       r'''Configures the model for training.
       '''
+      self._compile_triggered = True
       self._run_eagerly = kwargs.pop('run_eagerly', None)
       self._experimental_run_tf_function = kwargs.pop(
         'experimental_run_tf_function', True)
@@ -425,7 +512,7 @@ def wraps_keras_model(cls):
         self._set_metric_attributes()
 
         # Invoke metric functions (unweighted) for all the outputs.
-        self._handle_metrics(
+        self._total_metrics = self._handle_metrics(
           self.outputs,
           targets=self._targets,
           skip_target_masks=self._prepare_skip_target_masks(),
@@ -459,6 +546,8 @@ def wraps_keras_model(cls):
             self._non_trainable_weights.append(var)
         # Collected trainable weights, sorted in topological order.
         self._collected_trainable_weights = self._unique_trainable_weights
+        if self._should_load_weights:
+          self._load_weights_impl()
 
     def fit(self, *args, **kwargs):
       r'''Trains the model for a fixed number of epochs
@@ -476,10 +565,10 @@ def wraps_keras_model(cls):
 
       with Context.scope(mode=ModeKeys.TRAIN):
         with PatchTensorflowAPIForKerasModel(
+            model=self,
             checkpoint_dir=self._checkpoint_dir,
             keep_checkpoint_max=self._keep_checkpoint_max,
             keep_checkpoint_every_n_hours=self._keep_checkpoint_every_n_hours,
-            mode=ModeKeys.TRAIN,
             monitor=self._monitor,
             save_best_only=self._save_best_only,
             save_best_mode=self._save_best_mode):
@@ -515,8 +604,30 @@ def wraps_keras_model(cls):
           data_sync_drop_remainder=self._eval_drop_remainder,
           comm_pool_capacity=1,
           comm_pool_name=ModeKeys.EVAL):
-        with PatchTensorflowAPIForKerasModel(mode=ModeKeys.EVAL):
+        with PatchTensorflowAPIForKerasModel(model=self):
           super().evaluate(*args, **kwargs)
+
+    def _get_initial_value(self, var):
+      r'''Get initial value of a variable without uninitialized dependencies.
+
+      NOTE: `_try_guard_against_uninitialized_dependencies` is no longer a
+            method of a variable since tensorflow 1.15
+      '''
+      # pylint:disable=protected-access
+      if hasattr(var, '_try_guard_against_uninitialized_dependencies'):
+        return var._try_guard_against_uninitialized_dependencies(
+          var._initial_value)
+      return _variables._try_guard_against_uninitialized_dependencies(
+        var.name, var._initial_value)
+
+    def _get_initializer_op(self, var):
+      r'''Get initializer op of any kind of variable.
+      '''
+      # pylint:disable=protected-access
+      if isinstance(var, resource_variable_ops.ResourceVariable):
+        return gen_resource_variable_ops.assign_variable_op(
+          var._handle, self._get_initial_value(var))
+      return state_ops.assign(var._variable, self._get_initial_value(var)).op
 
     def reset_metrics(self):
       r'''Resets the state of metrics.
@@ -525,7 +636,28 @@ def wraps_keras_model(cls):
       if K.get_graph()._finalized:  # pylint: disable=protected-access
         K.get_graph()._unsafe_unfinalize()  # pylint: disable=protected-access
       for m in metrics:
-        m.reset_states()
+        assign_op = []
+        for v in m.variables:
+          name = v.name.split(':')[0]
+          with ops.name_scope('initializers/'):
+            with ops.name_scope(f'{name}/initializer'):
+              with ops.control_dependencies(None):
+                with ops.device(v.device):
+                  initial_value = v.initial_value
+                  if callable(initial_value):
+                    initial_value = initial_value()
+                  initial_value = array_ops.identity(
+                    ops.convert_to_tensor(initial_value))
+                  # pylint:disable=protected-access
+                  v._initial_value = initial_value
+                  v._initializer_op = self._get_initializer_op(v)
+                  assign_op.append(v._initializer_op)
+        sess = K._get_session()._sess._sess._sess  # pylint: disable=protected-access
+        sess.run(assign_op)
+
+    @property
+    def total_metrics(self):
+      return self._total_metrics
 
     def save(
         self,
@@ -572,6 +704,58 @@ def wraps_keras_model(cls):
         strip_default_attrs=True,
         modes=[ModeKeys.PREDICT],
         **kwargs)
+
+    def load_weights(self, ckpt_dir, scope=None, skip_mismatched=True):
+      r'''Loading weights stored in tf.compat.v1.train.Checkpoint
+      '''
+      if self._compile_triggered:
+        raise RuntimeError(
+          'load_weights should be invoked before the'
+          ' invocation of model.compile')
+      self._load_weights_dir = ckpt_dir
+      self._load_weights_scope = scope
+      self._load_weights_skip_mismatched = skip_mismatched
+      self._should_load_weights = True
+
+    def _load_weights_impl(self):
+      r'''Loading weights stored in tf.compat.v1.train.Checkpoint
+      '''
+      if self._is_graph_network and not self.built:
+        raise NotImplementedError(
+          'Unable to load weights saved in HDF5 format into a subclassed '
+          'Model which has not created its variables yet. Call the Model '
+          'first, then load the weights.')
+      self._assert_weights_created()
+      if self._load_weights_dir is None:
+        raise ValueError('Directory to store weights for loading is None')
+
+      restoreable_saveables, _ = zip(
+        *checkpoint_utils.list_variables(self._load_weights_dir))
+      all_vars = _variables._all_saveable_objects(  # pylint: disable=protected-access
+        scope=self._load_weights_scope)
+      all_vars = [v for v in all_vars if v.name.split(':')[0] != 'global_step'
+                  and v.name.split(':')[0] != 'TFOptimizer/iterations']
+
+      vars_to_restore = {}
+      skipped_vars_names = []
+      sharded_vars = ops.get_default_graph().get_collection_ref(
+        _GraphKeys.SHARDED_VARIABLES)
+      for v in all_vars:
+        var_name = re.split('/part_.*:.*$', v.name)[0]\
+          if v in sharded_vars else v.name.split(':')[0]
+        if self._load_weights_skip_mismatched:
+          if var_name in restoreable_saveables:
+            vars_to_restore[var_name] = var_name
+          else:
+            skipped_vars_names.append(var_name)
+        else:
+          vars_to_restore[var_name] = var_name
+      if skipped_vars_names:
+        for v in skipped_vars_names:
+          logging.warning(f'{v} is skipped while loading weights')
+
+      checkpoint_utils.init_from_checkpoint(
+        self._load_weights_dir, vars_to_restore)
 
     def _make_train_function(self):
       r'''Build graph for training.
@@ -664,3 +848,27 @@ def wraps_keras_model(cls):
 
 
 Model = wraps_keras_model(_keras_training.Model)
+
+
+class KerasModelRewriting(GraphRewriting):
+  r'''Rewriting keras models
+  '''
+  def __init__(self):
+    super().__init__()
+    self._prev_keras_model = {}
+
+  def begin(self):
+    import tensorflow as tf  # pylint: disable=import-outside-toplevel
+    for k, c in tf.keras.__dict__.items():
+      if (isinstance(c, type)
+          and issubclass(c, _keras_training.Model)):
+        self._prev_keras_model[k] = c
+        setattr(tf.keras, k, Model)
+
+  def end(self):
+    import tensorflow as tf  # pylint: disable=import-outside-toplevel
+    for k, c in self._prev_keras_model.items():
+      setattr(tf.keras, k, c)
+
+
+GraphRewriting.register(KerasModelRewriting)

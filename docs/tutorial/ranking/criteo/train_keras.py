@@ -88,7 +88,7 @@ class DlrmInKeras(hb.keras.Model):
     self._args = args
     self.dlrm = RankingModel(args)
 
-  def call(self, inputs):
+  def call(self, inputs):  # pylint: disable=method-hidden
     return self.dlrm(inputs)
 
   def input_dataset(self, filenames, batch_size):
@@ -147,6 +147,9 @@ def main(args):
   def loss_func(y_true, y_pred):
     return tf.reduce_mean(
       tf.keras.losses.binary_crossentropy(y_true, y_pred))
+
+  if args.weights_dir is not None:
+    dlrm_in_keras.load_weights(args.weights_dir)
 
   dlrm_in_keras.compile(
     loss=loss_func,
@@ -210,6 +213,7 @@ if __name__ == '__main__':
   parser.add_argument('--eval-batch-size', type=int, default=100)
   parser.add_argument('--eval-max-steps', type=int, default=1)
   parser.add_argument('--output-dir', default='./outputs')
+  parser.add_argument('--weights-dir', default=None)
   parser.add_argument(
     '--data-spec-filename', default='ranking/criteo/data/spec.json')
   parser.add_argument('filenames', nargs='+')

@@ -344,6 +344,7 @@ class SaverRewriting(GraphRewriting):
   def __init__(self):
     super().__init__()
     self._prev_add_weight = None
+    self._prev_collect_pvar = None
 
   def wraps_saver_init(self, fn):
     r'''Wraps saver init function.
@@ -361,16 +362,31 @@ class SaverRewriting(GraphRewriting):
       fn(cls, *args, **kwargs)
     return wrapped_saver_init
 
+  def wraps_collect_pvar(self, fn):
+    def wrapped_collect_pvar(name, all_vars):
+      rank = Context.get().rank
+      found_vars = fn(name, all_vars)
+      collected_vars = all_vars if found_vars is None\
+        else {v.name.split(':')[0]: v for v in found_vars}
+      if name + f'/part_{rank}' in collected_vars:
+        return [collected_vars[name + f'/part_{rank}']]
+      return None
+    return wrapped_collect_pvar
+
   def begin(self):
     r'''Rewrites API.
     '''
     self._prev_saver_init = saver.Saver.__init__
     saver.Saver.__init__ = self.wraps_saver_init(self._prev_saver_init)
+    self._prev_collect_pvar = checkpoint_utils._collect_partitioned_variable  # pylint: disable=protected-access
+    checkpoint_utils._collect_partitioned_variable =\
+      self.wraps_collect_pvar(self._prev_collect_pvar)  # pylint: disable=protected-access
 
   def end(self):
     r'''Revert API rewriting.
     '''
     saver.Saver.__init__ = self._prev_saver_init
+    checkpoint_utils._collect_partitioned_variable = self._prev_collect_pvar  # pylint: disable=protected-access
 
 
 GraphRewriting.register(SaverRewriting)

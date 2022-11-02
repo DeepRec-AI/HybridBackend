@@ -73,37 +73,23 @@ class RankingModel(tf.layers.Layer):
     return loss
 
 
-class Dcnv2InKeras(hb.keras.Model):
-  r'''Wraps the model by using keras.Model API'''
-  def __init__(self, args):
-    super().__init__()
-    self._args = args
-    self.dcnv2 = RankingModel(args)
-
-  def set_feature_keys(self, feature_keys):
-    self._feature_keys = sorted(feature_keys)
-
-  def call(self, inputs):
-    features = {f: inputs[i] for i, f in enumerate(self._feature_keys)}
-    return self.dcnv2(features)
-
-  def input_dataset(self, filenames, batch_size):
-    r'''Get input dataset.
-    '''
-    with tf.device('/cpu:0'):
-      ds = hb.data.ParquetDataset(
-        filenames,
-        batch_size=batch_size,
-        num_parallel_reads=len(filenames),
-        num_parallel_parser_calls=self._args.num_parsers,
-        drop_remainder=True)
-      ds = ds.apply(hb.data.parse())
-      ds = ds.map(
-        lambda batch: (
-          {f: batch[f] for f in batch if f not in ('ts', 'label')},
-          tf.reshape(batch['label'], shape=[-1, 1])))
-      ds = ds.prefetch(self._args.num_prefetches)
-      return ds
+def input_dataset(args, filenames, batch_size):
+  r'''Get input dataset.
+  '''
+  with tf.device('/cpu:0'):
+    ds = hb.data.ParquetDataset(
+      filenames,
+      batch_size=batch_size,
+      num_parallel_reads=len(filenames),
+      num_parallel_parser_calls=args.num_parsers,
+      drop_remainder=True)
+    ds = ds.apply(hb.data.parse())
+    ds = ds.map(
+      lambda batch: (
+        {f: batch[f] for f in batch if f not in ('ts', 'label')},
+        tf.reshape(batch['label'], shape=[-1, 1])))
+    ds = ds.prefetch(args.num_prefetches)
+    return ds
 
 
 def predict_fn(args):
@@ -123,17 +109,12 @@ def predict_fn(args):
   inputs.update(inputs_numeric)
   inputs.update(inputs_categorical)
 
-  dcnv2_in_keras = Dcnv2InKeras(args)
-  dcnv2_in_keras.set_feature_keys(inputs.keys())
-  predict_logits = dcnv2_in_keras(tf.nest.flatten(inputs), training=False)
+  predict_logits = RankingModel(args)(inputs)
   outputs = {'score': predict_logits}
   return tf.saved_model.predict_signature_def(inputs, outputs)
 
 
 def main(args):
-  dcnv2_in_keras = Dcnv2InKeras(args)
-  opt = tf.train.AdagradOptimizer(learning_rate=args.lr)
-
   if len(args.filenames) > 1:
     train_filenames = args.filenames[:-1]
     val_filenames = args.filenames[-1]
@@ -141,19 +122,23 @@ def main(args):
     train_filenames = args.filenames
     val_filenames = args.filenames
 
-  train_dataset = dcnv2_in_keras.input_dataset(
-    train_filenames, args.train_batch_size)
+  train_dataset = input_dataset(
+    args, train_filenames, args.train_batch_size)
   features, labels = tf.data.make_one_shot_iterator(train_dataset).get_next()
 
-  val_dataset = dcnv2_in_keras.input_dataset(
-    val_filenames, args.eval_batch_size)
+  val_dataset = input_dataset(
+    args, val_filenames, args.eval_batch_size)
 
-  dcnv2_in_keras.set_feature_keys(features.keys())
-  dcnv2_in_keras._set_inputs([features])  # pylint: disable=protected-access
+  model_output = RankingModel(args)(features)
+  dcnv2_in_keras = tf.keras.Model(inputs=[features], outputs=model_output)
 
   def loss_func(y_true, y_pred):
     return tf.reduce_mean(
       tf.keras.losses.binary_crossentropy(y_true, y_pred))
+  opt = tf.train.AdagradOptimizer(learning_rate=args.lr)
+
+  if args.weights_dir is not None:
+    dcnv2_in_keras.load_weights(args.weights_dir)
 
   dcnv2_in_keras.compile(
     loss=loss_func,
@@ -200,6 +185,7 @@ if __name__ == '__main__':
   parser.add_argument('--log-every-n-iter', type=int, default=10)
   parser.add_argument('--profile-every-n-iter', type=int, default=None)
   parser.add_argument('--output-dir', default='./outputs')
+  parser.add_argument('--weights-dir', default=None)
   parser.add_argument('--savedmodel-dir', default='./outputs/savedmodels')
   parser.add_argument(
     '--data-spec-filename', default='ranking/taobao/data/spec.json')
