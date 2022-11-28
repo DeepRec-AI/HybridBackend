@@ -181,6 +181,9 @@ def main(args):
     monitor='val_auc',
     mode='max',
     save_best_only=True)
+
+  dlrm_in_keras.summary()
+
   dlrm_in_keras.export_saved_model(
     args.output_dir,
     lambda: predict_fn(args))

@@ -37,6 +37,7 @@ from tensorflow.python.framework import ops
 from tensorflow.python.keras import backend as K
 from tensorflow.python.keras import callbacks
 from tensorflow.python.keras import optimizers
+from tensorflow.python.keras.engine import network as _network
 from tensorflow.python.keras.engine import training as _keras_training
 from tensorflow.python.keras.engine import training_arrays as _training_arrays
 from tensorflow.python.keras.engine import training_utils as _training_utils
@@ -46,6 +47,7 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gen_resource_variable_ops
 from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import state_ops
+from tensorflow.python.ops import variable_scope as vs
 from tensorflow.python.ops import variables as _variables
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.saved_model import signature_constants
@@ -54,6 +56,7 @@ from tensorflow.python.training import checkpoint_management
 from tensorflow.python.training import checkpoint_utils
 from tensorflow.python.training import session_run_hook
 from tensorflow.python.training import training_util
+from tensorflow.python.util import tf_inspect
 
 try:
   from tensorflow.python.training.tracking import base as trackable
@@ -68,6 +71,7 @@ from hybridbackend.tensorflow.framework.ops import ModeKeys
 from hybridbackend.tensorflow.framework.rewriting import GraphRewriting
 from hybridbackend.tensorflow.training.saved_model import export_all
 from hybridbackend.tensorflow.training.server import monitored_session
+from hybridbackend.tensorflow.training.variables import reuse_variables
 
 
 class PatchGetSessionForKerasModel(object):  # pylint: disable=useless-object-inheritance
@@ -303,8 +307,7 @@ class PatchTensorflowAPIForKerasModel(object):  # pylint: disable=useless-object
             feed_dict = sess._call_hook_before_run(  # pylint: disable=protected-access
               run_context, actual_fetches, None, options)
             run_metadata = config_pb2.RunMetadata()
-            actual_fetches['loss'] = model.total_loss
-            actual_fetches['metrics'] = model.total_metrics
+            actual_fetches['loss_and_metrics'] = cls.outputs
             actual_fetches['updates_op'] = cls.updates_op
             outputs = sess._sess.run(  # pylint: disable=protected-access
               fetches=actual_fetches,
@@ -321,10 +324,7 @@ class PatchTensorflowAPIForKerasModel(object):  # pylint: disable=useless-object
             sess._should_stop = sess._should_stop or run_context.stop_requested  # pylint: disable=protected-access
             if sess._should_stop:  # pylint: disable=protected-access
               model.stop_training = True
-            ret = []
-            ret.extend(nest.flatten(outputs['loss']))
-            ret.extend(nest.flatten(outputs['metrics']))
-            return ret
+            return nest.flatten(outputs['loss_and_metrics'])
           return decorated
         self._prev_call_fn = K.GraphExecutionFunction.__call__
         K.GraphExecutionFunction.__call__ = decorate_call_fn(self._model)
@@ -409,14 +409,38 @@ def wraps_keras_model(cls):
           output_target = None
 
         if input_target is not None and output_target is not None:
+          if not isinstance(input_target, list):
+            input_target = [input_target]
+          if not isinstance(output_target, list):
+            output_target = [output_target]
+
           def wraps_model_call_fn(fn):  # pylint: disable=unused-argument
             def wrapped_model_call_fn(*args, **kwargs):  # pylint: disable=unused-argument
               return output_target
             return wrapped_model_call_fn
           self._prev_call = self.call  # pylint: disable=access-member-before-definition
           self.call = wraps_model_call_fn(self._prev_call)
-
-        super()._init_subclassed_network(**kwargs)
+          super()._init_subclassed_network(**kwargs)
+          input_to_summary = [t for t in input_target
+                              if isinstance(t, ops.Tensor)
+                              and K.is_keras_tensor(t)]
+          output_to_summary = [t for t in output_target
+                               if isinstance(t, ops.Tensor)
+                               and K.is_keras_tensor(t)]
+          nodes, nodes_by_depth, layers, _ = _network._map_graph_network(
+            input_to_summary, output_to_summary)
+          self._network_nodes = nodes
+          self._nodes_by_depth = nodes_by_depth
+          self._layers = layers
+          self._layer_call_argspecs = {}
+          for layer in self._layers:
+            if not hasattr(layer, 'call'):
+              continue
+            self._layer_call_argspecs[layer] = tf_inspect.getfullargspec(
+              layer.call)
+          self._track_layers(layers)
+        else:
+          super()._init_subclassed_network(**kwargs)
 
         tf_utils.assert_no_legacy_layers(super().layers)
         _keras_training._keras_api_gauge.get_cell('model').set(True)
@@ -506,7 +530,8 @@ def wraps_keras_model(cls):
 
       with K.get_graph().as_default() as g, g.device(self._device_fn):
         # Save all metric attributes per output of the model.
-        self._cache_output_metric_attributes(metrics, weighted_metrics)
+        with reuse_variables(vs.AUTO_REUSE):
+          self._cache_output_metric_attributes(metrics, weighted_metrics)
 
         # Set metric attributes on model.
         self._set_metric_attributes()
@@ -604,7 +629,8 @@ def wraps_keras_model(cls):
           data_sync_drop_remainder=self._eval_drop_remainder,
           comm_pool_capacity=1,
           comm_pool_name=ModeKeys.EVAL):
-        with PatchTensorflowAPIForKerasModel(model=self):
+        with PatchTensorflowAPIForKerasModel(model=self), reuse_variables(
+            vs.AUTO_REUSE):
           super().evaluate(*args, **kwargs)
 
     def _get_initial_value(self, var):
@@ -633,8 +659,6 @@ def wraps_keras_model(cls):
       r'''Resets the state of metrics.
       '''
       metrics = self._get_training_eval_metrics()
-      if K.get_graph()._finalized:  # pylint: disable=protected-access
-        K.get_graph()._unsafe_unfinalize()  # pylint: disable=protected-access
       for m in metrics:
         assign_op = []
         for v in m.variables:
@@ -646,6 +670,8 @@ def wraps_keras_model(cls):
                   initial_value = v.initial_value
                   if callable(initial_value):
                     initial_value = initial_value()
+                  if K.get_graph()._finalized:  # pylint: disable=protected-access
+                    K.get_graph()._unsafe_unfinalize()  # pylint: disable=protected-access
                   initial_value = array_ops.identity(
                     ops.convert_to_tensor(initial_value))
                   # pylint:disable=protected-access
@@ -731,28 +757,44 @@ def wraps_keras_model(cls):
 
       restoreable_saveables, _ = zip(
         *checkpoint_utils.list_variables(self._load_weights_dir))
-      all_vars = _variables._all_saveable_objects(  # pylint: disable=protected-access
+      load_vars = _variables._all_saveable_objects(  # pylint: disable=protected-access
         scope=self._load_weights_scope)
-      all_vars = [v for v in all_vars if v.name.split(':')[0] != 'global_step'
-                  and v.name.split(':')[0] != 'TFOptimizer/iterations']
+
+      load_vars = [v for v in load_vars if v.name.split(':')[0] != 'global_step'
+                   and v.name.split(':')[0] != 'TFOptimizer/iterations']
+
+      if self._load_weights_scope is not None:
+        all_vars = _variables._all_saveable_objects()  # pylint: disable=protected-access
+        logging.info(
+          f'scope {self._load_weights_scope} is loading '
+          f'{(len(load_vars)/len(all_vars)*100):.2f}% of all variables')
+      logging.info(f'loadding {len(load_vars)} variables: ')
+      logging.info(load_vars)
 
       vars_to_restore = {}
-      skipped_vars_names = []
+      skipped_vars = []
       sharded_vars = ops.get_default_graph().get_collection_ref(
         _GraphKeys.SHARDED_VARIABLES)
-      for v in all_vars:
+      for v in load_vars:
         var_name = re.split('/part_.*:.*$', v.name)[0]\
           if v in sharded_vars else v.name.split(':')[0]
         if self._load_weights_skip_mismatched:
           if var_name in restoreable_saveables:
             vars_to_restore[var_name] = var_name
           else:
-            skipped_vars_names.append(var_name)
+            skipped_vars.append(var_name)
         else:
           vars_to_restore[var_name] = var_name
-      if skipped_vars_names:
-        for v in skipped_vars_names:
-          logging.warning(f'{v} is skipped while loading weights')
+      if skipped_vars:
+        logging.info(
+          f'{((len(load_vars)-len(skipped_vars))/len(load_vars)*100):.2f}%'
+          f'of variables to load are found in {self._load_weights_dir}')
+        logging.warning(
+          f'skipped {len(skipped_vars)} variables '
+          f'from {self._load_weights_dir}: ')
+        logging.warning(skipped_vars)
+      logging.info(
+        f'all variables to load are found in {self._load_weights_dir}')
 
       checkpoint_utils.init_from_checkpoint(
         self._load_weights_dir, vars_to_restore)
