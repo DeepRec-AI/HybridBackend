@@ -42,6 +42,8 @@ from hybridbackend.tensorflow.training.server import target
 from hybridbackend.tensorflow.training.server import wraps_server
 from hybridbackend.tensorflow.training.session import \
   wraps_monitored_training_session
+from hybridbackend.tensorflow.training.sync_replicas_optimizer import \
+  SyncReplicasOptimizer
 from hybridbackend.tensorflow.training.variables import \
   EmbeddingLookupRewritingForVariables as _patch_variables
 
