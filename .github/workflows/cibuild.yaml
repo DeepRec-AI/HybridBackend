@@ -148,11 +148,11 @@ jobs:
     if: always()
     steps:
       - name: Download Artifacts
-        uses: actions/download-artifact@v2
+        uses: actions/download-artifact@v3
         with:
           path: reports
       - name: Publish Reports
-        uses: EnricoMi/publish-unit-test-result-action@v1
+        uses: EnricoMi/publish-unit-test-result-action@v2
         with:
           check_name: Test Results
           files: "**/*.xml"
@@ -168,7 +168,7 @@ jobs:
       - name: Git Initialize
         run: git init
       - name: Download Artifacts
-        uses: actions/download-artifact@v2
+        uses: actions/download-artifact@v3
         with:
           path: reports
       - name: Publish Reports
