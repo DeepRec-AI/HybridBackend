@@ -39,7 +39,8 @@ if [[ ! -z ${PYSOURCES} ]]; then
     --indent-size=2 \
     --statistics \
     ${PYSOURCES}
-    isort --resolve-all-configs . --check
+    isort --resolve-all-configs \
+    ${PYSOURCES} --check
 fi
 
 echo "Lint C/C++ files..."

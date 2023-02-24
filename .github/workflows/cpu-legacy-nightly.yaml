@@ -13,7 +13,7 @@ jobs:
     environment: tf1.14-py3.6-manylinux_2_24
     steps:
     - name: Checkout Code
-      uses: actions/checkout@v2
+      uses: actions/checkout@v3
       with:
         submodules: 'true'
     - name: Setup Environment
