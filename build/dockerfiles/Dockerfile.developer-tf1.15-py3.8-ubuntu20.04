@@ -2,7 +2,7 @@
 
 FROM quay.io/pypa/manylinux_2_24_x86_64 AS pypa
 
-FROM nvidia/cuda:11.4.2-cudnn8-devel-ubuntu18.04 AS devel_base
+FROM nvidia/cuda:11.6.2-cudnn8-devel-ubuntu20.04 AS devel_base
 
 LABEL com.nvidia.volumes.needed="nvidia_driver"
 LABEL com.nvidia.cuda.version="${CUDA_VERSION}"
@@ -40,14 +40,14 @@ RUN apt-get update && \
     twine && \
     apt-get clean && \
     rm -rf /var/lib/apt/lists/* && \
-    mv /usr/local/lib/python3.6/dist-packages \
-    /usr/local/lib/python3.6/site-packages && \
-    ln -sf site-packages /usr/local/lib/python3.6/dist-packages
+    mv /usr/local/lib/python3.8/dist-packages \
+    /usr/local/lib/python3.8/site-packages && \
+    ln -sf site-packages /usr/local/lib/python3.8/dist-packages
 
 FROM devel_base AS devel_pstack
 
 ARG PSTACK_REPO=https://github.com/peadar/pstack.git
-ARG PSTACK_COMMIT=5a704ce557b1aa4db4613d419419c7107bf8452c
+ARG PSTACK_COMMIT=master
 RUN git clone ${PSTACK_REPO} /src/pstack && \
     cd /src/pstack && \
     git checkout ${PSTACK_COMMIT} && \
@@ -95,6 +95,7 @@ RUN mkdir -p /opt/tools/bin /opt/tools/lib && \
     pylint-quotes \
     pycodestyle \
     xmlrunner \
+    tqdm \
     jupyter \
     nvidia-nsys-cli
 
@@ -103,16 +104,32 @@ RUN apt-get update && \
     apt-get install -y \
     --allow-unauthenticated \
     --no-install-recommends \
-    nsight-compute-2022.1.1 && \
+    nsight-compute && \
     apt-get clean && \
     rm -rf /var/lib/apt/lists/* && \
-    cp /opt/nvidia/nsight-compute/2022.1.1/ncu /opt/tools/bin/ncu
+    cp /usr/lib/nsight-compute/target/linux-desktop-glibc_2_11_3-x64/nv-nsight-cu-cli /opt/tools/ncu
 
 RUN cp -rf /usr/lib/llvm-7/bin/clang-format /opt/tools/bin/clang-format && \
     cp -rf /usr/lib/x86_64-linux-gnu/libLLVM-7.so.1 /opt/tools/lib/ && \
-    cp -rf /usr/lib/x86_64-linux-gnu/libedit.so.2.0.56 /opt/tools/lib/ && \
-    ln -sf libedit.so.2.0.56 /opt/tools/lib/libedit.so.2 && \
+    cp -rf /lib/x86_64-linux-gnu/libbsd.so.0.10.0 /opt/tools/lib/ && \
+    ln -sf libbsd.so.0.10.0 /opt/tools/lib/libbsd.so.0 && \
+    cp -rf /usr/lib/x86_64-linux-gnu/libedit.so.2.0.63 /opt/tools/lib/ && \
+    ln -sf libedit.so.2.0.63 /opt/tools/lib/libedit.so.2 && \
     ln -sf /usr/local/cuda/bin/cuda-gdb /opt/tools/bin/gdb
+
+FROM devel_base AS devel_dl
+
+RUN mkdir -p /opt/dl && \
+    PYTHONUSERBASE=/opt/dl \
+    pip3 install --no-cache-dir --user \
+    nvidia-tensorflow \
+    numpy==1.21.1 \
+    astor==0.8.1 \
+    pyarrow \
+    pandas
+RUN mkdir -p /opt/dl/lib/python3.8/site-packages/tensorflow_core/include/third_party/gpus/cuda/ && \
+    ln -sf /usr/local/cuda/include \
+    /opt/dl/lib/python3.8/site-packages/tensorflow_core/include/third_party/gpus/cuda/include
 
 FROM devel_base AS devel_sparsehash
 
@@ -133,76 +150,6 @@ RUN cd /src/arrow/ && \
     ARROW_HDFS=${HYBRIDBACKEND_WITH_ARROW_HDFS} \
     ARROW_S3=${HYBRIDBACKEND_WITH_ARROW_S3} \
     ./build.sh /opt/arrow
-
-FROM devel_base AS devel_dlcommon
-
-RUN mkdir -p /opt/dlcommon && \
-    PYTHONUSERBASE=/opt/dlcommon \
-    pip3 install --no-cache-dir --user \
-    protobuf==3.8.0 \
-    numpy==1.19 \
-    astor==0.8.1 \
-    pyarrow \
-    pandas && \
-    PYTHONUSERBASE=/opt/dlcommon \
-    pip3 install --no-cache-dir --user --no-deps \
-    keras_preprocessing==1.0.5
-
-FROM devel_base AS devel_tensorflow
-
-ARG TF_REPO=https://github.com/NVIDIA/tensorflow.git
-ARG TF_COMMIT=r1.15.5+nv22.12
-ARG CUDNNFRONTEND_REPO=https://github.com/NVIDIA/cudnn-frontend.git
-ARG CUDNNFRONTEND_BRANCH=v0.5
-RUN mkdir -p /src && \
-    git clone ${TF_REPO} /src/tensorflow && \
-    git clone ${CUDNNFRONTEND_REPO} -b ${CUDNNFRONTEND_BRANCH} \
-    /src/cudnn-frontend
-RUN cd /src/tensorflow && \
-    git checkout ${TF_COMMIT} && \
-    tensorflow/tools/ci_build/install/install_bazel.sh
-
-COPY --from=devel_dlcommon /opt/dlcommon /usr/local
-
-ENV TF_NEED_CUDA=1 \
-    TF_CUDA_PATHS=/usr,/usr/local/cuda \
-    TF_CUDA_VERSION=11.4 \
-    TF_CUBLAS_VERSION=11 \
-    TF_CUDNN_VERSION=8 \
-    TF_NCCL_VERSION=2 \
-    TF_CUDA_CLANG=0 \
-    TF_DOWNLOAD_CLANG=0 \
-    TF_NEED_TENSORRT=0 \
-    TF_CUDA_COMPUTE_CAPABILITIES="7.0,8.0" \
-    TF_ENABLE_XLA=1 \
-    TF_NEED_MPI=0 \
-    CC_OPT_FLAGS="-march=skylake -Wno-sign-compare" \
-    CXX_OPT_FLAGS="-D_GLIBCXX_USE_CXX11_ABI=0"
-RUN cd /src/tensorflow && \
-    yes "" | bash ./configure || true
-RUN --mount=type=cache,target=/var/cache/bazel.tensorflow \
-    cd /src/tensorflow && \
-    bazel build \
-    --disk_cache=/var/cache/bazel.tensorflow \
-    --config=nogcp \
-    --config=cuda \
-    --config=xla \
-    --verbose_failures \
-    //tensorflow/tools/pip_package:build_pip_package \
-    --cxxopt="${CXX_OPT_FLAGS}" \
-    --define tensorflow_mkldnn_contraction_kernel=0
-RUN mkdir -p /src/tensorflow/dist && \
-    cd /src/tensorflow && \
-    bazel-bin/tensorflow/tools/pip_package/build_pip_package \
-    /src/tensorflow/dist --gpu --project_name tensorflow
-
-RUN mkdir -p /opt/tensorflow && \
-    PYTHONUSERBASE=/opt/tensorflow \
-    pip3 install --no-cache-dir --user \
-    /src/tensorflow/dist/tensorflow-*.whl
-RUN mkdir -p /opt/tensorflow/lib/python3.6/site-packages/tensorflow_core/include/third_party/gpus/cuda/ && \
-    ln -sf /usr/local/cuda/include \
-    /opt/tensorflow/lib/python3.6/site-packages/tensorflow_core/include/third_party/gpus/cuda/include
 
 FROM devel_base
 
@@ -226,13 +173,12 @@ ENV ARROW_HOME=/opt/arrow
 COPY --from=devel_tools /opt/tools /usr/local
 
 # Install Packages for Deep Learning
-COPY --from=devel_dlcommon /opt/dlcommon /usr/local
-COPY --from=devel_tensorflow /opt/tensorflow /usr/local
+COPY --from=devel_dl /opt/dl /usr/local
 
 # Configure HybridBackend
-ENV HYBRIDBACKEND_WITH_CUDA=ON \
-    HYBRIDBACKEND_WITH_NCCL=ON \
+ENV HYBRIDBACKEND_WITH_CUDA=OFF \
     HYBRIDBACKEND_WITH_ARROW_ZEROCOPY=ON \
     HYBRIDBACKEND_USE_CXX11_ABI=0 \
-    HYBRIDBACKEND_WHEEL_ALIAS=-tf115-cu114 \
-    TENSORFLOW_DISTRO=1015
+    HYBRIDBACKEND_WHEEL_ALIAS=-tf115-cpu \
+    TENSORFLOW_DISTRO=1015 \
+    LD_LIBRARY_PATH=$LD_LIBRARY_PATH:/usr/local/lib

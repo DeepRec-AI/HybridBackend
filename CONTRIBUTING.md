@@ -12,8 +12,8 @@ series [How to Contribute to an Open Source Project on GitHub](https://kcd.im/pu
 Before any commits, please use below tools to format and check code style:
 
 ```bash
-build/run tools/format
-build/run tools/lint
+build/run build/format
+build/run build/lint
 ```
 
 Commit message style should follow below format:

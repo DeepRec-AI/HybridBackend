@@ -22,6 +22,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import glob
 import json
 import os
 import sys
@@ -34,13 +35,13 @@ LIB_WHITELIST = [
   'libhybridbackend_tensorflow.so']
 
 if __name__ == '__main__':
-  auditwheel_home = os.path.dirname(os.path.dirname(__file__))
-  policy_file_path = os.path.join(
-    auditwheel_home,
-    'lib/python3.9/site-packages/auditwheel/policy/manylinux-policy.json')
+  policy_file_glob = os.path.join(
+    os.path.dirname(os.path.dirname(__file__)),
+    'lib/*/site-packages/auditwheel/policy/manylinux-policy.json')
+  policy_file_path = glob.glob(policy_file_glob)[0]
   with open(policy_file_path, encoding='utf8') as f:
     policies = json.load(f)
   for p in policies:
-    p['lib_whitelist'].extend(LIB_WHITELIST)
+    p['lib_whitelist'] = list(set(p['lib_whitelist'] + LIB_WHITELIST))
   with open(policy_file_path, 'w', encoding='utf8') as f:
     json.dump(policies, f)

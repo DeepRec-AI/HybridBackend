@@ -3,17 +3,17 @@ name: nightly deploy on gpu
 on: workflow_dispatch
 
 env:
-  IMAGE: registry.cn-shanghai.aliyuncs.com/pai-dlc/hybridbackend:developer-tf1.15-py3.8-cu114-ubuntu20.04
+  IMAGE: registry.cn-shanghai.aliyuncs.com/pai-dlc/hybridbackend:developer-tf1.15-py3.8-cu118-ubuntu20.04
   JOBNAME: hbci-${{ github.run_id }}
   PODNAME: hbci-${{ github.run_id }}-chief-0
 
 jobs:
   deploy:
     runs-on: ubuntu-latest
-    environment: tf1.15-py3.8-cu114-ubuntu20.04
+    environment: tf1.15-py3.8-cu118-ubuntu20.04
     steps:
     - name: Checkout Code
-      uses: actions/checkout@v2
+      uses: actions/checkout@v3
       with:
         submodules: 'true'
     - name: Setup Environment
@@ -29,16 +29,13 @@ jobs:
         --set build=.dev${{ github.run_id }} \
         --set gpus=2 && \
         .github/helm/upload ${PODNAME}
-    - name: Build
+    - name: Build & Check
       run: |-
-        kubectl exec -it ${PODNAME} -- tools/distbuild
-    - name: Check
-      run: |-
-        kubectl exec -it ${PODNAME} -- tools/distcheck
+        kubectl exec -it ${PODNAME} -- build/install
     - name: Download
       run: |-
         kubectl exec -it ${PODNAME} -- \
-        sh -c 'tar -czf hybridbackend.tgz -C build/auditwheel/ .' && \
+        sh -c 'tar -czf hybridbackend.tgz -C build/release/ .' && \
         kubectl cp ${PODNAME}:hybridbackend.tgz ./hybridbackend.tgz --retries=3 && \
         kubectl cp ${PODNAME}:nosetests.xml ./nosetests.xml --retries=3 && \
         mkdir -p dist && tar -xzf ./hybridbackend.tgz -C dist/
