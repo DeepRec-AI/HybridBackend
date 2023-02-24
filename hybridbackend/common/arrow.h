@@ -34,17 +34,15 @@ limitations under the License.
 #include <arrow/filesystem/localfs.h>
 
 namespace hybridbackend {
-int UpdateArrowCpuThreadPoolCapacityFromEnv();
-
-int GetArrowFileBufferSizeFromEnv();
-
 ::arrow::Status OpenArrowFile(
+    std::shared_ptr<::arrow::fs::FileSystem>* fs,
     std::shared_ptr<::arrow::io::RandomAccessFile>* file,
     const std::string& filename);
 
 ::arrow::Status OpenParquetReader(
     std::unique_ptr<::parquet::arrow::FileReader>* reader,
-    const std::shared_ptr<::arrow::io::RandomAccessFile>& file);
+    const std::shared_ptr<::arrow::io::RandomAccessFile>& file,
+    const bool initialized_from_env);
 
 ::arrow::Status GetParquetDataFrameFields(
     std::vector<std::string>* field_names,

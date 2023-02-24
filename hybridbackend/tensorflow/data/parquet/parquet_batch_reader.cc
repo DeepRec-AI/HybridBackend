@@ -44,7 +44,10 @@ class ParquetBatchReader::Impl {
         field_shapes_(field_shapes),
         partition_count_(partition_count),
         partition_index_(partition_index),
+        batch_counter_(0),
         drop_remainder_(drop_remainder) {}
+
+  ~Impl() { Close(); }
 
   Status Open() {
 #if HYBRIDBACKEND_ARROW
@@ -61,10 +64,10 @@ class ParquetBatchReader::Impl {
                                      "must be greater than 0");
     }
 
-    std::shared_ptr<::arrow::io::RandomAccessFile> file;
-    TF_RETURN_IF_ARROW_ERROR(::hybridbackend::OpenArrowFile(&file, filename_));
     TF_RETURN_IF_ARROW_ERROR(
-        ::hybridbackend::OpenParquetReader(&reader_, file));
+        ::hybridbackend::OpenArrowFile(&fs_, &file_, filename_));
+    TF_RETURN_IF_ARROW_ERROR(
+        ::hybridbackend::OpenParquetReader(&reader_, file_, true));
 
     int num_row_groups = reader_->num_row_groups();
     for (int g = partition_index_; g < num_row_groups; g += partition_count_) {
@@ -111,15 +114,32 @@ class ParquetBatchReader::Impl {
     return Status::OK();
   }
 
+  void Close() {
+    batch_reader_.reset();
+    reader_.reset();
+    if (TF_PREDICT_FALSE(file_.use_count() > 1)) {
+      LOG(ERROR) << "File " << filename_ << " still has "
+                 << file_.use_count() - 1 << " references";
+    }
+    file_.reset();
+    if (TF_PREDICT_FALSE(fs_.use_count() > 1)) {
+      LOG(ERROR) << "File system for " << filename_ << " still has "
+                 << fs_.use_count() - 1 << " references";
+    }
+    fs_.reset();
+  }
+
   Status Read(std::vector<Tensor>* output_tensors) {
 #if HYBRIDBACKEND_ARROW
     // Read next batch from parquet file.
     std::shared_ptr<::arrow::RecordBatch> batch;
     TF_RETURN_IF_ARROW_ERROR(batch_reader_->ReadNext(&batch));
     if (TF_PREDICT_FALSE(!batch)) {
+      Close();
       return errors::OutOfRange("Reached end of parquet file ", filename_);
     }
     if (TF_PREDICT_FALSE(drop_remainder_ && batch->num_rows() < batch_size_)) {
+      Close();
       return errors::OutOfRange("Reached end of parquet file ", filename_,
                                 " after dropping reminder batch");
     }
@@ -127,11 +147,17 @@ class ParquetBatchReader::Impl {
     // Populate tensors from record batch.
     auto arrays = batch->columns();
     for (size_t i = 0; i < arrays.size(); ++i) {
-      TF_RETURN_IF_ERROR(MakeTensorsFromArrowArray(
+      auto s = MakeTensorsFromArrowArray(
           field_dtypes_[i], field_ragged_ranks_[i], field_shapes_[i], arrays[i],
-          output_tensors));
+          output_tensors);
+      if (!s.ok()) {
+        return errors::DataLoss("Failed to parse batch #", batch_counter_,
+                                " at column ", field_names_[i], " (#", i,
+                                ") in ", filename_, ": ", s.error_message());
+      }
     }
 
+    batch_counter_++;
     return Status::OK();
 #else
     return errors::Unimplemented("HYBRIDBACKEND_WITH_ARROW must be ON");
@@ -147,9 +173,12 @@ class ParquetBatchReader::Impl {
   std::vector<PartialTensorShape> field_shapes_;
   int64 partition_count_;
   int64 partition_index_;
+  int64 batch_counter_;
   bool drop_remainder_;
 
 #if HYBRIDBACKEND_ARROW
+  std::shared_ptr<::arrow::fs::FileSystem> fs_;
+  std::shared_ptr<::arrow::io::RandomAccessFile> file_;
   std::unique_ptr<::parquet::arrow::FileReader> reader_;
   std::unique_ptr<::arrow::RecordBatchReader> batch_reader_;
   std::vector<int> row_group_indices_;

@@ -28,69 +28,12 @@ from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.data.ops import readers
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
-from tensorflow.python.framework import tensor_spec
-from tensorflow.python.framework import type_spec
-from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.util import nest
 
 from hybridbackend.tensorflow.common import oplib as _ops
-from hybridbackend.tensorflow.data.dataframe import DataFrame
 from hybridbackend.tensorflow.data.parquet.schema import parquet_fields
 from hybridbackend.tensorflow.data.parquet.schema import \
   parquet_filenames_and_fields
-
-
-class DataFrameValueSpec(type_spec.BatchableTypeSpec):
-  r'''A TypeSpec for reading batch of DataFrame.Value from dataset.
-  '''
-
-  def value_type(self):
-    return DataFrame.Value if self._ragged_rank > 0 else ops.Tensor
-
-  def __init__(self, field):
-    r'''Constructs a type specification for a `tf.RaggedTensor`.
-
-    Args:
-      field: The field definition.
-    '''
-    if field.incomplete:
-      raise ValueError(
-        f'Field {field} is incomplete, please specify dtype and ragged_rank')
-    self._field = field
-
-  def _serialize(self):
-    return (self._field.dtype, self._field.ragged_rank)
-
-  @property
-  def _component_specs(self):
-    return self._field.output_specs
-
-  def _to_components(self, value):
-    if isinstance(value, DataFrame.Value):
-      return [value.values] + list(value.nested_row_splits)
-    return [value]
-
-  def _from_components(self, tensor_list):
-    if len(tensor_list) < 1:
-      return None
-    if len(tensor_list) == 1:
-      return tensor_list[0]
-    return DataFrame.Value(tensor_list[0], tensor_list[1:])
-
-  def _batch(self, batch_size):
-    raise NotImplementedError('batching of a bacthed tensor not supported')
-
-  def _unbatch(self):
-    raise NotImplementedError('unbatching of a bacthed tensor not supported')
-
-  def _to_legacy_output_types(self):
-    return self._field.output_types
-
-  def _to_legacy_output_shapes(self):
-    return self._field.output_shapes
-
-  def _to_legacy_output_classes(self):
-    return self._field.output_classes
 
 
 class _ParquetDatasetV2(dataset_ops.DatasetSource):  # pylint: disable=abstract-method
@@ -100,6 +43,7 @@ class _ParquetDatasetV2(dataset_ops.DatasetSource):  # pylint: disable=abstract-
       self, filename, batch_size, fields,
       partition_count=1,
       partition_index=0,
+      skip_corrupted_data=False,
       drop_remainder=False):
     r'''Create a `ParquetDataset`.
 
@@ -109,6 +53,7 @@ class _ParquetDatasetV2(dataset_ops.DatasetSource):  # pylint: disable=abstract-
       fields: List of DataFrame fields.
       partition_count: (Optional.) Count of row group partitions.
       partition_index: (Optional.) Index of row group partitions.
+      skip_corrupted_data: (Optional.) If True, skip corrupted data.
       drop_remainder: (Optional.) If True, only keep batches with exactly
         `batch_size` samples.
     '''
@@ -117,12 +62,11 @@ class _ParquetDatasetV2(dataset_ops.DatasetSource):  # pylint: disable=abstract-
     self._batch_size = ops.convert_to_tensor(
       batch_size, dtype=dtypes.int64, name='batch_size')
     self._fields = fields
-    self._output_specs = {
-      f.name: (
-        DataFrameValueSpec(f)
-        if f.ragged_rank > 0
-        else tensor_spec.TensorSpec(shape=[None], dtype=f.dtype))
-      for f in self._fields}
+    for f in self._fields:
+      if f.incomplete:
+        raise ValueError(
+          f'Field {f} is incomplete, please specify dtype and ragged_rank')
+    self._output_specs = {f.name: f.build_spec() for f in self._fields}
     self._field_names = nest.flatten({f.name: f.name for f in self._fields})
     self._field_dtypes = nest.flatten({f.name: f.dtype for f in self._fields})
     self._field_ragged_ranks = nest.flatten(
@@ -130,6 +74,7 @@ class _ParquetDatasetV2(dataset_ops.DatasetSource):  # pylint: disable=abstract-
     self._field_shapes = nest.flatten({f.name: f.shape for f in self._fields})
     self._partition_count = partition_count
     self._partition_index = partition_index
+    self._skip_corrupted_data = skip_corrupted_data
     self._drop_remainder = drop_remainder
 
     variant_tensor = _ops.hb_parquet_tabular_dataset(
@@ -141,6 +86,7 @@ class _ParquetDatasetV2(dataset_ops.DatasetSource):  # pylint: disable=abstract-
       field_shapes=self._field_shapes,
       partition_count=self._partition_count,
       partition_index=self._partition_index,
+      skip_corrupted_data=self._skip_corrupted_data,
       drop_remainder=self._drop_remainder)
     super().__init__(variant_tensor)
 
@@ -174,6 +120,7 @@ class ParquetDatasetV2(dataset_ops.DatasetV2):  # pylint: disable=abstract-metho
       fields=None,
       partition_count=1,
       partition_index=0,
+      skip_corrupted_data=False,
       drop_remainder=False,
       num_parallel_reads=None,
       num_sequential_reads=1,
@@ -187,6 +134,7 @@ class ParquetDatasetV2(dataset_ops.DatasetV2):  # pylint: disable=abstract-metho
       fields: (Optional.) List of DataFrame fields.
       partition_count: (Optional.) Count of row group partitions.
       partition_index: (Optional.) Index of row group partitions.
+      skip_corrupted_data: (Optional.) If True, skip corrupted data.
       drop_remainder: (Optional.) If True, only keep batches with exactly
         `batch_size` samples.
       num_parallel_reads: (Optional.) A `tf.int64` scalar representing the
@@ -203,32 +151,29 @@ class ParquetDatasetV2(dataset_ops.DatasetV2):  # pylint: disable=abstract-metho
     filenames, self._fields = parquet_filenames_and_fields(filenames, fields)
     self._partition_count = partition_count
     self._partition_index = partition_index
+    self._skip_corrupted_data = skip_corrupted_data
     self._drop_remainder = drop_remainder
 
     if num_parallel_reads == dataset_ops.AUTOTUNE:
       if isinstance(filenames, (tuple, list)):
         num_parallel_reads = len(filenames)
       else:
-        num_parallel_reads = None
+        num_parallel_reads = 1
     if num_parallel_parser_calls == dataset_ops.AUTOTUNE:
       num_parallel_parser_calls = len(self._fields)
-    if num_parallel_parser_calls is not None:
-      max_parser_calls = os.cpu_count() - 2  # at least 2 cores for computation
-      if num_parallel_reads is not None:
-        max_parser_calls //= num_parallel_reads
-      num_parallel_parser_calls = min(
-        num_parallel_parser_calls, max_parser_calls)
-      if num_parallel_parser_calls < 2:
-        num_parallel_parser_calls = None
-    if num_parallel_parser_calls is not None:
-      if 'ARROW_NUM_THREADS' in os.environ:
-        logging.warning(
-          'num_parallel_parser_calls ignored since ARROW_NUM_THREADS '
-          'is already set to %s', os.environ['ARROW_NUM_THREADS'])
+    if num_parallel_reads is not None and num_parallel_parser_calls is not None:
+      arrow_num_threads = os.getenv('ARROW_NUM_THREADS', None)
+      if arrow_num_threads is None:
+        max_threads = os.cpu_count()
+        if num_parallel_reads * num_parallel_parser_calls >= max_threads:
+          num_parallel_reads = max(max_threads // num_parallel_parser_calls, 1)
+        arrow_num_threads = num_parallel_reads * num_parallel_parser_calls
+        os.environ['ARROW_NUM_THREADS'] = str(int(arrow_num_threads))
       else:
-        os.environ['ARROW_NUM_THREADS'] = str(int(num_parallel_parser_calls))
-    if 'MALLOC_CONF' not in os.environ:
-      os.environ['MALLOC_CONF'] = 'background_thread:true,metadata_thp:auto'
+        arrow_num_threads = max(int(arrow_num_threads), 1)
+        num_parallel_reads = arrow_num_threads // num_parallel_parser_calls
+    if num_parallel_reads is not None and num_parallel_reads <= 1:
+      num_parallel_reads = None
 
     def _create_dataset(f):
       f = ops.convert_to_tensor(f, dtypes.string, name='filename')
@@ -237,6 +182,7 @@ class ParquetDatasetV2(dataset_ops.DatasetV2):  # pylint: disable=abstract-metho
         fields=self._fields,
         partition_count=self._partition_count,
         partition_index=self._partition_index,
+        skip_corrupted_data=self._skip_corrupted_data,
         drop_remainder=self._drop_remainder)
     self._impl = self._build_dataset(
       _create_dataset, filenames,

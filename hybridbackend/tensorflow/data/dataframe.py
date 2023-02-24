@@ -34,6 +34,11 @@ from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_spec
+
+try:
+  from tensorflow.python.framework.type_spec import BatchableTypeSpec
+except ImportError:
+  BatchableTypeSpec = object
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gen_ragged_conversion_ops
 from tensorflow.python.ops import math_ops
@@ -46,6 +51,104 @@ class DataFrame(object):  # pylint: disable=useless-object-inheritance
   class Field(object):  # pylint: disable=useless-object-inheritance
     r'''Definition of a field in a data frame.
     '''
+    class Spec(BatchableTypeSpec):
+      r'''A TypeSpec for reading from a value of DataFrame.
+      '''
+      def __init__(self, field):
+        r'''Constructs a type specification for a DataFrame.Value.
+        '''
+        self._field = field
+
+      def value_type(self):
+        return ops.Tensor if self._field.ragged_rank == 0 else DataFrame.Value
+
+      def _serialize(self):
+        return (
+          self._field.name,
+          self._field.dtype,
+          self._field.ragged_rank,
+          self._field.shape)
+
+      @property
+      def _component_specs(self):
+        r'''Component DataSpecs.
+        '''
+        if self._field.ragged_rank == 0:
+          return tensor_spec.TensorSpec(
+            shape=tensor_shape.TensorShape([None]).concatenate(
+              self._field.shape),
+            dtype=self._field.dtype,
+            name=self._field.name)
+        return DataFrame.Value(
+          tensor_spec.TensorSpec(
+            shape=tensor_shape.TensorShape([None]).concatenate(
+              self._field.shape),
+            dtype=self._field.dtype,
+            name=f'{self._field.name}_values'),
+          [
+            tensor_spec.TensorSpec(
+              shape=tensor_shape.TensorShape([None]),
+              dtype=dtypes.int32,
+              name=f'{self._field.name}_splits_{i}')
+            for i in xrange(self._field.ragged_rank)])
+
+      def _to_components(self, value):
+        return value
+
+      def _from_components(self, components):
+        return components
+
+      def _batch(self, batch_size):
+        r'''Batching of values.
+        '''
+        del batch_size
+        if self._field.ragged_rank == 0:
+          raise ValueError(
+            f'Field {self._field.name} can not be batched twice')
+        raise ValueError(
+          f'List field {self._field.name} can not be batched directly')
+
+      def _unbatch(self):
+        r'''Unbatching of values.
+        '''
+        if self._field.ragged_rank == 0:
+          return tensor_spec.TensorSpec(
+            shape=self._field.shape[1:],
+            dtype=self._field.dtype,
+            name=self._field.name)
+        raise ValueError(
+          f'List field {self._field.name} can not be unbatched directly')
+
+      def _to_legacy_output_types(self):
+        r'''Output data types for legacy dataset API.
+        '''
+        if self._field.ragged_rank == 0:
+          return self._field.dtype
+        return DataFrame.Value(
+          self._field.dtype,
+          [dtypes.int32 for i in xrange(self._field.ragged_rank)])
+
+      def _to_legacy_output_shapes(self):
+        r'''Output shapes for legacy dataset API.
+        '''
+        if self._field.ragged_rank == 0:
+          return tensor_shape.TensorShape([None]).concatenate(
+            self._field.shape)
+        return DataFrame.Value(
+          tensor_shape.TensorShape([None]).concatenate(self._field.shape),
+          [
+            tensor_shape.TensorShape([None])
+            for i in xrange(self._field.ragged_rank)])
+
+      def _to_legacy_output_classes(self):
+        r'''Output classes for legacy dataset API.
+        '''
+        if self._field.ragged_rank == 0:
+          return ops.Tensor
+        return DataFrame.Value(
+          ops.Tensor,
+          [ops.Tensor for i in xrange(self._field.ragged_rank)])
+
     def __init__(
         self, name, dtype=None, ragged_rank=None, shape=None):
       self._name = name
@@ -71,7 +174,7 @@ class DataFrame(object):  # pylint: disable=useless-object-inheritance
             f'Field {name} is a nested list ({ragged_rank}) '
             f'with shape {shape}')
       else:
-        shape = tensor_shape.TensorShape({})
+        shape = tensor_shape.TensorShape([])
       self._shape = shape
 
     @property
@@ -121,6 +224,9 @@ class DataFrame(object):  # pylint: disable=useless-object-inheritance
         func(0),
         [func(i + 1) for i in xrange(rank)])
 
+    def build_spec(self):
+      return DataFrame.Field.Spec(self)
+
     @property
     def ragged_indices(self):
       return self.map(lambda i: i)
@@ -136,12 +242,13 @@ class DataFrame(object):  # pylint: disable=useless-object-inheritance
     @property
     def output_shapes(self):
       return self.map(
-        lambda i: tensor_shape.vector(None).concatenate(self._shape) if i == 0
-        else tensor_shape.vector(None))
+        lambda i: (
+          tensor_shape.TensorShape([None]).concatenate(self._shape) if i == 0
+          else tensor_shape.TensorShape([None])))
 
     @property
     def output_specs(self):
-      shape = tensor_shape.vector(None).concatenate(self._shape)
+      shape = tensor_shape.TensorShape([None]).concatenate(self._shape)
       specs = [tensor_spec.TensorSpec(shape, dtype=self._dtype)]
       specs += [
         tensor_spec.TensorSpec([None], dtype=dtypes.int32)

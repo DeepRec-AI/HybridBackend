@@ -25,27 +25,17 @@ limitations under the License.
 
 #if HYBRIDBACKEND_ARROW
 #include <arrow/array.h>
+#include <arrow/memory_pool.h>
 #include <arrow/util/thread_pool.h>
 
 #include "hybridbackend/common/env.h"
+#include "hybridbackend/common/logging.h"
 
 namespace hybridbackend {
 
 #if HYBRIDBACKEND_ARROW
 
 namespace {
-
-int SetArrowCpuThreadPoolCapacityFromEnv() {
-  int arrow_threads = EnvVarGetInt("ARROW_NUM_THREADS", 0);
-  if (arrow_threads > 0) {  // Set from environment variable
-    auto s = ::arrow::SetCpuThreadPoolCapacity(arrow_threads);
-    if (ARROW_PREDICT_FALSE(!s.ok())) {
-      return 0;
-    }
-  }
-  return arrow_threads;
-}
-
 ::arrow::Status MakeNumpyDtypeAndRaggedRankFromArrowDataType(
     std::string* numpy_dtype, int* ragged_rank,
     const std::shared_ptr<::arrow::DataType>& arrow_dtype) {
@@ -84,17 +74,8 @@ int SetArrowCpuThreadPoolCapacityFromEnv() {
 
 }  // namespace
 
-int UpdateArrowCpuThreadPoolCapacityFromEnv() {
-  static int arrow_threads = SetArrowCpuThreadPoolCapacityFromEnv();
-  return arrow_threads;
-}
-
-int GetArrowFileBufferSizeFromEnv() {
-  static int buffer_size = EnvVarGetInt("ARROW_FILE_BUFFER_SIZE", 4096 * 4);
-  return buffer_size;
-}
-
 ::arrow::Status OpenArrowFile(
+    std::shared_ptr<::arrow::fs::FileSystem>* fs,
     std::shared_ptr<::arrow::io::RandomAccessFile>* file,
     const std::string& filename) {
 #if HYBRIDBACKEND_ARROW_HDFS
@@ -102,12 +83,8 @@ int GetArrowFileBufferSizeFromEnv() {
     ::arrow::internal::Uri uri;
     ARROW_RETURN_NOT_OK(uri.Parse(filename));
     ARROW_ASSIGN_OR_RAISE(auto options, ::arrow::fs::HdfsOptions::FromUri(uri));
-    std::shared_ptr<::arrow::io::HadoopFileSystem> fs;
-    ARROW_RETURN_NOT_OK(::arrow::io::HadoopFileSystem::Connect(
-        &options.connection_config, &fs));
-    std::shared_ptr<::arrow::io::HdfsReadableFile> hdfs_file;
-    ARROW_RETURN_NOT_OK(fs->OpenReadable(uri.path(), &hdfs_file));
-    *file = hdfs_file;
+    ARROW_ASSIGN_OR_RAISE(*fs, ::arrow::fs::HadoopFileSystem::Make(options));
+    ARROW_ASSIGN_OR_RAISE(*file, (*fs)->OpenInputFile(uri.path()));
     return ::arrow::Status::OK();
   }
 #endif
@@ -119,29 +96,52 @@ int GetArrowFileBufferSizeFromEnv() {
     std::string path;
     ARROW_ASSIGN_OR_RAISE(auto options,
                           ::arrow::fs::S3Options::FromUri(uri, &path));
-    ARROW_ASSIGN_OR_RAISE(auto fs, ::arrow::fs::S3FileSystem::Make(options));
-    ARROW_ASSIGN_OR_RAISE(*file, fs->OpenInputFile(path));
+    ARROW_ASSIGN_OR_RAISE(*fs, ::arrow::fs::S3FileSystem::Make(options));
+    ARROW_ASSIGN_OR_RAISE(*file, (*fs)->OpenInputFile(path));
     return ::arrow::Status::OK();
   }
 #endif
-  auto fs = std::make_shared<::arrow::fs::LocalFileSystem>();
-  ARROW_ASSIGN_OR_RAISE(*file, fs->OpenInputFile(filename));
+  *fs = std::make_shared<::arrow::fs::LocalFileSystem>();
+  ARROW_ASSIGN_OR_RAISE(*file, (*fs)->OpenInputFile(filename));
   return ::arrow::Status::OK();
 }
 
 ::arrow::Status OpenParquetReader(
     std::unique_ptr<::parquet::arrow::FileReader>* reader,
-    const std::shared_ptr<::arrow::io::RandomAccessFile>& file) {
+    const std::shared_ptr<::arrow::io::RandomAccessFile>& file,
+    const bool initialized_from_env) {
   auto config = ::parquet::ReaderProperties();
-  config.enable_buffered_stream();
-  config.set_buffer_size(GetArrowFileBufferSizeFromEnv());
+  if (initialized_from_env) {
+    config.enable_buffered_stream();
+    config.set_buffer_size(EnvVarGetInt("ARROW_FILE_BUFFER_SIZE", 4096 * 4));
+  }
+  ::parquet::ArrowReaderProperties properties;
+  properties.set_pre_buffer(true);
   ARROW_RETURN_NOT_OK(::parquet::arrow::FileReader::Make(
       ::arrow::default_memory_pool(),
-      ::parquet::ParquetFileReader::Open(file, config), reader));
+      ::parquet::ParquetFileReader::Open(file, config), properties, reader));
+
+  if (!initialized_from_env) {
+    return ::arrow::Status::OK();
+  }
+
   // If ARROW_NUM_THREADS > 0, specified number of threads will be used.
   // If ARROW_NUM_THREADS = 0, no threads will be used.
   // If ARROW_NUM_THREADS < 0, all threads will be used.
-  (*reader)->set_use_threads(UpdateArrowCpuThreadPoolCapacityFromEnv() != 0);
+  const int kArrowNumThreads = EnvVarGetInt("ARROW_NUM_THREADS", 0);
+  if (kArrowNumThreads > 0) {
+    auto s = ::arrow::SetCpuThreadPoolCapacity(kArrowNumThreads);
+    if (ARROW_PREDICT_TRUE(s.ok())) {
+      (*reader)->set_use_threads(true);
+    }
+  }
+  const int kArrowMemoryDecayMillis = EnvVarGetInt("HB_MEMORY_DECAY_MILLIS", 0);
+  if (kArrowMemoryDecayMillis > 0) {
+    auto s = ::arrow::jemalloc_set_decay_ms(kArrowMemoryDecayMillis);
+    if (!ARROW_PREDICT_TRUE(s.ok())) {
+      HB_LOG(0) << "[ERROR] Failed to set memory decay of arrow";
+    }
+  }
   return ::arrow::Status::OK();
 }
 
@@ -149,10 +149,11 @@ int GetArrowFileBufferSizeFromEnv() {
     std::vector<std::string>* field_names,
     std::vector<std::string>* field_dtypes,
     std::vector<int>* field_ragged_ranks, const std::string& filename) {
+  std::shared_ptr<::arrow::fs::FileSystem> fs;
   std::shared_ptr<::arrow::io::RandomAccessFile> file;
-  ARROW_RETURN_NOT_OK(::hybridbackend::OpenArrowFile(&file, filename));
+  ARROW_RETURN_NOT_OK(::hybridbackend::OpenArrowFile(&fs, &file, filename));
   std::unique_ptr<::parquet::arrow::FileReader> reader;
-  ARROW_RETURN_NOT_OK(::hybridbackend::OpenParquetReader(&reader, file));
+  ARROW_RETURN_NOT_OK(::hybridbackend::OpenParquetReader(&reader, file, false));
 
   std::shared_ptr<::arrow::Schema> schema;
   ARROW_RETURN_NOT_OK(reader->GetSchema(&schema));

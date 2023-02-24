@@ -42,6 +42,7 @@ REGISTER_OP("HbParquetTabularDataset")
     .Attr("partition_count: int = 1")
     .Attr("partition_index: int = 0")
     .Attr("drop_remainder: bool = false")
+    .Attr("skip_corrupted_data: bool = false")
     .SetIsStateful()  // NOTE: Source dataset ops must be marked stateful to
                       // inhibit constant folding.
     .SetShapeFn([](shape_inference::InferenceContext* c) {
@@ -63,6 +64,7 @@ field_shapes: List of shapes for each field.
 partition_count: Count of row group partitions.
 partition_index: Index of row group partitions.
 drop_remainder: If True, only keep batches with exactly `batch_size` samples.
+skip_corrupted_data: If True, ignore batches with data loss errors.
 )doc");
 
 class ParquetTabularDatasetOp : public DatasetOpKernel {
@@ -71,7 +73,8 @@ class ParquetTabularDatasetOp : public DatasetOpKernel {
       : DatasetOpKernel(ctx),
         partition_count_(1),
         partition_index_(0),
-        drop_remainder_(false) {
+        drop_remainder_(false),
+        skip_corrupted_data_(false) {
     OP_REQUIRES_OK(ctx, ctx->GetAttr("field_names", &field_names_));
     OP_REQUIRES_OK(ctx, ctx->GetAttr("field_dtypes", &field_dtypes_));
     OP_REQUIRES_OK(ctx,
@@ -80,6 +83,8 @@ class ParquetTabularDatasetOp : public DatasetOpKernel {
     OP_REQUIRES_OK(ctx, ctx->GetAttr("partition_count", &partition_count_));
     OP_REQUIRES_OK(ctx, ctx->GetAttr("partition_index", &partition_index_));
     OP_REQUIRES_OK(ctx, ctx->GetAttr("drop_remainder", &drop_remainder_));
+    OP_REQUIRES_OK(ctx,
+                   ctx->GetAttr("skip_corrupted_data", &skip_corrupted_data_));
   }
 
   void MakeDataset(OpKernelContext* ctx, DatasetBase** output) override;
@@ -94,6 +99,7 @@ class ParquetTabularDatasetOp : public DatasetOpKernel {
   int64 partition_count_;
   int64 partition_index_;
   bool drop_remainder_;
+  bool skip_corrupted_data_;
 };
 
 class ParquetTabularDatasetOp::Dataset : public DatasetBase {
@@ -104,7 +110,7 @@ class ParquetTabularDatasetOp::Dataset : public DatasetBase {
           const std::vector<int32>& field_ragged_ranks,
           const std::vector<PartialTensorShape>& field_shapes,
           const int64 partition_count, const int64 partition_index,
-          const bool drop_remainder)
+          const bool drop_remainder, const bool skip_corrupted_data)
       : DatasetBase(DatasetContext(ctx)),
         filename_(std::move(filename)),
         batch_size_(batch_size),
@@ -114,9 +120,9 @@ class ParquetTabularDatasetOp::Dataset : public DatasetBase {
         field_shapes_(std::move(field_shapes)),
         partition_count_(partition_count),
         partition_index_(partition_index),
-        drop_remainder_(drop_remainder) {
+        drop_remainder_(drop_remainder),
+        skip_corrupted_data_(skip_corrupted_data) {
     const int64 actual_batch_size(drop_remainder ? batch_size : -1);
-    int64 num_outputs = field_names.size();
     for (int64 i = 0; i < field_names.size(); ++i) {
       output_dtypes_.push_back(std::move(field_dtypes[i]));
       output_shapes_.push_back(PartialTensorShape({actual_batch_size})
@@ -125,7 +131,6 @@ class ParquetTabularDatasetOp::Dataset : public DatasetBase {
         output_dtypes_.push_back(DT_INT32);
         output_shapes_.push_back(PartialTensorShape({actual_batch_size}));
       }
-      num_outputs += field_ragged_ranks_[i];
     }
 
     reader_ = absl::make_unique<ParquetBatchReader>(
@@ -135,7 +140,8 @@ class ParquetTabularDatasetOp::Dataset : public DatasetBase {
   }
 
   Status Open() {
-    VLOG(1) << "Starting to read " << filename_ << " ...";
+    VLOG(1) << "Starting to read " << filename_
+            << " in batches (<= " << batch_size_ << " samples/batch) ...";
     return reader_->Open();
   }
 
@@ -176,6 +182,8 @@ class ParquetTabularDatasetOp::Dataset : public DatasetBase {
     b->BuildAttrValue(partition_index_, &partition_index);
     AttrValue drop_remainder;
     b->BuildAttrValue(drop_remainder_, &drop_remainder);
+    AttrValue skip_corrupted_data;
+    b->BuildAttrValue(skip_corrupted_data_, &skip_corrupted_data);
     TF_RETURN_IF_ERROR(
         b->AddDataset(this, {{0, filename}, {1, batch_size}}, {},
                       {{"field_names", field_names},
@@ -184,7 +192,8 @@ class ParquetTabularDatasetOp::Dataset : public DatasetBase {
                        {"field_shapes", field_shapes},
                        {"partition_count", partition_count},
                        {"partition_index", partition_index},
-                       {"drop_remainder", drop_remainder}},
+                       {"drop_remainder", drop_remainder},
+                       {"skip_corrupted_data", skip_corrupted_data}},
                       output));
     return Status::OK();
   }
@@ -200,6 +209,7 @@ class ParquetTabularDatasetOp::Dataset : public DatasetBase {
   const int64 partition_count_;
   const int64 partition_index_;
   const bool drop_remainder_;
+  const bool skip_corrupted_data_;
   DataTypeVector output_dtypes_;
   std::vector<PartialTensorShape> output_shapes_;
   std::unique_ptr<ParquetBatchReader> reader_;
@@ -218,7 +228,7 @@ void ParquetTabularDatasetOp::MakeDataset(OpKernelContext* ctx,
   Dataset* ds =
       new Dataset(ctx, filename, batch_size, field_names_, field_dtypes_,
                   field_ragged_ranks_, field_shapes_, partition_count_,
-                  partition_index_, drop_remainder_);
+                  partition_index_, drop_remainder_, skip_corrupted_data_);
   OP_REQUIRES_OK(ctx, ds->Open());
   *output = ds;
 }
@@ -233,7 +243,11 @@ class ParquetTabularDatasetOp::Dataset::Iterator
                          bool* end_of_sequence) override {
     mutex_lock l(mu_);
     Status s = dataset()->reader_->Read(out_tensors);
-
+    for (; dataset()->skip_corrupted_data_ && errors::IsDataLoss(s);
+         s = dataset()->reader_->Read(out_tensors)) {
+      LOG(ERROR) << "Skip corrupted data: " << s.error_message();
+      out_tensors->clear();
+    }
     if (s.ok()) {
       *end_of_sequence = false;
       return s;
