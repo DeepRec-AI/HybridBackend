@@ -22,13 +22,12 @@ fi
 
 cd ${HERE}
 
-mkdir src
-SRCTGZ=https://github.com/apache/arrow/archive/refs/tags/apache-arrow-5.0.0.tar.gz
-wget -nv ${SRCTGZ} -O /tmp/arrow.tar.gz
+mkdir -p src
+SRCTGZ=https://github.com/apache/arrow/archive/refs/tags/apache-arrow-9.0.0.tar.gz
+wget --no-check-certificate -nv ${SRCTGZ} -O /tmp/arrow.tar.gz
 tar -xzf /tmp/arrow.tar.gz --strip-components 1 -C src/
-cp -rf ./patches/cpp src/
 
-mkdir build
+mkdir -p build
 cd build/
 
 if [[ -z "$ARROW_DIST" ]]; then
@@ -87,4 +86,6 @@ cmake \
 ../src/cpp
 fi
 
+set -x
+cp -rf ../patches/cpp ../src/
 make install

@@ -22,25 +22,16 @@ export TAG=deeprec-py3.6-cu114-ubuntu18.04
 Build and push customized developer image:
 
 ```bash
-tools/build-developer-container \
+build/docker-build-dev \
 --build-arg TF_REPO=https://github.com/alibaba/DeepRec.git \
 --build-arg TF_COMMIT=b73e41b8399038373da0f94d204673c911c4dbc1
 docker push myhost/myns/myimage:developer-deeprec-py3.6-cu114-ubuntu18.04
 ```
 
-Build HybridBackend on customized developer image, or build and push customized
-image from counterpart developer image:
+Build HybridBackend on customized developer image:
 
 ```bash
-build/run make -j$(nproc)
-```
-
-Or
-
-```bash
-VERSION=xxx \
-tools/distbuild
-docker push myhost/myns/myimage:xxx-deeprec-py3.6-cu114-ubuntu18.04
+TAG={tag} build/run make -j$(nproc)
 ```
 
 **NOTE**

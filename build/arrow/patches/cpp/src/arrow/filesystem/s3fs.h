@@ -69,6 +69,29 @@ enum class S3CredentialsKind : int8_t {
   WebIdentity
 };
 
+/// Pure virtual class for describing custom S3 retry strategies
+class S3RetryStrategy {
+ public:
+  virtual ~S3RetryStrategy() = default;
+
+  /// Simple struct where each field corresponds to a field in Aws::Client::AWSError
+  struct AWSErrorDetail {
+    /// Corresponds to AWSError::GetErrorType()
+    int error_type;
+    /// Corresponds to AWSError::GetMessage()
+    std::string message;
+    /// Corresponds to AWSError::GetExceptionName()
+    std::string exception_name;
+    /// Corresponds to AWSError::ShouldRetry()
+    bool should_retry;
+  };
+  /// Returns true if the S3 request resulting in the provided error should be retried.
+  virtual bool ShouldRetry(const AWSErrorDetail& error, int64_t attempted_retries) = 0;
+  /// Returns the time in milliseconds the S3 client should sleep for until retrying.
+  virtual int64_t CalculateDelayBeforeNextRetry(const AWSErrorDetail& error,
+                                                int64_t attempted_retries) = 0;
+};
+
 /// Options for the S3FileSystem implementation.
 struct ARROW_EXPORT S3Options {
   /// \brief AWS region to connect to.
@@ -96,7 +119,7 @@ struct ARROW_EXPORT S3Options {
   /// Optional external idenitifer to pass to STS when assuming a role
   std::string external_id;
   /// Frequency (in seconds) to refresh temporary credentials from assumed role
-  int load_frequency;
+  int load_frequency = 900;
 
   /// If connection is through a proxy, set options here
   S3ProxyOptions proxy_options;
@@ -110,10 +133,27 @@ struct ARROW_EXPORT S3Options {
   /// Whether OutputStream writes will be issued in the background, without blocking.
   bool background_writes = true;
 
+  /// Whether to allow creation of buckets
+  ///
+  /// When S3FileSystem creates new buckets, it does not pass any non-default settings.
+  /// In AWS S3, the bucket and all objects will be not publicly visible, and there
+  /// will be no bucket policies and no resource tags. To have more control over how
+  /// buckets are created, use a different API to create them.
+  bool allow_bucket_creation = false;
+
+  /// Whether to allow deletion of buckets
+  bool allow_bucket_deletion = false;
+
   /// \brief Default metadata for OpenOutputStream.
   ///
   /// This will be ignored if non-empty metadata is passed to OpenOutputStream.
   std::shared_ptr<const KeyValueMetadata> default_metadata;
+
+  /// Optional retry strategy to determine which error types should be retried, and the
+  /// delay between retries.
+  std::shared_ptr<S3RetryStrategy> retry_strategy;
+
+  S3Options();
 
   /// Configure with the default AWS credentials provider chain.
   void ConfigureDefaultCredentials();
@@ -205,7 +245,9 @@ class ARROW_EXPORT S3FileSystem : public FileSystem {
   Status CreateDir(const std::string& path, bool recursive = true) override;
 
   Status DeleteDir(const std::string& path) override;
-  Status DeleteDirContents(const std::string& path) override;
+  Status DeleteDirContents(const std::string& path, bool missing_dir_ok = false) override;
+  Future<> DeleteDirContentsAsync(const std::string& path,
+                                  bool missing_dir_ok = false) override;
   Status DeleteRootDirContents() override;
 
   Status DeleteFile(const std::string& path) override;
@@ -285,7 +327,7 @@ ARROW_EXPORT
 Status FinalizeS3();
 
 ARROW_EXPORT
-Result<std::string> ResolveBucketRegion(const std::string& bucket);
+Result<std::string> ResolveS3BucketRegion(const std::string& bucket);
 
 }  // namespace fs
 }  // namespace arrow

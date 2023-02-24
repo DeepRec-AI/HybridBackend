@@ -23,7 +23,7 @@ USE_GPU=$?
 
 if [[ ! $USE_GPU -gt 0 ]]; then
   if [[ -z "$TAG" ]]; then
-    TAG=tf1.15-py3.8-cu114-ubuntu20.04
+    TAG=tf1.15-py3.8-cu118-ubuntu20.04
   fi
   DOCKERIMAGE=${REPO}:developer-${TAG}
 

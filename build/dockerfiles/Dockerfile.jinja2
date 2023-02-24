@@ -1,7 +1,7 @@
+# syntax=docker/dockerfile:1.3
+
 FROM {{baseimage}}
 
-RUN --mount=type=bind,target=/var/hybridbackend,source=build \
+RUN --mount=type=bind,target=/var/hybridbackend,source=release \
     pip install --no-cache-dir \
     /var/hybridbackend/hybridbackend*.whl
-
-ENV SHELL=/usr/bin/bash

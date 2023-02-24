@@ -10,7 +10,7 @@ build/temp.*
 build/reports/
 build/doc/
 build/wheel/
-build/auditwheel/
+build/release/
 *.egg-info/
 __pycache__/
 .pylint.d/

@@ -24,6 +24,8 @@ HYBRIDBACKEND_WHEEL_ALIAS ?=
 HYBRIDBACKEND_WHEEL_BUILD ?=
 HYBRIDBACKEND_WHEEL_REQUIRES ?=
 HYBRIDBACKEND_WHEEL_DEBUG ?= OFF
+HYBRIDBACKEND_WHEEL_REPAIR ?= ON
+HYBRIDBACKEND_WHEEL_POSTCHECK ?= ON
 HYBRIDBACKEND_CHECK_INSTANCE ?= OFF
 
 CXX ?= gcc
@@ -133,6 +135,13 @@ D_FILES := $(shell \
 endif
 
 THIRDPARTY_DEPS :=
+SSL_HOME ?= /usr/local
+COMMON_LDFLAGS := $(COMMON_LDFLAGS) \
+	-Bsymbolic \
+	-L$(SSL_HOME)/lib \
+	-lssl \
+	-lcrypto \
+	-lcurl
 ifeq ($(HYBRIDBACKEND_WITH_ARROW),ON)
 ARROW_HOME ?= build/arrow/dist
 ARROW_API_H := $(ARROW_HOME)/include/arrow/api.h
@@ -149,18 +158,23 @@ endif
 ifeq ($(HYBRIDBACKEND_WITH_ARROW_S3),ON)
 CFLAGS := $(CFLAGS) -DHYBRIDBACKEND_ARROW_S3=1
 endif
+ifeq ($(OS),Darwin)
 COMMON_LDFLAGS := \
+	$(COMMON_LDFLAGS) \
+	-L$(ARROW_HOME)/lib \
+	-larrow \
+	-larrow_dataset \
+	-larrow_bundled_dependencies \
+	-lparquet
+else
+COMMON_LDFLAGS := \
+	$(COMMON_LDFLAGS) \
+	-Wl,--whole-archive \
 	-L$(ARROW_HOME)/lib \
 	-larrow \
 	-larrow_dataset \
 	-larrow_bundled_dependencies \
 	-lparquet \
-	-lcurl
-ifneq ($(OS),Darwin)
-COMMON_LDFLAGS := \
-	-Bsymbolic \
-	-Wl,--whole-archive \
-	$(COMMON_LDFLAGS) \
 	-Wl,--no-whole-archive
 endif
 RE2_HOME ?=
@@ -187,11 +201,6 @@ ZLIB_HOME ?=
 ifneq ($(strip $(ZLIB_HOME)),)
 COMMON_LDFLAGS := $(COMMON_LDFLAGS) -L$(ZLIB_HOME)/lib -lz
 endif
-SSL_HOME ?= /usr/local
-COMMON_LDFLAGS := $(COMMON_LDFLAGS) \
-	-L$(SSL_HOME)/lib \
-	-lssl \
-	-lcrypto
 endif
 
 ifeq ($(HYBRIDBACKEND_WITH_SPARSEHASH),ON)
@@ -216,6 +225,12 @@ CORE_DEPS := $(CORE_DEPS) $(TENSORFLOW_LIB)
 CFLAGS := $(CFLAGS) -DHYBRIDBACKEND_TENSORFLOW=1
 ifeq ($(HYBRIDBACKEND_WITH_TENSORFLOW_HALF),ON)
 CFLAGS := $(CFLAGS) -DHYBRIDBACKEND_TENSORFLOW_HALF=1
+endif
+TENSORFLOW_HOME ?=
+ifneq ($(strip $(TENSORFLOW_HOME)),)
+CFLAGS := $(CFLAGS) \
+	-DHYBRIDBACKEND_TENSORFLOW_INTERNAL=1 \
+	-isystem $(TENSORFLOW_HOME)
 endif
 endif
 
@@ -243,12 +258,43 @@ test:
 		echo ; \
 	done
 
+.PHONY: install
+ifeq ($(HYBRIDBACKEND_WHEEL_REPAIR),ON)
+ifeq ($(HYBRIDBACKEND_WHEEL_POSTCHECK),ON)
+install: build
+	build/repair build/wheel build/release
+	PYTHONPATH= pip install -U build/release/*.whl
+	$(MAKE) test
+	@ls build/release/*.whl
+else
+install: build
+	build/repair build/wheel build/release
+	PYTHONPATH= pip install -U build/release/*.whl
+	@ls build/release/*.whl
+endif
+else
+ifeq ($(HYBRIDBACKEND_WHEEL_POSTCHECK),ON)
+install: build
+	mkdir -p build/release
+	cp -rf build/wheel/* build/release/
+	PYTHONPATH= pip install -U build/release/*.whl
+	$(MAKE) test
+	@ls build/release/*.whl
+else
+install: build
+	mkdir -p build/release
+	cp -rf build/wheel/* build/release/
+	PYTHONPATH= pip install -U build/release/*.whl
+	@ls build/release/*.whl
+endif
+endif
+
 .PHONY: clean
 clean:
 	rm -fr build/doc/
 	rm -fr build/reports/
 	rm -fr build/wheel/
-	rm -fr build/auditwheel/
+	rm -fr build/release/
 	rm -fr build/lib.*
 	rm -fr build/bdist.*
 	rm -fr build/temp.*
