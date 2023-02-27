@@ -31,7 +31,6 @@ limitations under the License.
 #define PARSE_SCALAR ParseScalarArgument
 #define PARSE_VECTOR ParseVectorArgument
 #else
-#include <tensorflow/core/framework/dataset.h>
 #define PARSE_SCALAR ::tensorflow::data::ParseScalarArgument
 #define PARSE_VECTOR ::tensorflow::data::ParseVectorArgument
 #endif

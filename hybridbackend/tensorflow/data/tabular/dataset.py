@@ -1,4 +1,3 @@
-#!/bin/bash
 # Copyright 2021 Alibaba Group Holding Limited. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -14,17 +13,22 @@
 # limitations under the License.
 # =============================================================================
 
-set -eo pipefail
+r'''Dataset that reads tabular data.
+'''
 
-echo "Format Python files..."
+from __future__ import absolute_import
+from __future__ import division
+from __future__ import print_function
 
-isort --resolve-all-configs .
-
-echo "Format C/C++ files..."
-
-HEADERS=$(find \( -path ./build \) -prune -false -o -type f -name '*.h')
-SOURCES=$(find \( -path ./build \) -prune -false -o -type f -name '*.cc')
-
-if [[ ! -z ${HEADERS} ]] || [[ ! -z ${SOURCES} ]]; then
-    clang-format -i ${HEADERS} ${SOURCES}
-fi
+# pylint: disable=ungrouped-imports
+try:
+  from hybridbackend.tensorflow.data.tabular.dataset_v2 import \
+    TabularDatasetV2 as TabularDataset
+  TabularDataset.__module__ = __name__
+  TabularDataset.__name__ = 'TabularDataset'
+except ImportError:
+  from hybridbackend.tensorflow.data.tabular.dataset_v1 import \
+    TabularDatasetV1 as TabularDataset
+  TabularDataset.__module__ = __name__
+  TabularDataset.__name__ = 'TabularDataset'
+# pylint: enable=ungrouped-imports

@@ -20,6 +20,15 @@ limitations under the License.
 
 namespace hybridbackend {
 
+void EnvVarSet(const std::string& env_var, const std::string& env_val);
+
+void EnvVarSet(const std::string& env_var, const int env_val);
+
+void EnvVarSetIfNotExists(const std::string& env_var,
+                          const std::string& env_val);
+
+void EnvVarSetIfNotExists(const std::string& env_var, const int env_val);
+
 std::string EnvVarGet(const std::string& env_var,
                       const std::string& default_val);
 
@@ -35,7 +44,7 @@ int EnvHttpGetInt(const std::string& url, const int default_val,
 
 bool EnvCheckInstance(const long timeout);
 
-int EnvGetGpuCount();
+int EnvGetGpuInfo(int* count, int* major, int* minor);
 
 }  // namespace hybridbackend
 

@@ -70,6 +70,8 @@ class RebatchDatasetV1(dataset_ops.Dataset):
       name='min_batch_size')
     self._fields = input_fields(input_dataset, fields)
     self._drop_remainder = drop_remainder
+    if num_parallel_scans == dataset_ops.AUTOTUNE:
+      num_parallel_scans = len(self._fields)
     self._num_parallel_scans = num_parallel_scans
     super().__init__()
 
@@ -112,10 +114,12 @@ class RebatchDatasetV1(dataset_ops.Dataset):
   @property
   def output_shapes(self):
     input_shapes = self._input_dataset.output_shapes
+    dim0_shape = tensor_shape.TensorShape([
+      tensor_util.constant_value(self._batch_size)
+      if self._drop_remainder
+      else None])
     return nest.pack_sequence_as(
       input_shapes,
       [
-        tensor_shape.vector(
-          tensor_util.constant_value(self._batch_size)
-          if self._drop_remainder else None).concatenate(s[1:])
+        dim0_shape.concatenate(s[1:])
         for s in nest.flatten(self._input_dataset.output_shapes)])

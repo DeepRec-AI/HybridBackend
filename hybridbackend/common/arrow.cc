@@ -117,9 +117,18 @@ namespace {
   }
   ::parquet::ArrowReaderProperties properties;
   properties.set_pre_buffer(true);
-  ARROW_RETURN_NOT_OK(::parquet::arrow::FileReader::Make(
-      ::arrow::default_memory_pool(),
-      ::parquet::ParquetFileReader::Open(file, config), properties, reader));
+
+  const int kMemoryLoggingEnabled =
+      ::hybridbackend::EnvVarGetBool("HB_MEMORY_LOGGING_ENABLED", false);
+  if (HB_PREDICT_FALSE(kMemoryLoggingEnabled)) {
+    ARROW_RETURN_NOT_OK(::parquet::arrow::FileReader::Make(
+        new ::arrow::LoggingMemoryPool(::arrow::default_memory_pool()),
+        ::parquet::ParquetFileReader::Open(file, config), properties, reader));
+  } else {
+    ARROW_RETURN_NOT_OK(::parquet::arrow::FileReader::Make(
+        ::arrow::default_memory_pool(),
+        ::parquet::ParquetFileReader::Open(file, config), properties, reader));
+  }
 
   if (!initialized_from_env) {
     return ::arrow::Status::OK();

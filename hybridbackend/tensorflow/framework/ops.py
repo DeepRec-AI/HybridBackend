@@ -21,6 +21,7 @@ from __future__ import division
 from __future__ import print_function
 
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.util import nest
 
 
@@ -35,8 +36,14 @@ class GraphKeys(object):  # pylint: disable=useless-object-inheritance
   SHARDED_VARIABLES = 'sharded_variables'
   # Collection for resources placed at multiple devices.
   SHARDED_RESOURCES = 'sharded_resources'
+  # Collection for dynamic-bucketized variables.
+  DYNAMIC_VARIABLES = 'dynamic_variables'
   # Collection for resources or variables should not be replicated.
   NOT_REPLICATED = 'not_replicated'
+  # Collection for small trainable variables placed at every devices.
+  TRAINABLE_REPLICATED_SMALL = 'trainable_replicated_small'
+  # Collection for values utilized by pipelines
+  PIPLINED_VALUES = 'pipelined_values'
 
 
 class ModeKeys(object):  # pylint: disable=useless-object-inheritance
@@ -187,3 +194,51 @@ class MultiValues(object):  # pylint: disable=useless-object-inheritance
       MultiValues({k: t[i] for i, k in enumerate(keys)})
       for t in zip(*flatten_values)]
     return nest.pack_sequence_as(first_value, regrouped_values)
+
+
+class TensorKinds(object):  # pylint: disable=useless-object-inheritance
+  r'''Keys for different tensor kinds.
+  '''
+  INDICES = 0
+  VALUES = 1
+  DENSE_SHAPE = 2
+
+  @classmethod
+  def normalize(cls, arg, *args):
+    r'''Normalize structure into list of tensors.
+    '''
+    tensors = arg
+    if args:
+      tensors = (arg,) + args
+    else:
+      tensors = arg
+    flattened_tensors = nest.flatten(tensors)
+    flattened_values = []
+    for t in flattened_tensors:
+      if isinstance(t, ops.Tensor):
+        flattened_values.append(t)
+      elif isinstance(t, sparse_tensor.SparseTensor):
+        flattened_values.append(
+          sparse_tensor.SparseTensorValue(
+            t.indices, t.values, t.dense_shape))
+      else:
+        raise ValueError(
+          'Inputs other than tensors or sparse tensors not supported')
+    return nest.flatten(flattened_values)
+
+  @classmethod
+  def denormalize(cls, structure, flatten_structure, tensors):
+    r'''Denormalize structure from list of tensors.
+    '''
+    flattened_values = nest.pack_sequence_as(flatten_structure, tensors)
+    flattened_tensors = []
+    for v in flattened_values:
+      if isinstance(v, ops.Tensor):
+        flattened_tensors.append(v)
+      elif isinstance(v, sparse_tensor.SparseTensorValue):
+        flattened_tensors.append(
+          sparse_tensor.SparseTensor(v.indices, v.values, v.dense_shape))
+      else:
+        raise ValueError(
+          'Outputs other than tensors or sparse tensors not supported')
+    return nest.pack_sequence_as(structure, flattened_tensors)

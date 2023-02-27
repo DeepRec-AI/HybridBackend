@@ -1,4 +1,3 @@
-#!/bin/bash
 # Copyright 2021 Alibaba Group Holding Limited. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -14,18 +13,9 @@
 # limitations under the License.
 # =============================================================================
 
-SRCDIR=$1
-DSTDIR=$2
+r'''Rectifying related classes and functions.
+'''
 
-GLIBC=$(ldd --version | head -1 | awk '{print $NF}' | tr '.' '_')
-PLATFORM="manylinux_${GLIBC}_x86_64"
-
-set -eo pipefail
-
-mkdir -p ${DSTDIR}
-
-TFLIB=$(python -c "import tensorflow as tf; print(tf.sysconfig.get_lib())" 2>/dev/null)
-LD_LIBRARY_PATH=${LD_LIBRARY_PATH}:${TFLIB} \
-auditwheel repair --plat ${PLATFORM} ${SRCDIR}/*.whl -w ${DSTDIR}
-
-twine check ${DSTDIR}/*.whl
+from __future__ import absolute_import
+from __future__ import division
+from __future__ import print_function

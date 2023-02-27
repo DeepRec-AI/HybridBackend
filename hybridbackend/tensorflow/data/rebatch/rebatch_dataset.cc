@@ -26,6 +26,7 @@ limitations under the License.
 #include <tensorflow/core/platform/file_system.h>
 #include <tensorflow/core/public/version.h>
 
+#include <deque>
 #include <map>
 #include <unordered_set>
 #include <vector>
@@ -209,6 +210,11 @@ void RebatchTabularDatasetOp::MakeDataset(OpKernelContext* ctx,
               errors::InvalidArgument(
                   "batch_size must be greater than min_batch_size."));
 
+  OP_REQUIRES(
+      ctx, (!drop_remainder_) || (batch_size == min_batch_size),
+      errors::InvalidArgument("drop_remainder must be false if batch_size is "
+                              "different than min_batch_size."));
+
   *output =
       new Dataset(ctx, input, batch_size, min_batch_size, field_ids_,
                   field_ragged_indices_, drop_remainder_, num_parallel_scans_);
@@ -313,9 +319,9 @@ class RebatchTabularDatasetOp::Dataset::Iterator
     return Status::OK();
   }
 
-  Status Redirect(std::vector<Tensor>* output_tensors,
-                  const std::vector<Tensor>& input_tensors,
-                  const int64 row_start, const int64 row_limit) {
+  Status SliceAndRedirect(std::vector<Tensor>* output_tensors,
+                          const std::vector<Tensor>& input_tensors,
+                          const int64 row_start, const int64 row_limit) {
     // Slice input tensors.
     int64 cur = 0;
     for (size_t fid = 0; fid < field_ranks_.size(); ++fid) {
@@ -412,8 +418,8 @@ class RebatchTabularDatasetOp::Dataset::Iterator
     return Status::OK();
   }
 
-  Status Enqueue(const std::vector<Tensor>& input_tensors,
-                 const int64 row_start, const int64 row_limit) {
+  Status SliceAndEnqueue(const std::vector<Tensor>& input_tensors,
+                         const int64 row_start, const int64 row_limit) {
     if (TF_PREDICT_FALSE(row_limit == row_start)) {
       return Status::OK();
     }
@@ -463,7 +469,8 @@ class RebatchTabularDatasetOp::Dataset::Iterator
     return Status::OK();
   }
 
-  Status Dequeue(IteratorContext* ctx, std::vector<Tensor>* output_tensors) {
+  Status Dequeue(IteratorContext* ctx, std::vector<Tensor>* output_tensors,
+                 const int64 batch_size) {
     AllocatorAttributes host_alloc_attrs;
     host_alloc_attrs.set_on_host(true);
     Allocator* alloc = ctx->allocator(host_alloc_attrs);
@@ -472,13 +479,15 @@ class RebatchTabularDatasetOp::Dataset::Iterator
       // Create value tensor.
       auto output_dtype = dataset()->output_dtypes()[cur];
       PartialTensorShape output_pshape(dataset()->output_shapes_[cur]);
-      if (output_pshape.dim_size(0) == -1) {
-        int64 dim0_size = 0;
-        for (auto& t : tensor_queues_[cur]) {
-          dim0_size += t.dim_size(0);
+      int64 dim0_size = 0;
+      for (auto& t : tensor_queues_[cur]) {
+        dim0_size += t.dim_size(0);
+        if (dim0_size > batch_size) {
+          dim0_size = batch_size;
+          break;
         }
-        output_pshape.set_dim(0, dim0_size);
       }
+      output_pshape.set_dim(0, dim0_size);
       TensorShape output_shape;
       output_pshape.AsTensorShape(&output_shape);
       if (TF_PREDICT_FALSE(output_dtype == DT_STRING)) {
@@ -498,13 +507,189 @@ class RebatchTabularDatasetOp::Dataset::Iterator
       // Create split tensors.
       for (size_t i = 1; i < rank + 1; ++i) {
         PartialTensorShape split_pshape(dataset()->output_shapes_[cur + i]);
-        if (split_pshape.dim_size(0) == -1) {
-          int64 dim0_size = 1;
-          for (auto& t : tensor_queues_[cur + i]) {
-            dim0_size += (t.dim_size(0) - 1);
+        int64 dim0_size = 0;
+        for (auto& t : tensor_queues_[cur + i]) {
+          dim0_size += (t.dim_size(0) - 1);
+          if (dim0_size > batch_size) {
+            dim0_size = batch_size;
+            break;
           }
-          split_pshape.set_dim(0, dim0_size);
         }
+        split_pshape.set_dim(0, 1 + dim0_size);
+
+        TensorShape split_shape;
+        split_pshape.AsTensorShape(&split_shape);
+        output_tensors->emplace_back(alloc, DT_INT32, split_shape);
+      }
+      cur += (rank + 1);
+    }
+
+    auto flush_queue = [this, output_tensors, batch_size](int64 rank,
+                                                          int64 cur) {
+      // Copy to value tensor.
+      if (TF_PREDICT_FALSE(dataset()->output_dtypes()[cur] == DT_STRING)) {
+        int output_cur = 0;
+        int64 dim0_size = 0;
+        int64 num_pops = 0;
+        for (auto& t : tensor_queues_[cur]) {
+          dim0_size += t.dim_size(0);
+          int64 tensor_size = t.NumElements();
+          if (dim0_size > batch_size) {
+            PartialTensorShape residual_pshape(dataset()->output_shapes_[cur]);
+            residual_pshape.set_dim(0, batch_size + t.dim_size(0) - dim0_size);
+            tensor_size = residual_pshape.num_elements();
+          }
+          for (int i = 0; i < tensor_size; ++i) {
+            output_tensors->at(cur).vec<string>()(output_cur + i) =
+                t.unaligned_flat<string>()(i);
+          }
+          output_cur += tensor_size;
+          ++num_pops;
+          if (dim0_size > batch_size) {
+            break;
+          }
+        }
+        for (int64 i = 0; i < num_pops; ++i) {
+          tensor_queues_[cur].pop_front();
+        }
+      } else {
+        char* output_ptr =
+            const_cast<char*>(output_tensors->at(cur).tensor_data().data());
+        int64 dim0_size = 0;
+        int64 num_pops = 0;
+        for (auto& t : tensor_queues_[cur]) {
+          dim0_size += t.dim_size(0);
+          int64 tensor_bytes = t.TotalBytes();
+          if (dim0_size > batch_size) {
+            PartialTensorShape residual_pshape(dataset()->output_shapes_[cur]);
+            residual_pshape.set_dim(0, batch_size + t.dim_size(0) - dim0_size);
+            tensor_bytes =
+                residual_pshape.num_elements() * DataTypeSize(t.dtype());
+          }
+          assert(output_tensors->at(cur).TotalBytes() >= tensor_bytes);
+          memcpy(output_ptr, t.tensor_data().data(), tensor_bytes);
+          output_ptr += tensor_bytes;
+          ++num_pops;
+          if (dim0_size > batch_size) {
+            break;
+          }
+        }
+        for (int64 i = 0; i < num_pops; ++i) {
+          tensor_queues_[cur].pop_front();
+        }
+      }
+
+      if (rank == 0) {
+        return;
+      }
+
+      // Recalculate splits.
+      for (size_t i = 1; i < rank + 1; ++i) {
+        int32* sdata = reinterpret_cast<int32*>(const_cast<char*>(
+            output_tensors->at(cur + i).tensor_data().data()));
+        sdata[0] = 0;
+        int32 tstart = 1;
+        int64 dim0_size = 0;
+        int64 num_pops = 0;
+        for (auto& t : tensor_queues_[cur + i]) {
+          dim0_size += (t.dim_size(0) - 1);
+          int32* tdata = reinterpret_cast<int32*>(
+              const_cast<char*>(t.tensor_data().data()));
+          int32 tsize = t.NumElements() - 1;
+          if (dim0_size > batch_size) {
+            PartialTensorShape residual_pshape(t.shape());
+            residual_pshape.set_dim(0, batch_size + t.dim_size(0) - dim0_size);
+            tsize = residual_pshape.num_elements() - 1;
+          }
+          memcpy(sdata + tstart, tdata + 1, tsize * DataTypeSize(DT_INT32));
+          const auto output_shape = output_tensors->at(cur + i).shape();
+          int64 input_base_elems = 1;
+          if (TF_PREDICT_FALSE(output_shape.dims() > 1)) {
+            input_base_elems =
+                output_shape.num_elements() / output_shape.dim_size(0);
+          }
+          auto tpart = output_tensors->at(cur + i).Slice(
+              tstart / input_base_elems, (tstart + tsize) / input_base_elems);
+          RecalculateSplit(&tpart, sdata[tstart - 1] - tdata[0]);
+          tstart += tsize;
+          ++num_pops;
+          if (dim0_size > batch_size) {
+            break;
+          }
+        }
+        for (int64 n = 0; n < num_pops; ++n) {
+          tensor_queues_[cur + i].pop_front();
+        }
+      }
+    };
+
+    if (thread_pool_) {
+      BlockingCounter counter(field_ranks_.size());
+      cur = 0;
+      for (size_t fid = 0; fid < field_ranks_.size(); ++fid) {
+        const int64 rank = field_ranks_[fid];
+        thread_pool_->Schedule([&flush_queue, &counter, rank, cur]() {
+          flush_queue(rank, cur);
+          counter.DecrementCount();
+        });
+        cur += (rank + 1);
+      }
+      counter.Wait();
+    } else {
+      cur = 0;
+      for (size_t fid = 0; fid < field_ranks_.size(); ++fid) {
+        const int64 rank = field_ranks_[fid];
+        flush_queue(rank, cur);
+        cur += (rank + 1);
+      }
+    }
+
+    if (queue_batch_size_ > batch_size) {
+      queue_batch_size_ -= batch_size;
+    } else {
+      queue_batch_size_ = 0;
+    }
+    return Status::OK();
+  }
+
+  Status DequeueAll(IteratorContext* ctx, std::vector<Tensor>* output_tensors) {
+    AllocatorAttributes host_alloc_attrs;
+    host_alloc_attrs.set_on_host(true);
+    Allocator* alloc = ctx->allocator(host_alloc_attrs);
+    int64 cur = 0;
+    for (size_t fid = 0; fid < field_ranks_.size(); ++fid) {
+      // Create value tensor.
+      auto output_dtype = dataset()->output_dtypes()[cur];
+      PartialTensorShape output_pshape(dataset()->output_shapes_[cur]);
+      int64 dim0_size = 0;
+      for (auto& t : tensor_queues_[cur]) {
+        dim0_size += t.dim_size(0);
+      }
+      output_pshape.set_dim(0, dim0_size);
+      TensorShape output_shape;
+      output_pshape.AsTensorShape(&output_shape);
+      if (TF_PREDICT_FALSE(output_dtype == DT_STRING)) {
+        if (TF_PREDICT_FALSE(!TensorShapeUtils::IsVector(output_shape))) {
+          return errors::InvalidArgument(
+              "Tensors in string field must be vector");
+        }
+      }
+      output_tensors->emplace_back(alloc, output_dtype, output_shape);
+
+      const int64 rank = field_ranks_[fid];
+      if (rank == 0) {
+        cur += (rank + 1);
+        continue;
+      }
+
+      // Create split tensors.
+      for (size_t i = 1; i < rank + 1; ++i) {
+        PartialTensorShape split_pshape(dataset()->output_shapes_[cur + i]);
+        int64 dim0_size = 1;
+        for (auto& t : tensor_queues_[cur + i]) {
+          dim0_size += (t.dim_size(0) - 1);
+        }
+        split_pshape.set_dim(0, dim0_size);
         TensorShape split_shape;
         split_pshape.AsTensorShape(&split_shape);
         output_tensors->emplace_back(alloc, DT_INT32, split_shape);
@@ -595,6 +780,11 @@ class RebatchTabularDatasetOp::Dataset::Iterator
                          std::vector<Tensor>* output_tensors,
                          bool* end_of_sequence) override {
     mutex_lock l(mu_);
+    if (queue_batch_size_ > dataset()->batch_size_) {
+      // Queue is not empty and very large.
+      TF_RETURN_IF_ERROR(Dequeue(ctx, output_tensors, dataset()->batch_size_));
+      return Status::OK();
+    }
     *end_of_sequence = false;
     while (!*end_of_sequence) {
       std::vector<Tensor> input_tensors;
@@ -611,23 +801,27 @@ class RebatchTabularDatasetOp::Dataset::Iterator
         input_batch_size = GetBatchSize(input_tensors);
         input_not_found = false;
       }
-      int64 batch_size = queue_batch_size_ + input_batch_size;
-      if (batch_size < dataset()->min_batch_size_) {
+      int64 output_batch_size = queue_batch_size_ + input_batch_size;
+      if (output_batch_size < dataset()->min_batch_size_) {
         // Merge batches.
         if (!input_impl_ && input_not_found) {
           // All inputs are read.
-          if (TF_PREDICT_FALSE(batch_size == 0)) {
+          if (TF_PREDICT_FALSE(dataset()->drop_remainder_)) {
             *end_of_sequence = true;
             return Status::OK();
           }
-          TF_RETURN_IF_ERROR(Dequeue(ctx, output_tensors));
+          if (TF_PREDICT_FALSE(output_batch_size == 0)) {
+            *end_of_sequence = true;
+            return Status::OK();
+          }
+          TF_RETURN_IF_ERROR(DequeueAll(ctx, output_tensors));
           return Status::OK();
         } else {
           // Not all inputs are not read.
           TF_RETURN_IF_ERROR(Enqueue(input_tensors, input_batch_size));
           continue;
         }
-      } else if (batch_size <= dataset()->batch_size_) {
+      } else if (output_batch_size <= dataset()->batch_size_) {
         // Redirect or merge batches.
         if (queue_batch_size_ == 0) {
           // Queue is empty.
@@ -635,32 +829,48 @@ class RebatchTabularDatasetOp::Dataset::Iterator
           return Status::OK();
         } else if (!input_impl_ && input_not_found) {
           // Queue is not empty, all inputs are read.
-          TF_RETURN_IF_ERROR(Dequeue(ctx, output_tensors));
+          if (TF_PREDICT_FALSE(dataset()->drop_remainder_ &&
+                               output_batch_size < dataset()->batch_size_)) {
+            *end_of_sequence = true;
+            return Status::OK();
+          }
+          TF_RETURN_IF_ERROR(DequeueAll(ctx, output_tensors));
           return Status::OK();
         } else {
           // Queue is not empty, not all inputs are consumed.
           TF_RETURN_IF_ERROR(Enqueue(input_tensors, input_batch_size));
-          TF_RETURN_IF_ERROR(Dequeue(ctx, output_tensors));
+          TF_RETURN_IF_ERROR(DequeueAll(ctx, output_tensors));
           return Status::OK();
         }
       } else {
         // Split batches.
         if (queue_batch_size_ == 0) {
           // Queue is empty.
-          TF_RETURN_IF_ERROR(Redirect(output_tensors, input_tensors, 0,
-                                      dataset()->batch_size_));
-          TF_RETURN_IF_ERROR(
-              Enqueue(input_tensors, dataset()->batch_size_, input_batch_size));
-          continue;
-        } else {
-          // Queue is not empty.
-          const int64 residual_batch_size =
+          TF_RETURN_IF_ERROR(SliceAndRedirect(output_tensors, input_tensors, 0,
+                                              dataset()->batch_size_));
+          TF_RETURN_IF_ERROR(SliceAndEnqueue(
+              input_tensors, dataset()->batch_size_, input_batch_size));
+          return Status::OK();
+        } else if (queue_batch_size_ < dataset()->batch_size_) {
+          // Queue is not empty and small.
+          const auto remained_batch_size =
               dataset()->batch_size_ - queue_batch_size_;
-          assert(residual_batch_size > 0);
-          TF_RETURN_IF_ERROR(Enqueue(input_tensors, 0, residual_batch_size));
-          TF_RETURN_IF_ERROR(Dequeue(ctx, output_tensors));
           TF_RETURN_IF_ERROR(
-              Enqueue(input_tensors, residual_batch_size, input_batch_size));
+              SliceAndEnqueue(input_tensors, 0, remained_batch_size));
+          TF_RETURN_IF_ERROR(DequeueAll(ctx, output_tensors));
+          TF_RETURN_IF_ERROR(SliceAndEnqueue(input_tensors, remained_batch_size,
+                                             input_batch_size));
+          return Status::OK();
+        } else if (queue_batch_size_ == dataset()->batch_size_) {
+          // Queue is ready to dequeue.
+          TF_RETURN_IF_ERROR(DequeueAll(ctx, output_tensors));
+          TF_RETURN_IF_ERROR(Enqueue(input_tensors, input_batch_size));
+          return Status::OK();
+        } else {
+          // Queue is not empty and large.
+          TF_RETURN_IF_ERROR(
+              Dequeue(ctx, output_tensors, dataset()->batch_size_));
+          TF_RETURN_IF_ERROR(Enqueue(input_tensors, input_batch_size));
           return Status::OK();
         }
       }
@@ -682,7 +892,7 @@ class RebatchTabularDatasetOp::Dataset::Iterator
   mutex mu_;
   std::unique_ptr<IteratorBase> input_impl_ GUARDED_BY(mu_);
   std::vector<int64> field_ranks_;
-  std::vector<std::vector<Tensor>> tensor_queues_;
+  std::vector<std::deque<Tensor>> tensor_queues_;
   int64 queue_batch_size_;
   std::unique_ptr<thread::ThreadPool> thread_pool_;
 };

@@ -322,7 +322,12 @@ class DataFrame(object):  # pylint: disable=useless-object-inheritance
         for f in features}
     if isinstance(features, DataFrame.Value):
       if pad:
-        return features.to_tensor()
+        if isinstance(pad, bool):
+          return features.to_tensor()
+        output = features.to_tensor()
+        output_shape = array_ops.shape(output)
+        paddings = [[0, d - output_shape[i]] for i, d in enumerate(pad)]
+        return array_ops.pad(output, paddings, 'CONSTANT', constant_values=0)
       return features.to_sparse()
     if isinstance(features, ops.Tensor):
       return features
