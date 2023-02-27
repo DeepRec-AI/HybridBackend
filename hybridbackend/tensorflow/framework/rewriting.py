@@ -59,28 +59,37 @@ class GraphRewriting(object):  # pylint: disable=useless-object-inheritance
 
   @classmethod
   @contextlib.contextmanager
-  def scope(cls):
+  def scope(cls, **kwargs):
     r'''Context manager that patches Python APIs.
     '''
-    try:
-      at_top = False
-      with cls._lock:
-        cls._stack_depth += 1
-        if cls._stack_depth <= 1:
-          for name in cls._registry_keys:
-            cls._registry[name].begin()
-          at_top = True
-      if at_top:
-        with ops.device(device_function):
-          yield cls
-      else:
-        yield cls
-    finally:
-      with cls._lock:
-        if cls._stack_depth <= 1:
-          for name in reversed(cls._registry_keys):
-            cls._registry[name].end()
-        cls._stack_depth -= 1
+    seed = kwargs.pop('seed', None)
+    if seed is not None:
+      rn.seed(seed)
+      np.random.seed(seed)
+      random_seed.set_random_seed(seed)
+      os.environ['PYTHONHASHSEED'] = str(seed)
+      os.environ['TF_CUDNN_DETERMINISTIC'] = '1'
+
+    with Context.scope(**kwargs) as ctx:
+      try:
+        at_top = False
+        with cls._lock:
+          cls._stack_depth += 1
+          if cls._stack_depth <= 1:
+            for name in cls._registry_keys:
+              cls._registry[name].begin()
+            at_top = True
+        if at_top:
+          with ops.device(device_function):
+            yield ctx
+        else:
+          yield ctx
+      finally:
+        with cls._lock:
+          if cls._stack_depth <= 1:
+            for name in reversed(cls._registry_keys):
+              cls._registry[name].end()
+          cls._stack_depth -= 1
 
   @abc.abstractmethod
   def begin(self):
@@ -95,19 +104,10 @@ class GraphRewriting(object):  # pylint: disable=useless-object-inheritance
 
 @contextlib.contextmanager
 def scope(**kwargs):
-  r'''Context manager that decorates for model construction.
+  r'''Context manager that decorates for parallel model training.
   '''
-  seed = kwargs.pop('seed', None)
-  if seed is not None:
-    rn.seed(seed)
-    np.random.seed(seed)
-    random_seed.set_random_seed(seed)
-    os.environ['PYTHONHASHSEED'] = str(seed)
-    os.environ['TF_CUDNN_DETERMINISTIC'] = '1'
-
-  with Context.scope(**kwargs) as ctx:
-    with GraphRewriting.scope():
-      yield ctx
+  with GraphRewriting.scope(**kwargs) as ctx:
+    yield ctx
 
 
 def function(**params):

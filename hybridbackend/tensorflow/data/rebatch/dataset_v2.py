@@ -68,6 +68,8 @@ class RebatchDatasetV2(dataset_ops.DatasetV2):
       name='min_batch_size')
     self._fields = input_fields(input_dataset, fields)
     self._drop_remainder = drop_remainder
+    if num_parallel_scans == dataset_ops.AUTOTUNE:
+      num_parallel_scans = len(self._fields)
     self._num_parallel_scans = num_parallel_scans
     self._impl = _ops.hb_rebatch_tabular_dataset(
       self._input_dataset._variant_tensor,  # pylint: disable=protected-access

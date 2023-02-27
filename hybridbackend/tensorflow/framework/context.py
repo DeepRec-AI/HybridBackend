@@ -246,6 +246,12 @@ class Context(object):  # pylint: disable=useless-object-inheritance
     return self._local_devices
 
   @property
+  def local_world_size(self):
+    r'''local devices for collective comm.
+    '''
+    return self._local_world_size
+
+  @property
   def devices(self):
     r'''devices of all servers.
     '''
@@ -370,25 +376,32 @@ class Context(object):  # pylint: disable=useless-object-inheritance
         device_util.canonicalize(
           f'/device:GPU:{d}', default=self._default_device)
         for d in xrange(self._num_gpus)]
+
+    local_world_size_str = os.getenv('LOCAL_WORLD_SIZE', '')
+    if not local_world_size_str:
+      self._local_world_size = len(self._local_devices)  # pylint: disable=protected-access
+    else:
+      self._local_world_size = int(local_world_size_str)
+
     if not self._cluster_spec:
       self._devices = list(self._local_devices)
       return
     task_indices = []
     try:
       task_defs = dict(enumerate(self._cluster_spec.job_tasks(self._task_type)))
-      task_indices = sorted(task_defs, key=task_defs.__getitem__)
+      task_indices = sorted(task_defs)
     except:  # pylint: disable=bare-except
       pass
     worker_indices = []
     try:
       worker_defs = dict(enumerate(self._cluster_spec.job_tasks('worker')))
-      worker_indices = sorted(worker_defs, key=worker_defs.__getitem__)
+      worker_indices = sorted(worker_defs)
     except:  # pylint: disable=bare-except
       pass
     chief_indices = []
     try:
       chief_defs = dict(enumerate(self._cluster_spec.job_tasks('chief')))
-      chief_indices = sorted(chief_defs, key=chief_defs.__getitem__)
+      chief_indices = sorted(chief_defs)
     except:  # pylint: disable=bare-except
       pass
     self._cpu_devices = [

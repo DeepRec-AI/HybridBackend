@@ -76,25 +76,28 @@ class ArrowPrimitiveTensorBuffer : public TensorBuffer {
   const int64 total_num_elems = arrow_buffer->size() / DataTypeSize(dtype);
   int64 shape_num_elems = shape.num_elements();
   if (TF_PREDICT_FALSE(shape_num_elems < 0)) {
-    return ::arrow::Status::Invalid("Field shape is not fully defined");
+    return ::arrow::Status::Invalid(
+        "Supposed shape of input batch is not fully defined");
   }
   int64 dim0 = total_num_elems;
   if (TF_PREDICT_FALSE(shape_num_elems > 0)) {
     dim0 = total_num_elems / shape_num_elems;
     if (TF_PREDICT_FALSE(dim0 * shape_num_elems != total_num_elems)) {
-      return ::arrow::Status::Invalid("Field shape mismatch with actual data");
+      return ::arrow::Status::Invalid(
+          "Supposed shape and actual shape of input batch mismatches");
     }
   }
   TensorShape actual_shape;
   if (!TF_PREDICT_TRUE(
           PartialTensorShape({dim0}).Concatenate(shape).AsTensorShape(
               &actual_shape))) {
-    return ::arrow::Status::Invalid("Field shape is not fully defined");
+    return ::arrow::Status::Invalid(
+        "Calculated shape of input batch is not fully defined");
   }
 
 #if HYBRIDBACKEND_ARROW_ZEROCOPY
-  // NOTE: Alignment is 64 in Arrow 4.x, same to EIGEN_MAX_ALIGN_BYTES. See:
-  // https://github.com/apache/arrow/blob/apache-arrow-4.0.1/cpp/src/arrow/memory_pool.cc#L97
+  // NOTE: Alignment is 64 in Arrow, same to EIGEN_MAX_ALIGN_BYTES. See:
+  // https://github.com/apache/arrow/blob/apache-arrow-9.0.0/cpp/src/arrow/memory_pool_internal.h#L29
   if (TF_PREDICT_FALSE(!CHECK_EIGEN_ALIGN(arrow_buffer->data()))) {
     *tensor = Tensor(dtype, actual_shape);
     std::memcpy(const_cast<char*>(tensor->tensor_data().data()),
@@ -156,7 +159,7 @@ class ArrowPrimitiveTensorBuffer : public TensorBuffer {
 // Primitive Arrow arrays have validity and value buffers.
 #define RAGGED_TENSOR_BUILDER_PRIMITIVE_VISIT(ARRAY_CLASS)                  \
   ::arrow::Status Visit(const ARRAY_CLASS& array) override {                \
-    if (TF_PREDICT_FALSE(ragged_rank_ != 0)) {                              \
+    if (TF_PREDICT_FALSE(unvisited_ragged_indices_ != 0)) {                 \
       return ::arrow::Status::Invalid("Inconsistent ragged rank");          \
     }                                                                       \
     Tensor tensor;                                                          \
@@ -171,7 +174,7 @@ class ArrowPrimitiveTensorBuffer : public TensorBuffer {
 
 #define RAGGED_TENSOR_BUILDER_STRING_VISIT(ARRAY_CLASS)               \
   ::arrow::Status Visit(const ARRAY_CLASS& array) override {          \
-    if (TF_PREDICT_FALSE(ragged_rank_ != 0)) {                        \
+    if (TF_PREDICT_FALSE(unvisited_ragged_indices_ != 0)) {           \
       return ::arrow::Status::Invalid("Inconsistent ragged rank");    \
     }                                                                 \
     Tensor tensor;                                                    \
@@ -187,7 +190,10 @@ class RaggedTensorBuilder : public ::arrow::ArrayVisitor {
  public:
   RaggedTensorBuilder(const DataType dtype, const int32 ragged_rank,
                       const PartialTensorShape& shape)
-      : dtype_(dtype), ragged_rank_(ragged_rank), shape_(shape) {}
+      : dtype_(dtype),
+        ragged_rank_(ragged_rank),
+        shape_(shape),
+        unvisited_ragged_indices_(ragged_rank) {}
 
   ::arrow::Status Build(const std::shared_ptr<::arrow::Array>& array,
                         std::vector<Tensor>* output_tensors) {
@@ -207,7 +213,7 @@ class RaggedTensorBuilder : public ::arrow::ArrayVisitor {
   }
 
   ::arrow::Status Visit(const ::arrow::ListArray& array) override {
-    --ragged_rank_;
+    --unvisited_ragged_indices_;
     Tensor tensor;
     auto st = MakeTensorFromArrowBuffer(DT_INT32, PartialTensorShape({}),
                                         array.value_offsets(), &tensor);
@@ -232,8 +238,9 @@ class RaggedTensorBuilder : public ::arrow::ArrayVisitor {
 
  private:
   const DataType dtype_;
-  int32 ragged_rank_;
+  const int32 ragged_rank_;
   const PartialTensorShape shape_;
+  int32 unvisited_ragged_indices_;
   std::deque<Tensor> ragged_tensor_;
 };
 
@@ -278,11 +285,11 @@ Status MakeTensorsFromArrowArray(
     const std::shared_ptr<::arrow::Array>& arrow_array,
     std::vector<Tensor>* output_tensors) {
   if (TF_PREDICT_FALSE(arrow_array->null_count() != 0)) {
-    return errors::Internal("Arrow array with null values not supported");
+    return errors::Internal("Data with null values not supported");
   }
 
   if (TF_PREDICT_FALSE(arrow_array->data()->offset != 0)) {
-    return errors::Internal("Arrow array has zero non-offset not supported");
+    return errors::Internal("Data has zero non-offset not supported");
   }
 
   RaggedTensorBuilder builder(dtype, ragged_rank, shape);

@@ -1,4 +1,3 @@
-#!/bin/bash
 # Copyright 2021 Alibaba Group Holding Limited. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -14,12 +13,9 @@
 # limitations under the License.
 # =============================================================================
 
-set -eo pipefail
+r'''Tabular data related classes and functions.
+'''
 
-unset PYTHONPATH
-
-pip install -U build/auditwheel/*.whl
-
-make test HB_TEST_LOGDIR=build/reports
-tar -czf build/reports.tar.gz -C build/ reports
-rm -rf build/reports
+from __future__ import absolute_import
+from __future__ import division
+from __future__ import print_function

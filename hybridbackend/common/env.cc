@@ -28,6 +28,23 @@ limitations under the License.
 
 namespace hybridbackend {
 
+void EnvVarSet(const std::string& env_var, const std::string& env_val) {
+  setenv(env_var.c_str(), env_val.c_str(), 1);
+}
+
+void EnvVarSet(const std::string& env_var, const int env_val) {
+  setenv(env_var.c_str(), std::to_string(env_val).c_str(), 1);
+}
+
+void EnvVarSetIfNotExists(const std::string& env_var,
+                          const std::string& env_val) {
+  setenv(env_var.c_str(), env_val.c_str(), 0);
+}
+
+void EnvVarSetIfNotExists(const std::string& env_var, const int env_val) {
+  setenv(env_var.c_str(), std::to_string(env_val).c_str(), 0);
+}
+
 std::string EnvVarGet(const std::string& env_var,
                       const std::string& default_val) {
   const char* env_var_val = getenv(env_var.c_str());
@@ -131,22 +148,21 @@ bool EnvCheckInstance(const long timeout) {
   return true;
 }
 
-int EnvGetGpuCount() {
+int EnvGetGpuInfo(int* count, int* major, int* minor) {
 #if HYBRIDBACKEND_CUDA
-  int gpu_count = 0;
   cudaError_t rc;
-  rc = cudaGetDeviceCount(&gpu_count);
+  rc = cudaGetDeviceCount(count);
   if (HB_PREDICT_FALSE(cudaSuccess != rc)) {
     HB_LOG(1) << "[ERROR] Failed to query GPU count: "
               << cudaGetErrorString(rc);
-    return 0;
+    return 1;
   }
 
   int dev;
   rc = cudaGetDevice(&dev);
   if (HB_PREDICT_FALSE(cudaSuccess != rc)) {
     HB_LOG(0) << "[ERROR] Failed to query GPU: " << cudaGetErrorString(rc);
-    return 0;
+    return 2;
   }
 
   cudaDeviceProp gpu_prop;
@@ -154,9 +170,11 @@ int EnvGetGpuCount() {
   if (HB_PREDICT_FALSE(cudaSuccess != rc)) {
     HB_LOG(0) << "[ERROR] Failed to query GPU properties: "
               << cudaGetErrorString(rc);
-    return 0;
+    return 3;
   }
 
+  *major = gpu_prop.major;
+  *minor = gpu_prop.minor;
   std::string arch = std::to_string(gpu_prop.major * 10 + gpu_prop.minor);
   std::stringstream gencode_ss("" HYBRIDBACKEND_CUDA_GENCODE "");
   std::string gencode;
@@ -170,13 +188,10 @@ int EnvGetGpuCount() {
   if (HB_PREDICT_FALSE(arch_mismatch)) {
     HB_LOG(0) << "[ERROR] Failed to match GPU architecture: sm_" << arch
               << " not supported (" HYBRIDBACKEND_CUDA_GENCODE ")";
-    return 0;
+    return 4;
   }
-
-  return gpu_count;
-#else
-  return 0;
 #endif
+  return 0;
 }
 
 }  // namespace hybridbackend
