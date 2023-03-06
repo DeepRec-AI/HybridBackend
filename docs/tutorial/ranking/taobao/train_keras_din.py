@@ -13,7 +13,7 @@
 # limitations under the License.
 # =============================================================================
 
-r'''Training and evaluating model over taobao dataset using Keras API.
+r'''Training and evaluating DIN model over taobao dataset using Keras API.
 '''
 
 from __future__ import absolute_import
@@ -23,7 +23,7 @@ from __future__ import print_function
 import argparse
 
 from ranking.data import DataSpec
-from ranking.model import stacked_dcn_v2
+from ranking.model import din
 import tensorflow as tf
 from tensorflow.python.util import module_wrapper as _deprecation  # pylint: disable=protected-access
 
@@ -33,7 +33,7 @@ _deprecation._PER_MODULE_WARNING_LIMIT = 0  # pylint: disable=protected-access
 tf.get_logger().propagate = False
 
 
-class RankingModel(tf.layers.Layer):
+class DinModel(tf.keras.layers.Layer):
   r'''Ranking model.
   '''
   def __init__(self, args, trainable=True, name=None, **kwargs):
@@ -45,32 +45,96 @@ class RankingModel(tf.layers.Layer):
     self._categorical_fields = [
       fs.name for fs in self._args.data_spec.feature_specs
       if fs.name not in ('ts', 'label') and fs.embedding is not None]
-    self._embedding_columns = [
-      tf.feature_column.embedding_column(
-        tf.feature_column.categorical_column_with_identity(
-          key=f,
-          num_buckets=self._args.data_spec.embedding_sizes[f],
-          default_value=self._args.data_spec.defaults[f]),
-        dimension=self._args.data_spec.embedding_dims[f],
-        initializer=tf.random_uniform_initializer(-1e-3, 1e-3))
-      for f in self._categorical_fields]
+    self._categorical_dtypes = {
+      fs.name: fs.dtype
+      for fs in self._args.data_spec.feature_specs
+      if fs.name not in ('ts', 'label') and fs.embedding is not None}
+    self._varlen_categorical_fields = [
+      fs.name for fs in self._args.data_spec.feature_specs
+      if fs.name not in ('ts', 'label') and fs.type == 'list']
+    self._query_fields = ['item_category', 'item_brand']
+    self._history_fields = ['user_pv_category_list', 'user_pv_brand_list']
+    self._sp_varlen_fields = [
+      v for v in self._varlen_categorical_fields
+      if v not in self._history_fields]
+    self._embedding_weights = {}
+    with hb.embedding_scope():
+      with tf.device(self._args.embedding_weight_device):
+        for f in self._categorical_fields:
+          if self._args.use_ev:
+            self._embedding_weights[f] = tf.get_embedding_variable(
+              f'{f}_weight',
+              key_dtype=self._categorical_dtypes[f],
+              embedding_dim=self._args.data_spec.embedding_dims[f],
+              initializer=tf.random_uniform_initializer(-1e-3, 1e-3))
+          else:
+            self._embedding_weights[f] = tf.get_variable(
+              f'{f}_weight',
+              shape=(
+                self._args.data_spec.embedding_sizes[f],
+                self._args.data_spec.embedding_dims[f]),
+              initializer=tf.random_uniform_initializer(-1e-3, 1e-3))
 
   def call(self, features, labels=None, **kwargs):
     r'''Model function for estimator.
     '''
     del kwargs
 
-    wide_features = [
-      self._args.data_spec.transform_numeric(f, features[f])
-      for f in self._numeric_fields]
-    cols_to_output_tensors = {}
-    tf.keras.layers.DenseFeatures(
-      self._embedding_columns)(
-        {f: features[f] for f in self._categorical_fields},
-        cols_to_output_tensors=cols_to_output_tensors)
-    deep_features = [
-      cols_to_output_tensors[f] for f in self._embedding_columns]
-    logits = stacked_dcn_v2(wide_features + deep_features, self._args.mlp_dims)
+    for f in self._history_fields:
+      if (not isinstance(features[f], tf.sparse.SparseTensor)
+          and features[f].op.type != 'Placeholder'):
+        raise ValueError('features value with a varying lenght shall be '
+                         ' a tf.sparse.SparseTensor')
+      if features[f].op.type != 'Placeholder':
+        features[f] = tf.sparse.slice(
+          features[f], [0, 0],
+          [self._args.train_batch_size, self._args.max_varlength])
+
+    with tf.device(self._args.transform_device):
+      dense_value_list = [
+        self._args.data_spec.transform_numeric(f, features[f])
+        for f in self._numeric_fields]
+      sparse_value_dict = {}
+      for f in self._categorical_fields:
+        if f in self._history_fields:
+          sparse_value_dict[f] =\
+            self._args.data_spec.transform_categorical_non_pooling(
+              f, features[f], self._embedding_weights[f])
+        else:
+          sparse_value_dict[f] = self._args.data_spec.transform_categorical(
+            f, features[f], self._embedding_weights[f])
+        if f in self._history_fields:
+          sparse_value_dict[f] = tf.reshape(
+            sparse_value_dict[f],
+            shape=[
+              self._args.train_batch_size, self._args.max_varlength,
+              self._args.data_spec.embedding_dims[f]])
+        elif f in self._query_fields:
+          sparse_value_dict[f] = tf.reshape(
+            sparse_value_dict[f],
+            shape=[
+              self._args.train_batch_size, 1,
+              self._args.data_spec.embedding_dims[f]])
+
+    query_emb_list = [sparse_value_dict[f] for f in self._query_fields]
+    key_emb_list = [sparse_value_dict[f] for f in self._history_fields]
+    key_len = tf.constant(
+      self._args.max_varlength, shape=[self._args.train_batch_size, 1],
+      dtype=tf.int32)
+    sequence_pooled_embed_list = [
+      sparse_value_dict[f] for f in self._sp_varlen_fields]
+    dnn_input_emb_list = [
+      sparse_value_dict[f]
+      for f in self._categorical_fields
+      if f not in self._query_fields and f not in self._history_fields]
+    dnn_input_emb_list += sequence_pooled_embed_list
+
+    logits = din(
+      dense_value_list,
+      query_emb_list,
+      key_emb_list,
+      key_len,
+      dnn_input_emb_list)
     if labels is None:
       return logits
     loss = tf.reduce_mean(tf.keras.losses.binary_crossentropy(labels, logits))
@@ -108,7 +172,7 @@ def predict_fn(args):
   inputs.update(inputs_numeric)
   inputs.update(inputs_categorical)
 
-  predict_logits = RankingModel(args)(inputs)
+  predict_logits = DinModel(args)(inputs)
   outputs = {'score': predict_logits}
   return tf.saved_model.predict_signature_def(inputs, outputs)
 
@@ -128,26 +192,25 @@ def main(args):
   val_dataset = input_dataset(
     args, val_filenames, args.eval_batch_size)
 
-  model_output = RankingModel(args)(features)
-  dcnv2_in_keras = tf.keras.Model(inputs=[features], outputs=model_output)
+  model_output = DinModel(args)(features)
+  din_in_keras = tf.keras.Model(inputs=[features], outputs=model_output)
 
   def loss_func(y_true, y_pred):
     return tf.reduce_mean(
       tf.keras.losses.binary_crossentropy(y_true, y_pred))
+
   opt = tf.train.AdagradOptimizer(learning_rate=args.lr)
 
   if args.weights_dir is not None:
-    dcnv2_in_keras.load_weights(args.weights_dir)
+    din_in_keras.load_weights(args.weights_dir)
 
-  dcnv2_in_keras.compile(
+  din_in_keras.compile(
     loss=loss_func,
-    metrics=[tf.keras.metrics.AUC()],
+    metrics=['binary_crossentropy'],
     optimizer=opt,
-    target_tensors=labels,
-    clipnorm=1.0,
-    clipvalue=1.0)
+    target_tensors=labels)
 
-  dcnv2_in_keras.fit(
+  din_in_keras.fit(
     x=None,
     y=None,
     epochs=1,
@@ -161,7 +224,7 @@ def main(args):
     mode='max',
     save_best_only=True)
 
-  dcnv2_in_keras.export_saved_model(
+  din_in_keras.export_saved_model(
     args.output_dir,
     lambda: predict_fn(args))
 
@@ -173,12 +236,13 @@ if __name__ == '__main__':
     '--use-ev', default=False, action='store_true')
   parser.add_argument('--num-prefetches', type=int, default=2)
   parser.add_argument('--lr', type=float, default=0.01)
-  parser.add_argument('--extract-features-device', default='/gpu:0')
+  parser.add_argument('--transform-device', default='/gpu:0')
   parser.add_argument('--embedding-weight-device', default='/cpu:0')
   parser.add_argument(
     '--mlp-dims', nargs='+', default=[1024, 1024, 512, 256, 1])
   parser.add_argument('--train-batch-size', type=int, default=16000)
   parser.add_argument('--train-max-steps', type=int, default=None)
+  parser.add_argument('--max-varlength', type=int, default=4)
   parser.add_argument('--eval-batch-size', type=int, default=100)
   parser.add_argument('--eval-max-steps', type=int, default=1)
   parser.add_argument('--eval-every-n-iter', type=int, default=50)

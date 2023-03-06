@@ -21,6 +21,8 @@ from __future__ import division
 from __future__ import print_function
 
 import argparse
+import json
+import os
 
 from ranking.data import DataSpec
 from ranking.model import stacked_dcn_v2
@@ -28,6 +30,8 @@ import tensorflow as tf
 from tensorflow.python.util import module_wrapper as _deprecation  # pylint: disable=protected-access
 
 import hybridbackend.tensorflow as hb
+
+hb.enable_optimization(relocate_ops=True)
 
 _deprecation._PER_MODULE_WARNING_LIMIT = 0  # pylint: disable=protected-access
 tf.get_logger().propagate = False
@@ -69,30 +73,20 @@ class RankingModel:
       self._args.data_spec.transform_numeric(f, features[f])
       for f in numeric_fields]
     categorical_fields = [
-      fs for fs in self._args.data_spec.feature_specs
+      fs.name for fs in self._args.data_spec.feature_specs
       if fs.name not in ('ts', 'label') and fs.embedding is not None]
-    if self._args.use_ev:
-      embedding_columns = [
-        tf.feature_column.embedding_column(
-          tf.feature_column.categorical_column_with_embedding(
-            fs.name, dtype=tf.as_dtype(fs.dtype)),
-          dimension=self._args.data_spec.embedding_dims[fs.name],
-          initializer=tf.random_uniform_initializer(-1e-3, 1e-3))
-        for fs in categorical_fields]
-    else:
-      embedding_columns = [
-        tf.feature_column.embedding_column(
-          tf.feature_column.categorical_column_with_identity(
-            key=fs.name,
-            num_buckets=self._args.data_spec.embedding_sizes[fs.name],
-            default_value=self._args.data_spec.defaults[fs.name]),
-          dimension=self._args.data_spec.embedding_dims[fs.name],
-          initializer=tf.random_uniform_initializer(-1e-3, 1e-3))
-        for fs in categorical_fields]
-    with hb.embedding_scope(), tf.device('/cpu:0'):
-      deep_features = [
-        tf.feature_column.input_layer(features, [c])
-        for c in embedding_columns]
+    embedding_columns = [
+      tf.feature_column.embedding_column(
+        tf.feature_column.categorical_column_with_identity(
+          key=f,
+          num_buckets=self._args.data_spec.embedding_sizes[f],
+          default_value=self._args.data_spec.defaults[f]),
+        dimension=self._args.data_spec.embedding_dims[f],
+        initializer=tf.random_uniform_initializer(-1e-3, 1e-3))
+      for f in categorical_fields]
+    deep_features = [
+      tf.feature_column.input_layer(features, [c])
+      for c in embedding_columns]
     logits = stacked_dcn_v2(wide_features + deep_features, self._args.mlp_dims)
 
     if mode == tf.estimator.ModeKeys.TRAIN:
@@ -100,7 +94,10 @@ class RankingModel:
       loss = tf.reduce_mean(tf.keras.losses.binary_crossentropy(labels, logits))
       step = tf.train.get_or_create_global_step()
       opt = tf.train.AdagradOptimizer(learning_rate=self._args.lr)
+      opt = hb.train.SyncReplicasOptimizer(
+        opt, replicas_to_aggregate=len(self._args.world))
       train_op = opt.minimize(loss, global_step=step)
+      hooks = [opt.make_session_run_hook(self._args.rank == 0, num_tokens=0)]
       chief_only_hooks = []
       if self._args.profile_every_n_iter is not None:
         chief_only_hooks.append(
@@ -111,6 +108,7 @@ class RankingModel:
         mode=mode,
         loss=loss,
         train_op=train_op,
+        training_hooks=hooks,
         training_chief_hooks=chief_only_hooks)
 
     if mode == tf.estimator.ModeKeys.EVAL:
@@ -120,7 +118,7 @@ class RankingModel:
         mode=mode,
         loss=loss,
         eval_metric_ops={
-          'auc': hb.metrics.auc(labels, logits, name='eval_auc')})
+          'auc': tf.metrics.auc(labels, logits, name='eval_auc')})
 
     if mode == tf.estimator.ModeKeys.PREDICT:
       return tf.estimator.EstimatorSpec(
@@ -139,21 +137,18 @@ def main(args):
     eval_filenames = args.filenames
   model = RankingModel(args)
 
-  estimator = hb.estimator.Estimator(
+  estimator = tf.estimator.Estimator(
     model.call,
     model_dir=args.output_dir)
-  estimator.train_and_evaluate(
+  tf.estimator.train_and_evaluate(
+    estimator,
     tf.estimator.TrainSpec(
       input_fn=lambda: model.input_dataset(
         train_filenames, args.train_batch_size),
       max_steps=args.train_max_steps),
     tf.estimator.EvalSpec(
       input_fn=lambda: model.input_dataset(
-        eval_filenames, args.eval_batch_size)),
-    eval_every_n_iter=args.eval_every_n_iter)
-  estimator.export_saved_model(
-    args.savedmodel_dir,
-    model.input_receiver)
+        eval_filenames, args.eval_batch_size)))
 
 
 if __name__ == '__main__':
@@ -161,18 +156,13 @@ if __name__ == '__main__':
   parser = argparse.ArgumentParser()
   parser.add_argument(
     '--use-ev', default=False, action='store_true')
-  parser.add_argument('--num-parsers', type=int, default=16)
   parser.add_argument('--num-prefetches', type=int, default=2)
   parser.add_argument('--lr', type=float, default=0.01)
-  parser.add_argument('--extract-features-device', default='/gpu:0')
-  parser.add_argument('--embedding-weight-device', default='/cpu:0')
   parser.add_argument(
     '--mlp-dims', nargs='+', default=[1024, 1024, 512, 256, 1])
   parser.add_argument('--train-batch-size', type=int, default=16000)
   parser.add_argument('--train-max-steps', type=int, default=None)
   parser.add_argument('--eval-batch-size', type=int, default=100)
-  parser.add_argument('--eval-every-n-iter', type=int, default=50)
-  parser.add_argument('--log-every-n-iter', type=int, default=10)
   parser.add_argument('--profile-every-n-iter', type=int, default=None)
   parser.add_argument('--output-dir', default='./outputs')
   parser.add_argument('--savedmodel-dir', default='./outputs/savedmodels')
@@ -181,5 +171,21 @@ if __name__ == '__main__':
   parser.add_argument('filenames', nargs='+')
   parsed = parser.parse_args()
   parsed.data_spec = DataSpec.read(parsed.data_spec_filename)
-  hb.enable_optimization(relocate_ops=True)
+  tf_config = json.loads(os.getenv('TF_CONFIG', '{}'))
+  if not tf_config:
+    raise ValueError('TF_CONFIG must be set')
+  cluster = tf_config['cluster']
+  num_chiefs = len(cluster['chief'])
+  num_workers = len(cluster['worker'])
+  world = [f'/job:chief/task:{t}' for t in range(num_chiefs)]
+  world += [f'/job:worker/task:{t}' for t in range(num_workers)]
+  parsed.world = world
+  task = tf_config['task']
+  task_type = task['type']
+  task_index = int(task['index'])
+  current_device = f'/job:{task_type}/task:{task_index}'
+  try:
+    parsed.rank = world.index(current_device)
+  except:  # pylint: disable=bare-except
+    parsed.rank = -1
   main(parsed)

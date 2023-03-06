@@ -48,6 +48,9 @@ class RankingModel(tf.layers.Layer):
       fs.name for fs in self._args.data_spec.feature_specs
       if fs.name not in ('label')
       and self._args.data_spec.embedding_dims[fs.name] is not None]
+    non_shared_categorical_fields = [
+      f for f in self._categorical_fields
+      if f not in self._args.use_shared_emb_feats]
     self._embedding_columns = [
       tf.feature_column.embedding_column(
         tf.feature_column.categorical_column_with_identity(
@@ -56,7 +59,18 @@ class RankingModel(tf.layers.Layer):
           default_value=self._args.data_spec.defaults[f]),
         dimension=self._args.embedding_dim,
         initializer=tf.random_uniform_initializer(-1e-3, 1e-3))
-      for f in self._categorical_fields]
+      for f in non_shared_categorical_fields]
+
+    if self._args.use_shared_emb_feats:
+      self._embedding_columns.extend(tf.feature_column.shared_embedding_columns(
+        [tf.feature_column.categorical_column_with_identity(
+          key=f,
+          num_buckets=self._args.data_spec.embedding_sizes[f],
+          default_value=self._args.data_spec.defaults[f])
+          for f in self._args.use_shared_emb_feats],
+        dimension=self._args.embedding_dim,
+        initializer=tf.random_uniform_initializer(-1e-3, 1e-3)
+      ))
 
   def call(self, features, labels=None, **kwargs):
     r'''Model function for estimator.
@@ -66,9 +80,13 @@ class RankingModel(tf.layers.Layer):
     numeric_features = [
       self._args.data_spec.transform_numeric(f, features[f])
       for f in self._numeric_fields]
-    categorical_features = hb.dense_features(
+    cols_to_output_tensors = {}
+    tf.feature_column.input_layer(
       {f: features[f] for f in self._categorical_fields},
-      self._embedding_columns)
+      self._embedding_columns,
+      cols_to_output_tensors=cols_to_output_tensors)
+    categorical_features = [
+      cols_to_output_tensors[f] for f in self._embedding_columns]
     logits = dlrm(
       numeric_features, categorical_features,
       self._args.bottom_mlp_dims,
@@ -95,13 +113,8 @@ class DlrmInKeras(hb.keras.Model):
     r'''Get input data
     '''
     with tf.device('/cpu:0'):
-      ds = hb.data.ParquetDataset(
-        filenames,
-        batch_size=batch_size,
-        num_parallel_reads=len(filenames),
-        num_parallel_parser_calls=self._args.num_parsers,
-        drop_remainder=True)
-      ds = ds.apply(hb.data.parse())
+      ds = hb.data.Dataset.from_parquet(filenames)
+      ds = ds.batch(batch_size, drop_remainder=True)
       ds = ds.map(
         lambda batch: (
           {f: batch[f] for f in batch if f not in ('label')},
@@ -196,6 +209,8 @@ if __name__ == '__main__':
     '--disable-imputation', default=False, action='store_true')
   parser.add_argument(
     '--use-ev', default=False, action='store_true')
+  parser.add_argument(
+    '--use-shared-emb-feats', type=str, nargs='+', default=[])
   parser.add_argument('--num-parsers', type=int, default=16)
   parser.add_argument('--num-prefetches', type=int, default=2)
   parser.add_argument('--lr-initial-value', type=float, default=24.)
@@ -206,11 +221,11 @@ if __name__ == '__main__':
   parser.add_argument('--embedding-weight-device', default='/gpu:0')
   parser.add_argument('--embedding-dim', type=int, default=16)
   parser.add_argument(
-    '--bottom-mlp-dims', nargs='+', default=[512, 256])
+    '--bottom-mlp-dims', type=int, nargs='+', default=[512, 256])
   parser.add_argument(
-    '--top-mlp-dims', nargs='+', default=[1024, 1024, 512, 256, 1])
+    '--top-mlp-dims', type=int, nargs='+', default=[1024, 1024, 512, 256, 1])
   parser.add_argument(
-    '--mlp-dims', nargs='+', default=[1024, 1024, 512, 256, 1])
+    '--mlp-dims', type=int, nargs='+', default=[1024, 1024, 512, 256, 1])
   parser.add_argument('--train-batch-size', type=int, default=64000)
   parser.add_argument('--train-max-steps', type=int, default=None)
   parser.add_argument('--eval-batch-size', type=int, default=100)
@@ -226,5 +241,5 @@ if __name__ == '__main__':
     disable_imputation=parsed.disable_imputation,
     disable_transform=True,
     override_embedding_size=parsed.embedding_dim)
-  with hb.scope(emb_device=parsed.embedding_weight_device):
+  with hb.scope():
     main(parsed)

@@ -44,13 +44,8 @@ class RankingModel:
     r'''Get input dataset.
     '''
     with tf.device('/cpu:0'):
-      ds = hb.data.ParquetDataset(
-        filenames,
-        batch_size=batch_size,
-        num_parallel_reads=len(filenames),
-        num_parallel_parser_calls=self._args.num_parsers,
-        drop_remainder=True)
-      ds = ds.apply(hb.data.parse())
+      ds = hb.data.Dataset.from_parquet(filenames)
+      ds = ds.batch(batch_size, drop_remainder=True)
       ds = ds.prefetch(self._args.num_prefetches)
       return ds
 

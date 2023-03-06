@@ -1,7 +1,7 @@
 [
     {
         "name": "label",
-        "dtype": "int64",
+        "dtype": "int32",
         "type": "scalar",
         "default": -1
     },
@@ -41,7 +41,7 @@
     },
     {
         "name": "ad_campaign",
-        "dtype": "int64",
+        "dtype": "int32",
         "type": "scalar",
         "default": 0,
         "embedding": {
@@ -51,7 +51,7 @@
     },
     {
         "name": "ad_customer",
-        "dtype": "int64",
+        "dtype": "int32",
         "type": "scalar",
         "default": 0,
         "embedding": {
@@ -61,7 +61,7 @@
     },
     {
         "name": "item_category",
-        "dtype": "int64",
+        "dtype": "int32",
         "type": "scalar",
         "default": 0,
         "embedding": {
@@ -71,7 +71,7 @@
     },
     {
         "name": "item_brand",
-        "dtype": "int64",
+        "dtype": "int32",
         "type": "scalar",
         "default": 0,
         "embedding": {
@@ -81,7 +81,7 @@
     },
     {
         "name": "user",
-        "dtype": "int64",
+        "dtype": "int32",
         "type": "scalar",
         "default": 0,
         "embedding": {
@@ -91,7 +91,7 @@
     },
     {
         "name": "user_cms_seg",
-        "dtype": "int64",
+        "dtype": "int32",
         "type": "scalar",
         "default": 0,
         "embedding": {
@@ -101,7 +101,7 @@
     },
     {
         "name": "user_cms_group",
-        "dtype": "int64",
+        "dtype": "int32",
         "type": "scalar",
         "default": 0,
         "embedding": {
@@ -111,7 +111,7 @@
     },
     {
         "name": "user_gender",
-        "dtype": "int64",
+        "dtype": "int32",
         "type": "scalar",
         "default": 0,
         "embedding": {
@@ -121,7 +121,7 @@
     },
     {
         "name": "user_age",
-        "dtype": "int64",
+        "dtype": "int32",
         "type": "scalar",
         "default": 0,
         "embedding": {
@@ -131,7 +131,7 @@
     },
     {
         "name": "user_pvalue",
-        "dtype": "int64",
+        "dtype": "int32",
         "type": "scalar",
         "default": 0,
         "embedding": {
@@ -141,7 +141,7 @@
     },
     {
         "name": "user_shopping",
-        "dtype": "int64",
+        "dtype": "int32",
         "type": "scalar",
         "default": 0,
         "embedding": {
@@ -151,7 +151,7 @@
     },
     {
         "name": "user_occupation",
-        "dtype": "int64",
+        "dtype": "int32",
         "type": "scalar",
         "default": 0,
         "embedding": {
@@ -161,7 +161,7 @@
     },
     {
         "name": "user_city",
-        "dtype": "int64",
+        "dtype": "int32",
         "type": "scalar",
         "default": 0,
         "embedding": {
@@ -171,7 +171,7 @@
     },
     {
         "name": "user_pv_category_list",
-        "dtype": "int64",
+        "dtype": "int32",
         "type": "list",
         "default": 0,
         "embedding": {
@@ -181,7 +181,7 @@
     },
     {
         "name": "user_cart_category_list",
-        "dtype": "int64",
+        "dtype": "int32",
         "type": "list",
         "default": 0,
         "embedding": {
@@ -191,7 +191,7 @@
     },
     {
         "name": "user_fav_category_list",
-        "dtype": "int64",
+        "dtype": "int32",
         "type": "list",
         "default": 0,
         "embedding": {
@@ -201,7 +201,7 @@
     },
     {
         "name": "user_buy_category_list",
-        "dtype": "int64",
+        "dtype": "int32",
         "type": "list",
         "default": 0,
         "embedding": {
@@ -211,7 +211,7 @@
     },
     {
         "name": "user_pv_brand_list",
-        "dtype": "int64",
+        "dtype": "int32",
         "type": "list",
         "default": 0,
         "embedding": {
@@ -221,7 +221,7 @@
     },
     {
         "name": "user_cart_brand_list",
-        "dtype": "int64",
+        "dtype": "int32",
         "type": "list",
         "default": 0,
         "embedding": {
@@ -231,7 +231,7 @@
     },
     {
         "name": "user_fav_brand_list",
-        "dtype": "int64",
+        "dtype": "int32",
         "type": "list",
         "default": 0,
         "embedding": {
@@ -241,7 +241,7 @@
     },
     {
         "name": "user_buy_brand_list",
-        "dtype": "int64",
+        "dtype": "int32",
         "type": "list",
         "default": 0,
         "embedding": {

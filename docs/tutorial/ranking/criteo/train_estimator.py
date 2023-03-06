@@ -44,13 +44,8 @@ class RankingModel:
     r'''Get input dataset.
     '''
     with tf.device('/cpu:0'):
-      ds = hb.data.ParquetDataset(
-        filenames,
-        batch_size=batch_size,
-        num_parallel_reads=len(filenames),
-        num_parallel_parser_calls=self._args.num_parsers,
-        drop_remainder=True)
-      ds = ds.apply(hb.data.parse())
+      ds = hb.data.Dataset.from_parquet(filenames)
+      ds = ds.batch(batch_size, drop_remainder=True)
       ds = ds.map(
         lambda batch: (
           {f: batch[f] for f in batch if f not in ('label')},
@@ -77,19 +72,28 @@ class RankingModel:
     numeric_features = [
       self._args.data_spec.transform_numeric(f, features[f])
       for f in numeric_fields]
-
-    embedding_columns = [
-      tf.feature_column.embedding_column(
-        tf.feature_column.categorical_column_with_identity(
-          key=f,
-          num_buckets=self._args.data_spec.embedding_sizes[f],
-          default_value=self._args.data_spec.defaults[f]),
+    if self._args.use_shared_emb:
+      embedding_columns = tf.feature_column.shared_embedding_columns(
+        [tf.feature_column.categorical_column_with_identity(
+          key=f, num_buckets=self._args.data_spec.embedding_sizes[f],
+          default_value=self._args.data_spec.defaults[f])
+          for f in categorical_fields],
         dimension=self._args.embedding_dim,
         initializer=tf.random_uniform_initializer(-1e-3, 1e-3))
-      for f in categorical_fields]
-    categorical_features = hb.dense_features(
-      {f: features[f] for f in categorical_fields},
-      embedding_columns)
+    else:
+      embedding_columns = [
+        tf.feature_column.embedding_column(
+          tf.feature_column.categorical_column_with_identity(
+            key=f,
+            num_buckets=self._args.data_spec.embedding_sizes[f],
+            default_value=self._args.data_spec.defaults[f]),
+          dimension=self._args.embedding_dim,
+          initializer=tf.random_uniform_initializer(-1e-3, 1e-3))
+        for f in categorical_fields]
+    with hb.embedding_scope(), tf.device('/cpu:0'):
+      categorical_features = [
+        tf.feature_column.input_layer(features, [c])
+        for c in embedding_columns]
     logits = dlrm(
       numeric_features, categorical_features,
       self._args.bottom_mlp_dims,
@@ -167,6 +171,8 @@ if __name__ == '__main__':
     '--disable-imputation', default=False, action='store_true')
   parser.add_argument(
     '--use-ev', default=False, action='store_true')
+  parser.add_argument(
+    '--use-shared-emb', default=False, action='store_true')
   parser.add_argument('--num-parsers', type=int, default=16)
   parser.add_argument('--num-prefetches', type=int, default=2)
   parser.add_argument('--lr-initial-value', type=float, default=24.)
@@ -199,5 +205,5 @@ if __name__ == '__main__':
     disable_imputation=parsed.disable_imputation,
     disable_transform=True,
     override_embedding_size=parsed.embedding_dim)
-  with hb.scope(emb_device=parsed.embedding_weight_device):
-    main(parsed)
+  hb.enable_optimization(relocate_ops=True)
+  main(parsed)

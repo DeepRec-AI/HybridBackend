@@ -28,7 +28,7 @@ print(f'{hb.context.rank}-of-{hb.context.world_size}')
 ### 1.3 Example: Update options globally
 
 ```python
-hb.context.options.grad_nbuckets = 2
+hb.context.options.batch_size = 16
 ```
 
 or
@@ -124,7 +124,9 @@ with tf.Graph().as_default():
         'emb_weights', shape=[bucket_size, dim_size])
     embedding = tf.nn.embedding_lookup(embedding_weights, ids)
     # ...
-    hooks.append(hb.train.EvaluationHook(eval_fn, every_n_iter=1000))
+    hooks.append(
+      hb.train.EvaluationHook(
+        eval_fn, every_n_iter=1000, summary_dir='/path/to/summary'))
 
     with tf.train.MonitoredTrainingSession('', hooks=hooks) as sess:
       while not sess.should_stop():

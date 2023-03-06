@@ -24,6 +24,12 @@ import math
 
 import tensorflow as tf
 
+from .din_layers import AttentionSequencePoolingLayer
+from .din_layers import combined_dnn_input
+from .din_layers import concat_func
+from .din_layers import DNN
+from .din_layers import PredictionLayer
+
 
 def stacked_dcn_v2(features, mlp_dims):
   r'''Stacked DCNv2.
@@ -143,3 +149,42 @@ def dlrm(
         mean=0.0,
         stddev=math.sqrt(1.0 / top_mlp_dims[-1])),
       name=f'top_mlp_{len(top_mlp_dims) - 1}')
+
+
+def din(
+    dense_value_list,
+    query_emb_list,
+    keys_emb_list,
+    key_len, dnn_input_emb_list,
+    dnn_use_bn=False,
+    dnn_hidden_units=(256, 128, 64),
+    dnn_activation='relu',
+    att_hidden_size=(80, 40),
+    att_activation='dice',
+    att_weight_normalization=False,
+    l2_reg_dnn=0,
+    dnn_dropout=0, seed=1024, task='binary'):
+  r'''DIN.
+  Deep interest network for click-through rate prediction.
+
+  See https://arxiv.org/pdf/1706.06978.pdf for more information.
+  '''
+  keys_emb = concat_func(keys_emb_list, mask=True)
+  deep_input_emb = concat_func(dnn_input_emb_list)
+  deep_input_emb = tf.expand_dims(deep_input_emb, -2)
+  query_emb = concat_func(query_emb_list, mask=True)
+
+  hist = AttentionSequencePoolingLayer(
+    att_hidden_size, att_activation,
+    weight_normalization=att_weight_normalization,
+    supports_masking=False)([query_emb, keys_emb, key_len])
+
+  deep_input_emb = concat_func([deep_input_emb, hist])
+  deep_input_emb = tf.keras.layers.Flatten()(deep_input_emb)
+  dnn_input = combined_dnn_input([deep_input_emb], dense_value_list)
+  output = DNN(
+    dnn_hidden_units, dnn_activation, l2_reg_dnn, dnn_dropout,
+    dnn_use_bn, seed=seed)(dnn_input)
+  final_logit = tf.keras.layers.Dense(1, use_bias=False)(output)
+
+  return PredictionLayer(task)(final_logit)
