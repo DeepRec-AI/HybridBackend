@@ -109,10 +109,12 @@ class DataSpec(object):  # pylint: disable=useless-object-inheritance
     '''
     return {
       **{
-        f.name: tf.io.FixedLenFeature([], f.dtype)
+        f.name: tf.io.FixedLenFeature(
+          [], tf.int64 if f.dtype == tf.int32 else f.dtype)
         for f in self._feature_specs if f.type == DataSpec.Types.SCALAR},
       **{
-        f.name: tf.io.VarLenFeature(f.dtype)
+        f.name: tf.io.VarLenFeature(
+          tf.int64 if f.dtype == tf.int32 else f.dtype)
         for f in self._feature_specs if f.type == DataSpec.Types.LIST}}
 
   @property
@@ -189,6 +191,37 @@ class DataSpec(object):  # pylint: disable=useless-object-inheritance
     return tf.nn.safe_embedding_lookup_sparse(
       embedding_weights, feature,
       default_id=default_value)
+
+  def transform_categorical_non_pooling(
+      self, field, feature, embedding_weights):
+    r'''Transform categorical features without pooling.
+    '''
+    default_value = self.defaults[field]
+    embedding_size = (
+      self._override_embedding_size if self._override_embedding_size
+      else self.embedding_sizes[field])
+
+    if isinstance(feature, tf.Tensor):
+      if default_value is not None:
+        is_valid = tf.greater_equal(feature, 0)
+        id_defaults = tf.zeros_like(feature) + default_value
+        feature = tf.where(is_valid, feature, id_defaults)
+      feature = feature % embedding_size
+      feature, idx = tf.unique(tf.reshape(feature, shape=[-1]))
+      embedding = tf.nn.embedding_lookup(embedding_weights, feature)
+      return tf.gather(embedding, idx)
+
+    # convert to dense tensor
+    feature = tf.SparseTensor(
+      feature.indices,
+      feature.values % embedding_size,
+      feature.dense_shape)
+    padded_feature = tf.sparse.to_dense(
+      feature,
+      default_value=default_value, validate_indices=False)
+    unique_feature, idx = tf.unique(tf.reshape(padded_feature, [-1]))
+    embedding = tf.nn.embedding_lookup(embedding_weights, unique_feature)
+    return tf.gather(embedding, idx)
 
   def build_placeholders(self):
     r'''Build input placeholders.

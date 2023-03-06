@@ -35,29 +35,17 @@ limitations under the License.
 namespace tensorflow {
 namespace hybridbackend {
 
-template <typename DeviceFunc, typename Device, typename... Args>
-inline Status WrappedCudaLaunchKernel(DeviceFunc func, int grid_size,
-                                      int block_size,
-                                      size_t dynamic_shared_memory_size,
-                                      Device& d, cudaStream_t* stream,
-                                      Args... args) {
-  if (stream == nullptr) {
+template <typename DeviceFunc, typename... Args>
+inline Status CudaLaunchKernelInternal(DeviceFunc func, int grid_size,
+                                       int block_size,
+                                       int dynamic_shared_memory_size,
+                                       cudaStream_t stream, Args... args) {
 #if (TF_MAJOR_VERSION * 1000L + TF_MINOR_VERSION) < 1014L
-    func<<<grid_size, block_size, dynamic_shared_memory_size, d.stream()>>>(
-        args...);
-    return Status::OK();
-#else
-    return CudaLaunchKernel(func, grid_size, block_size,
-                            dynamic_shared_memory_size, d.stream(),
-                            std::forward<Args>(args)...);
-#endif
-  }
-#if (TF_MAJOR_VERSION * 1000L + TF_MINOR_VERSION) < 1014L
-  func<<<grid_size, block_size, dynamic_shared_memory_size, *stream>>>(args...);
+  func<<<grid_size, block_size, dynamic_shared_memory_size, stream>>>(args...);
   return Status::OK();
 #else
   return CudaLaunchKernel(func, grid_size, block_size,
-                          dynamic_shared_memory_size, *stream,
+                          dynamic_shared_memory_size, stream,
                           std::forward<Args>(args)...);
 #endif
 }
@@ -67,9 +55,14 @@ inline Status CudaLaunch(DeviceFunc func, int size,
                          size_t dynamic_shared_memory_size, Device& d,
                          cudaStream_t* stream, Args... args) {
   auto cfg = GetCudaLaunchConfig(size, d, func, dynamic_shared_memory_size, 0);
-  return WrappedCudaLaunchKernel(func, cfg.block_count, cfg.thread_per_block,
-                                 dynamic_shared_memory_size, d, stream,
-                                 std::forward<Args>(args)...);
+  if (stream == nullptr) {
+    return CudaLaunchKernelInternal(func, cfg.block_count, cfg.thread_per_block,
+                                    dynamic_shared_memory_size, d.stream(),
+                                    std::forward<Args>(args)...);
+  }
+  return CudaLaunchKernelInternal(func, cfg.block_count, cfg.thread_per_block,
+                                  dynamic_shared_memory_size, *stream,
+                                  std::forward<Args>(args)...);
 }
 
 template <typename DeviceFunc, typename Device, typename... Args>
@@ -88,9 +81,14 @@ inline Status CudaLaunchSafe(DeviceFunc func, int size,
                       std::forward<Args>(args)...);
   }
   int grid_size = ((size - 1) / block_size) + 1;
-  return WrappedCudaLaunchKernel(func, grid_size, block_size,
-                                 dynamic_shared_memory_size, d, stream,
-                                 std::forward<Args>(args)...);
+  if (stream == nullptr) {
+    return CudaLaunchKernelInternal(func, grid_size, block_size,
+                                    dynamic_shared_memory_size, d.stream(),
+                                    std::forward<Args>(args)...);
+  }
+  return CudaLaunchKernelInternal(func, grid_size, block_size,
+                                  dynamic_shared_memory_size, *stream,
+                                  std::forward<Args>(args)...);
 }
 
 }  // namespace hybridbackend

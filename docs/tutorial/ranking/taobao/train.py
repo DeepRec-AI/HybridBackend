@@ -43,13 +43,8 @@ class RankingModel:
     r'''Get input dataset.
     '''
     with tf.device('/cpu:0'):
-      ds = hb.data.ParquetDataset(
-        filenames,
-        batch_size=batch_size,
-        num_parallel_reads=len(filenames),
-        num_parallel_parser_calls=self._args.num_parsers,
-        drop_remainder=True)
-      ds = ds.apply(hb.data.parse())
+      ds = hb.data.Dataset.from_parquet(filenames)
+      ds = ds.batch(batch_size, drop_remainder=True)
       ds = ds.prefetch(self._args.num_prefetches)
       return ds
 
@@ -73,7 +68,7 @@ class RankingModel:
         if self._args.data_spec.embedding_dims[f] is None:
           features.append(self._args.data_spec.transform_numeric(f, feature))
         else:
-          with hb.scope(sharding=True):
+          with hb.embedding_scope():
             with tf.device(self._args.embedding_weight_device):
               if self._args.use_ev:
                 embedding_weights = tf.get_embedding_variable(
@@ -186,7 +181,6 @@ if __name__ == '__main__':
   parser = argparse.ArgumentParser()
   parser.add_argument(
     '--use-ev', default=False, action='store_true')
-  parser.add_argument('--num-parsers', type=int, default=16)
   parser.add_argument('--num-prefetches', type=int, default=2)
   parser.add_argument('--lr', type=float, default=0.01)
   parser.add_argument('--transform-device', default='/gpu:0')

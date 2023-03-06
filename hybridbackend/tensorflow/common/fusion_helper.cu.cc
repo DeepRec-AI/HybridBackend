@@ -60,8 +60,11 @@ void CopySizesNFunctor<T>::operator()(OpKernelContext* ctx, T* input_host,
 #define DEFINE_COPY_PTRS(T) template struct CopyPtrsNFunctor<T>;
 #define DEFINE_COPY_SIZES(T) template struct CopySizesNFunctor<T>;
 
-TF_CALL_REAL_NUMBER_TYPES(DEFINE_COPY_PTRS);
-TF_CALL_REAL_NUMBER_TYPES(DEFINE_COPY_SIZES);
+#define TF_CALL_HELPER_TYPES(m) \
+  TF_CALL_uint32(m) TF_CALL_uint64(m) TF_CALL_REAL_NUMBER_TYPES(m)
+
+TF_CALL_HELPER_TYPES(DEFINE_COPY_PTRS);
+TF_CALL_HELPER_TYPES(DEFINE_COPY_SIZES);
 
 }  // namespace functor
 }  // namespace hybridbackend
