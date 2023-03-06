@@ -10,6 +10,9 @@ jobs:
     name: "Run Tests on CPU w/ TF1"
     runs-on: ubuntu-latest
     environment: tf1.15-py3.6-manylinux_2_24
+    concurrency:
+      group: cpu-cibuild-${{ github.workflow }}-${{ github.head_ref }}
+      cancel-in-progress: true
     if: always()
     steps:
     - name: Checkout Code
@@ -55,6 +58,9 @@ jobs:
     name: "Run Tests on GPU w/ TF1"
     runs-on: ubuntu-latest
     environment: tf1.15-py3.8-cu118-ubuntu20.04
+    concurrency:
+      group: gpu-cibuild-${{ github.workflow }}-${{ github.head_ref }}
+      cancel-in-progress: true
     if: always()
     steps:
     - name: Checkout Code
@@ -100,6 +106,9 @@ jobs:
     name: "Run Tests on GPU w/ DeepRec2208"
     runs-on: ubuntu-latest
     environment: deeprec2208-py3.6-cu114-ubuntu18.04
+    concurrency:
+      group: deeprec-cibuild-${{ github.workflow }}-${{ github.head_ref }}
+      cancel-in-progress: true
     if: always()
     steps:
     - name: Checkout Code
@@ -145,6 +154,9 @@ jobs:
     permissions:
       checks: write
       pull-requests: write
+    concurrency:
+      group: test-results-${{ github.workflow }}-${{ github.head_ref }}
+      cancel-in-progress: true
     if: always()
     steps:
       - name: Download Artifacts
@@ -160,6 +172,9 @@ jobs:
     name: "Collect Detailed Test Results"
     needs: ["cpu-cibuild", "gpu-cibuild", "deeprec-cibuild"]
     runs-on: ubuntu-latest
+    concurrency:
+      group: detailed-test-results-${{ github.workflow }}-${{ github.head_ref }}
+      cancel-in-progress: true
     if: always()
     steps:
       - uses: actions/checkout@v3
