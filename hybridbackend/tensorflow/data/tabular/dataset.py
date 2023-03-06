@@ -23,12 +23,12 @@ from __future__ import print_function
 # pylint: disable=ungrouped-imports
 try:
   from hybridbackend.tensorflow.data.tabular.dataset_v2 import \
-    TabularDatasetV2 as TabularDataset
-  TabularDataset.__module__ = __name__
-  TabularDataset.__name__ = 'TabularDataset'
+    TabularDatasetV2 as Dataset
+  Dataset.__module__ = __name__
+  Dataset.__name__ = 'TabularDataset'
 except ImportError:
   from hybridbackend.tensorflow.data.tabular.dataset_v1 import \
-    TabularDatasetV1 as TabularDataset
-  TabularDataset.__module__ = __name__
-  TabularDataset.__name__ = 'TabularDataset'
+    TabularDatasetV1 as Dataset
+  Dataset.__module__ = __name__
+  Dataset.__name__ = 'TabularDataset'
 # pylint: enable=ungrouped-imports

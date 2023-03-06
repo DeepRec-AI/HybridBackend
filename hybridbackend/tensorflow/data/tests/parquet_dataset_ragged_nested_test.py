@@ -54,6 +54,7 @@ class ParquetDatasetRaggedNestedTest(unittest.TestCase):
       ds = hb.data.ParquetDataset(
         [self._filename],
         batch_size=2)
+      ds = ds.apply(hb.data.rebatch(2))
       ds = ds.prefetch(4)
       batch = tf.data.make_one_shot_iterator(ds).get_next()
 
@@ -64,10 +65,8 @@ class ParquetDatasetRaggedNestedTest(unittest.TestCase):
 
   def test_apply_to_sparse(self):
     with tf.Graph().as_default() as graph:
-      ds = hb.data.ParquetDataset(
-        [self._filename],
-        batch_size=2)
-      ds = ds.apply(hb.data.parse())
+      ds = hb.data.Dataset.from_parquet([self._filename])
+      ds = ds.batch(2)
       batch = tf.data.make_one_shot_iterator(ds).get_next()['A']
       baseline = tf.ragged.constant(self._data.to_pylist()).to_sparse()
 
@@ -79,10 +78,8 @@ class ParquetDatasetRaggedNestedTest(unittest.TestCase):
 
   def test_apply_to_tensor(self):
     with tf.Graph().as_default() as graph:
-      ds = hb.data.ParquetDataset(
-        [self._filename],
-        batch_size=2)
-      ds = ds.apply(hb.data.parse(pad=True))
+      ds = hb.data.Dataset.from_parquet([self._filename], sparse_to_dense=True)
+      ds = ds.batch(2)
       batch = tf.data.make_one_shot_iterator(ds).get_next()['A']
       baseline = tf.ragged.constant(self._data.to_pylist()).to_tensor()
 

@@ -11,11 +11,8 @@ recommender systems on heterogeneous cluster.
 ## Features
 
 - Memory-efficient loading of categorical data
-
 - GPU-efficient orchestration of embedding layers
-
 - Communication-efficient training and evaluation at scale
-
 - Easy to use with existing AI workflows
 
 ## Usage
@@ -26,8 +23,8 @@ A minimal example:
 import tensorflow as tf
 import hybridbackend.tensorflow as hb
 
-ds = hb.data.ParquetDataset(filenames, batch_size=batch_size)
-ds = ds.apply(hb.data.parse())
+ds = hb.data.Dataset.from_parquet(filenames)
+ds = ds.batch(batch_size)
 # ...
 
 with tf.device('/gpu:0'):
@@ -44,16 +41,16 @@ more information.
 
 `pip install {PACKAGE}`
 
-`{PACKAGE}` | Dependency | Python  | CUDA | GLIBC | Data Opt. | Embedding Opt. | Parallelism Opt.
------------ | ---------- | ------- | ---- | ----- | --------- | -------------- | -----------------
-[hybridbackend-deeprec2208-cu114](https://pypi.org/project/hybridbackend-deeprec2208-cu114/) | [DeepRec 22.08](https://github.com/alibaba/DeepRec/tree/deeprec2208) `1` | 3.6 | 11.4 | >=2.27 | &check; | &check; | &check;
-[hybridbackend-tf115-cu118](https://pypi.org/project/hybridbackend-tf115-cu118/) | [TensorFlow 1.15](https://github.com/NVIDIA/tensorflow) `2` | 3.8 | 11.8 | >=2.31 | &check; | &check; | &check;
-[hybridbackend-tf115-cu100](https://pypi.org/project/hybridbackend-tf115-cu100/) | [TensorFlow 1.15](https://github.com/tensorflow/tensorflow/tree/r1.15) | 3.6 | 10.0 | >=2.27 | &check; | &check; | &cross;
-[hybridbackend-tf115-cpu](https://pypi.org/project/hybridbackend-tf115-cpu/) | [TensorFlow 1.15](https://github.com/tensorflow/tensorflow/tree/r1.15) | 3.6 | - | >=2.24 | &check; | &cross; | &cross;
+| `{PACKAGE}`                                                                             | Dependency                                                              | Python | CUDA | GLIBC  | Data Opt. | Embedding Opt. | Parallelism Opt. |
+| ----------------------------------------------------------------------------------------- | ----------------------------------------------------------------------- | ------ | ---- | ------ | --------- | -------------- | ---------------- |
+| [hybridbackend-tf115-cu118](https://pypi.org/project/hybridbackend-tf115-cu118/)             | [TensorFlow 1.15](https://github.com/NVIDIA/tensorflow) `1`              | 3.8    | 11.8 | >=2.31 | &check;   | &check;        | &check;          |
+| [hybridbackend-tf115-cu100](https://pypi.org/project/hybridbackend-tf115-cu100/)             | [TensorFlow 1.15](https://github.com/tensorflow/tensorflow/tree/r1.15)     | 3.6    | 10.0 | >=2.27 | &check;   | &check;        | &cross;          |
+| [hybridbackend-tf115-cpu](https://pypi.org/project/hybridbackend-tf115-cpu/)                 | [TensorFlow 1.15](https://github.com/tensorflow/tensorflow/tree/r1.15)     | 3.6    | -    | >=2.24 | &check;   | &cross;        | &cross;          |
+| [hybridbackend-deeprec2208-cu114](https://pypi.org/project/hybridbackend-deeprec2208-cu114/) | [DeepRec 22.08](https://github.com/alibaba/DeepRec/tree/deeprec2208) `2` | 3.6    | 11.4 | >=2.27 | &check;   | &check;        | &check;          |
 
-> `1`: Suggested docker image: `dsw-registry.cn-shanghai.cr.aliyuncs.com/pai/tensorflow-training:1.15PAI-gpu-py36-cu114-ubuntu18.04`
+> `1`: Suggested docker image: `nvcr.io/nvidia/tensorflow:22.12-tf1-py3`
 
-> `2`: Suggested docker image: `nvcr.io/nvidia/tensorflow:22.12-tf1-py3`
+> `2`: Suggested docker image: `dsw-registry.cn-shanghai.cr.aliyuncs.com/pai/tensorflow-training:1.15PAI-gpu-py36-cu114-ubuntu18.04`
 
 ### Method 2: Build from source
 
@@ -66,13 +63,11 @@ HybridBackend is licensed under the [Apache 2.0 License](LICENSE).
 ## Community
 
 - Please see [Contributing Guide](https://github.com/alibaba/HybridBackend/blob/main/CONTRIBUTING.md)
-before your first contribution.
-
+  before your first contribution.
 - Please [register as an adopter](https://github.com/alibaba/HybridBackend/blob/main/ADOPTERS.md)
-if your organization is interested in adoption. We will discuss
-[RoadMap](https://github.com/alibaba/HybridBackend/blob/main/ROADMAP.md) with
-registered adopters in advance.
-
+  if your organization is interested in adoption. We will discuss
+  [RoadMap](https://github.com/alibaba/HybridBackend/blob/main/ROADMAP.md) with
+  registered adopters in advance.
 - Please cite [HybridBackend](https://ieeexplore.ieee.org/document/9835450) in your publications if it helps:
 
   ```text

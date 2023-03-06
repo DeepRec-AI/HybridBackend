@@ -128,8 +128,7 @@ class ParquetDatasetStringTest(unittest.TestCase):
 
   def test_unbatch_and_to_sparse(self):
     with tf.Graph().as_default() as graph:
-      ds = hb.data.ParquetDataset(self._filename)
-      ds = ds.map(hb.data.DataFrame.unbatch_and_to_sparse)
+      ds = hb.data.Dataset.from_parquet(self._filename)
       ds = ds.prefetch(4)
       batch = tf.data.make_one_shot_iterator(ds).get_next()
 

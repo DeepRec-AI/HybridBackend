@@ -63,6 +63,7 @@ class ParquetDatasetRaggedTest(unittest.TestCase):
         [self._filename],
         batch_size=batch_size,
         fields=['col2', 'col0'])
+      ds = ds.apply(hb.data.rebatch(batch_size))
       ds = ds.prefetch(4)
       batch = tf.data.make_one_shot_iterator(ds).get_next()
 
@@ -89,13 +90,12 @@ class ParquetDatasetRaggedTest(unittest.TestCase):
   def test_to_sparse(self):
     batch_size = 32
     with tf.Graph().as_default() as graph:
-      ds = hb.data.ParquetDataset(
+      ds = hb.data.Dataset.from_parquet(
         [self._filename],
-        batch_size=batch_size,
         fields=['col2', 'col0'])
+      ds = ds.batch(batch_size)
       ds = ds.prefetch(4)
       batch = tf.data.make_one_shot_iterator(ds).get_next()
-      batch = hb.data.DataFrame.parse(batch)
 
     c = self._df['col0']
     with tf.Session(graph=graph) as sess:
@@ -121,11 +121,10 @@ class ParquetDatasetRaggedTest(unittest.TestCase):
   def test_map_to_sparse(self):
     batch_size = 32
     with tf.Graph().as_default() as graph:
-      ds = hb.data.ParquetDataset(
+      ds = hb.data.Dataset.from_parquet(
         [self._filename],
-        batch_size=batch_size,
         fields=['col2', 'col0'])
-      ds = ds.map(hb.data.DataFrame.parse)
+      ds = ds.batch(batch_size)
       ds = ds.prefetch(4)
       batch = tf.data.make_one_shot_iterator(ds).get_next()
 
@@ -153,11 +152,10 @@ class ParquetDatasetRaggedTest(unittest.TestCase):
   def test_apply_to_sparse(self):
     batch_size = 32
     with tf.Graph().as_default() as graph:
-      ds = hb.data.ParquetDataset(
+      ds = hb.data.Dataset.from_parquet(
         [self._filename],
-        batch_size=batch_size,
         fields=['col2', 'col0'])
-      ds = ds.apply(hb.data.parse())
+      ds = ds.batch(batch_size)
       ds = ds.prefetch(4)
       batch = tf.data.make_one_shot_iterator(ds).get_next()
 
@@ -185,11 +183,10 @@ class ParquetDatasetRaggedTest(unittest.TestCase):
   def test_feedable_iterator(self):
     batch_size = 32
     with tf.Graph().as_default() as graph:
-      ds = hb.data.ParquetDataset(
+      ds = hb.data.Dataset.from_parquet(
         [self._filename],
-        batch_size=batch_size,
         fields=['col2', 'col0'])
-      ds = ds.apply(hb.data.parse())
+      ds = ds.batch(batch_size)
       ds = ds.prefetch(4)
       it = tf.data.make_one_shot_iterator(ds)
       handle_tensor = it.string_handle()
@@ -230,6 +227,7 @@ class ParquetDatasetRaggedTest(unittest.TestCase):
         [self._filename],
         batch_size=batch_size,
         fields=['col2', 'col0'])
+      ds = ds.apply(hb.data.rebatch(batch_size))
 
       def _parse(values):
         return values['col0'], values['col2']

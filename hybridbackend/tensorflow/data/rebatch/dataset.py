@@ -23,6 +23,8 @@ from __future__ import print_function
 import inspect
 
 # pylint: disable=ungrouped-imports
+from hybridbackend.tensorflow.data.dataframe import input_fields
+
 try:
   from tensorflow.python.data.ops.dataset_ops import DatasetV2 as _dataset  # pylint: disable=unused-import
 
@@ -43,28 +45,19 @@ except ImportError:
 
 def rebatch(
     batch_size,
-    min_batch_size=None,
-    fields=None,
     drop_remainder=False,
-    num_parallel_scans=1):
+    fields=None):
   r'''Create a `RebatchDataset`.
 
   Args:
     batch_size: Maxium number of samples in an output batch.
-    min_batch_size: (Optional.) Minimum number of samples in a non-final
-      batch. Same to `batch_size` by default.
-    fields: (Optional.) List of DataFrame fields. Fetched from `input_dataset`
-      by default.
     drop_remainder: (Optional.) If True, smaller final batch is dropped.
       `False` by default.
-    num_parallel_scans: (Optional.) Number of concurrent scans against fields
-        of input dataset.
+    fields: (Optional.) List of DataFrame fields. Fetched from `input_dataset`
+      by default.
   '''
   def _apply_fn(dataset):
     return RebatchDataset(
-      dataset, batch_size,
-      min_batch_size=min_batch_size,
-      fields=fields,
-      drop_remainder=drop_remainder,
-      num_parallel_scans=num_parallel_scans)
+      dataset, input_fields(dataset, fields), batch_size,
+      drop_remainder=drop_remainder)
   return _apply_fn

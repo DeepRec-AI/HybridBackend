@@ -101,30 +101,6 @@ class ParquetDatasetRebatchTest(unittest.TestCase):
         np.testing.assert_equal(result['A'], a[start_row:end_row].to_numpy())
         np.testing.assert_equal(result['C'], c[start_row:end_row].to_numpy())
 
-  def test_min_batch(self):
-    micro_batch_size = 20
-    batch_size = 32
-    min_batch_size = 30
-    with tf.Graph().as_default() as graph:
-      ds = hb.data.ParquetDataset(self._filename, micro_batch_size)
-      ds = ds.apply(hb.data.rebatch(batch_size, min_batch_size))
-      ds = ds.prefetch(4)
-      batch = tf.data.make_one_shot_iterator(ds).get_next()
-
-    a = self._df['A']
-    c = self._df['C']
-    with tf.Session(graph=graph) as sess:
-      end_row = 0
-      for _ in xrange(3):
-        result = sess.run(batch)
-        aresult = result['A']
-        cresult = result['C']
-        bs = len(aresult)
-        start_row = end_row
-        end_row = start_row + bs
-        np.testing.assert_equal(aresult, a[start_row:end_row].to_numpy())
-        np.testing.assert_equal(cresult, c[start_row:end_row].to_numpy())
-
   def test_ragged(self):
     micro_batch_size = 20
     batch_size = 32
@@ -186,14 +162,10 @@ class ParquetDatasetRebatchTest(unittest.TestCase):
           len(expected.nested_row_splits[0]))
 
   def test_shuffle_micro_batch(self):
-    micro_batch_size = 20
     batch_size = 32
     with tf.Graph().as_default() as graph:
-      srcds = hb.data.ParquetDataset(self._filename, micro_batch_size)
-      ds = srcds.shuffle(4)
-      ds = ds.apply(
-        hb.data.rebatch(batch_size, fields=srcds.fields, num_parallel_scans=2))
-      ds = ds.apply(hb.data.parse())
+      ds = hb.data.Dataset.from_parquet(self._filename)
+      ds = ds.shuffle_batch(batch_size, buffer_size=80)
       ds = ds.prefetch(4)
       batch = tf.data.make_one_shot_iterator(ds).get_next()
 
@@ -206,7 +178,7 @@ class ParquetDatasetRebatchTest(unittest.TestCase):
     batch_size = 32
     with tf.Graph().as_default() as graph:
       ds = hb.data.ParquetDataset(self._filename, micro_batch_size)
-      ds = ds.apply(hb.data.rebatch(batch_size, num_parallel_scans=3))
+      ds = ds.apply(hb.data.rebatch(batch_size))
       ds = ds.prefetch(4)
       batch = tf.data.make_one_shot_iterator(ds).get_next()
 
