@@ -28,6 +28,8 @@ limitations under the License.
 #include <tensorflow/core/framework/tensor.h>
 #include <tensorflow/core/lib/core/errors.h>
 
+#include "hybridbackend/tensorflow/distribute/collective.h"
+
 namespace tensorflow {
 namespace hybridbackend {
 
@@ -126,23 +128,23 @@ inline Status EnumToNcclEnum(const DataType& dtype,
   }
 }
 
-inline Status ReduceOpToNcclReduceOp(const int reduce_op,
+inline Status ReduceOpToNcclReduceOp(const CollectiveReduceOp reduce_op,
                                      ncclRedOp_t* nccl_reduce_op) {
   switch (reduce_op) {
-    case 0:
+    case kCollectiveSum:
       *nccl_reduce_op = ncclSum;
       return Status::OK();
-    case 1:
+    case kCollectiveProd:
       *nccl_reduce_op = ncclProd;
       return Status::OK();
-    case 2:
+    case kCollectiveMax:
       *nccl_reduce_op = ncclMax;
       return Status::OK();
-    case 3:
+    case kCollectiveMin:
       *nccl_reduce_op = ncclMin;
       return Status::OK();
 #if NCCL_VERSION_CODE >= 21000
-    case 4:
+    case kCollectiveAvg:
       *nccl_reduce_op = ncclAvg;
       return Status::OK();
 #endif

@@ -21,7 +21,7 @@ limitations under the License.
 
 #include <vector>
 
-#include "hybridbackend/tensorflow/distribute/nccl/comm.h"
+#include "hybridbackend/tensorflow/distribute/nccl/collective.h"
 
 namespace tensorflow {
 namespace hybridbackend {
@@ -64,6 +64,7 @@ class GetNcclIdOp : public OpKernel {
 
 REGISTER_KERNEL_BUILDER(Name("HbGetNcclId").Device(DEVICE_GPU).HostMemory("id"),
                         GetNcclIdOp);
+REGISTER_KERNEL_BUILDER(Name("HbGetNcclId").Device(DEVICE_CPU), GetNcclIdOp);
 #endif
 
 #endif

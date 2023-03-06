@@ -29,9 +29,8 @@ from tensorflow.python.ops import state_ops
 from tensorflow.python.ops import variable_scope as vs
 from tensorflow.python.ops import weights_broadcast_ops
 
-from hybridbackend.tensorflow.distribute.communicator import CollectiveOps
-from hybridbackend.tensorflow.distribute.communicator_pool import \
-  CommunicatorPool
+from hybridbackend.tensorflow.distribute.collective import Collective
+from hybridbackend.tensorflow.distribute.ops import CollectiveOps
 
 
 def mean(values,
@@ -97,8 +96,8 @@ def mean(values,
     stacked = array_ops.stack([values_sum, num_values])
     if isinstance(stacked, (list, tuple)):
       stacked = stacked[0]
-    sum_stacked = CommunicatorPool.get().allreduce(
-      stacked, reduce_op=CollectiveOps.SUM, trainable=False)
+    sum_stacked = Collective.get().allreduce(
+      stacked, reduce_op=CollectiveOps.SUM)
     if isinstance(sum_stacked, (list, tuple)):
       sum_stacked = sum_stacked[0]
     values_sum, num_values = array_ops.unstack(sum_stacked)

@@ -21,7 +21,7 @@ limitations under the License.
 
 #include <vector>
 
-#include "hybridbackend/tensorflow/distribute/nccl/comm.h"
+#include "hybridbackend/tensorflow/distribute/nccl/collective.h"
 
 namespace tensorflow {
 namespace hybridbackend {
@@ -29,10 +29,10 @@ namespace hybridbackend {
 #if HYBRIDBACKEND_NCCL
 
 REGISTER_OP("HbNcclAllgatherv")
-    .Output("output: T")
+    .Output("output: dtype")
     .Input("handle: resource")
-    .Input("input: T")
-    .Attr("T: {int8, uint8, int32, uint32, int64, uint64, half, float, double}")
+    .Input("input: dtype")
+    .Attr("dtype: {" TF_OP_NCCL_DTYPE_LIST "}")
     .SetIsStateful()
     .SetShapeFn([](shape_inference::InferenceContext* c) {
       shape_inference::ShapeHandle input = c->input(1);
@@ -62,118 +62,121 @@ input: A tensor to gather.
 )doc");
 
 #if GOOGLE_CUDA
-class NcclAllgathervOp : public NcclCommAsyncOp {
+class NcclAllgathervOp : public NcclCollectiveAsyncOp {
  public:
-  explicit NcclAllgathervOp(OpKernelConstruction* ctx) : NcclCommAsyncOp(ctx) {}
+  explicit NcclAllgathervOp(OpKernelConstruction* ctx)
+      : NcclCollectiveAsyncOp(ctx) {}
 
-  void ComputeAsyncWithComm(NcclComm* comm, OpKernelContext* ctx,
-                            DoneCallback done) override {
-    const Tensor* input;
-    OP_REQUIRES_OK_ASYNC(ctx, ctx->input("input", &input), done);
-
-    Tensor* host_sizes = new Tensor();
+  void CollectiveComputeAsync(NcclCollective* coll, OpKernelContext* ctx,
+                              DoneCallback done) override {
     AllocatorAttributes host_sizes_alloc_attrs;
     host_sizes_alloc_attrs.set_on_host(true);
-    OP_REQUIRES_OK_ASYNC(
-        ctx,
-        ctx->allocate_temp(DT_INT32, TensorShape({comm->size()}), host_sizes,
-                           host_sizes_alloc_attrs),
-        done);
 
+    const Tensor* input;
+    OP_REQUIRES_OK_ASYNC(ctx, ctx->input("input", &input), done);
+    Tensor* host_sizes = new Tensor();
     auto done_ = [host_sizes, done]() {
       delete host_sizes;
       done();
     };
-    comm->RunAsync(
-        "NcclAllgatherv", ctx, done_,
-        [input, host_sizes, this, comm, ctx, done_]() {
-          // Allocate scratch tensors.
-          Tensor host_input_sizes;
-          AllocatorAttributes input_sizes_alloc_attrs;
-          input_sizes_alloc_attrs.set_on_host(true);
-          input_sizes_alloc_attrs.set_gpu_compatible(true);
-          OP_REQUIRES_OK_ASYNC(
-              ctx,
-              ctx->allocate_temp(DT_INT32, TensorShape({}), &host_input_sizes,
-                                 input_sizes_alloc_attrs),
-              done_);
-          host_input_sizes.scalar<int32>()() = input->NumElements();
 
-          Tensor* input_sizes = new Tensor();
-          OP_REQUIRES_OK_ASYNC(
-              ctx,
-              ctx->allocate_temp(DT_INT32, TensorShape({}), input_sizes,
-                                 ctx->output_alloc_attr(0)),
-              done_);
-          ThenCopyToDevice(ctx, input_sizes, host_input_sizes);
+    OP_REQUIRES_OK_ASYNC(
+        ctx,
+        ctx->allocate_temp(DT_INT32, TensorShape({coll->world_size()}),
+                           host_sizes, host_sizes_alloc_attrs),
+        done_);
 
-          Tensor* sizes = new Tensor();
-          OP_REQUIRES_OK_ASYNC(
-              ctx,
-              ctx->allocate_temp(DT_INT32, TensorShape({comm->size()}), sizes,
-                                 ctx->output_alloc_attr(0)),
-              done_);
-          auto sizes_ready = ThenRecordEvent(ctx);
+    coll->stream()->LaunchUntilComputeDone(ctx, [input, host_sizes, this, coll,
+                                                 ctx, done_]() {
+      // Allocate scratch tensors.
+      Tensor host_input_sizes;
+      AllocatorAttributes input_sizes_alloc_attrs;
+      input_sizes_alloc_attrs.set_on_host(true);
+      input_sizes_alloc_attrs.set_gpu_compatible(true);
+      OP_REQUIRES_OK_ASYNC(
+          ctx,
+          ctx->allocate_temp(DT_INT32, TensorShape({}), &host_input_sizes,
+                             input_sizes_alloc_attrs),
+          done_);
+      host_input_sizes.scalar<int32>()() = input->NumElements();
 
-          comm->ThenWaitFor(sizes_ready);
-          comm->BlockHostUntilDone();
+      Tensor* input_sizes = new Tensor();
+      OP_REQUIRES_OK_ASYNC(
+          ctx,
+          ctx->allocate_temp(DT_INT32, TensorShape({}), input_sizes,
+                             ctx->output_alloc_attr(0)),
+          done_);
+      se::DeviceMemoryBase dst_ptr(
+          const_cast<char*>(input_sizes->tensor_data().data()),
+          input_sizes->TotalBytes());
+      ctx->op_device_context()->stream()->ThenMemcpy(
+          &dst_ptr, host_input_sizes.tensor_data().data(),
+          host_input_sizes.TotalBytes());
 
-          // Collect sizes of all inputs across devices.
-          VLOG(1) << comm->DebugString() << " [" << name() << "] [Allgather]";
-          OP_REQUIRES_OK_ASYNC(ctx, comm->Allgather(*input_sizes, sizes),
-                               done_);
-          auto allgather_ready = comm->ThenRecordEvent();
+      Tensor* sizes = new Tensor();
+      OP_REQUIRES_OK_ASYNC(
+          ctx,
+          ctx->allocate_temp(DT_INT32, TensorShape({coll->world_size()}), sizes,
+                             ctx->output_alloc_attr(0)),
+          done_);
+      coll->stream()->ThenWaitUntilComputeDone(ctx);
+      coll->stream()->BlockHostUntilDone();
 
-          ThenWaitFor(ctx, allgather_ready);
-          ThenCopyToHost(ctx, host_sizes, *sizes);
-          BlockHostUntilDone(ctx);
-          delete input_sizes;
-          delete sizes;
+      // Collect sizes of all inputs across devices.
+      VLOG(1) << coll->DebugString() << " [" << name() << "] [Allgather]";
+      OP_REQUIRES_OK_ASYNC(ctx, coll->Allgather(*input_sizes, sizes), done_);
+      coll->stream()->ThenMemcpy(
+          const_cast<char*>(host_sizes->tensor_data().data()),
+          se::DeviceMemoryBase(const_cast<char*>(sizes->tensor_data().data()),
+                               sizes->TotalBytes()),
+          host_sizes->TotalBytes());
+      coll->stream()->BlockHostUntilDone();
+      delete input_sizes;
+      delete sizes;
 
-          // Now all Tensor sizes have been gathered, calculate the total size
-          // and allocate the output Tensor for communication.
-          int32 total_size = 0;
-          bool is_same_size = true;
-          for (int i = 0; i < comm->size(); ++i) {
-            int32 per_elements = host_sizes->flat<int32>()(i);
-            total_size += per_elements;
-            if (is_same_size && per_elements != input->NumElements()) {
-              is_same_size = false;
-            }
-          }
-          TensorShape out_shape(input->shape());
-          int32 sub_size = 1;
-          for (int i = 1; i < out_shape.dims(); ++i) {
-            sub_size *= out_shape.dim_size(i);
-          }
-          if (out_shape.dims() == 0) {
-            out_shape.AddDim(total_size);
-          } else {
-            out_shape.set_dim(0, total_size / sub_size);
-          }
-          Tensor* output;
-          OP_REQUIRES_OK_ASYNC(ctx, ctx->allocate_output(0, out_shape, &output),
-                               done_);
-          auto outputs_ready = ThenRecordEvent(ctx);
-
-          comm->ThenWaitFor(outputs_ready);
-          if (is_same_size) {
-            VLOG(1) << comm->DebugString() << " [" << name() << "] [Allgather]";
-            OP_REQUIRES_OK_ASYNC(ctx, comm->Allgather(*input, output), done_);
-          } else {
-            VLOG(1) << comm->DebugString() << " [" << name()
-                    << "] [Allgatherv]";
-            OP_REQUIRES_OK_ASYNC(
-                ctx, comm->Allgatherv(*input, *host_sizes, output), done_);
-          }
-        });
+      // Now all Tensor sizes have been gathered, calculate the total size
+      // and allocate the output Tensor for communication.
+      int32 total_size = 0;
+      bool is_same_size = true;
+      for (int i = 0; i < coll->world_size(); ++i) {
+        int32 per_elements = host_sizes->flat<int32>()(i);
+        total_size += per_elements;
+        if (is_same_size && per_elements != input->NumElements()) {
+          is_same_size = false;
+        }
+      }
+      TensorShape out_shape(input->shape());
+      int32 sub_size = 1;
+      for (int i = 1; i < out_shape.dims(); ++i) {
+        sub_size *= out_shape.dim_size(i);
+      }
+      if (out_shape.dims() == 0) {
+        out_shape.AddDim(total_size);
+      } else {
+        out_shape.set_dim(0, total_size / sub_size);
+      }
+      Tensor* output;
+      OP_REQUIRES_OK_ASYNC(ctx, ctx->allocate_output(0, out_shape, &output),
+                           done_);
+      coll->stream()->ThenWaitUntilComputeDone(ctx);
+      if (is_same_size) {
+        VLOG(1) << coll->DebugString() << " [" << name() << "] [Allgather]";
+        OP_REQUIRES_OK_ASYNC(ctx, coll->Allgather(*input, output), done_);
+      } else {
+        VLOG(1) << coll->DebugString() << " [" << name() << "] [Allgatherv]";
+        OP_REQUIRES_OK_ASYNC(ctx, coll->Allgatherv(*input, *host_sizes, output),
+                             done_);
+      }
+      coll->stream()->BlockComputeUntilDone(ctx, done_);
+    });
   }
 };
 
-#define REGISTER_KERNEL(TYPE)                                                \
-  REGISTER_KERNEL_BUILDER(                                                   \
-      Name("HbNcclAllgatherv").Device(DEVICE_GPU).TypeConstraint<TYPE>("T"), \
-      NcclAllgathervOp);
+#define REGISTER_KERNEL(TYPE)                                 \
+  REGISTER_KERNEL_BUILDER(Name("HbNcclAllgatherv")            \
+                              .Device(DEVICE_GPU)             \
+                              .TypeConstraint<TYPE>("dtype"), \
+                          NcclAllgathervOp);
 TF_CALL_NCCL_TYPES(REGISTER_KERNEL);
 #undef REGISTER_KERNEL
 #endif  // GOOGLE_CUDA

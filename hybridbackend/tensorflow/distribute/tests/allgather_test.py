@@ -13,7 +13,7 @@
 # limitations under the License.
 # =============================================================================
 
-r'''Tests for Allgather.
+r'''Tests for allgather collective communication.
 '''
 
 from __future__ import absolute_import
@@ -21,17 +21,98 @@ from __future__ import division
 from __future__ import print_function
 
 import os
-from six.moves import xrange  # pylint: disable=redefined-builtin
 import unittest
 
 import numpy as np
-import tensorflow as tf
 
 import hybridbackend.common.test as hbtest
-import hybridbackend.tensorflow as hb
+
+# pylint: disable=missing-docstring,import-outside-toplevel
 
 
-# pylint: disable=missing-docstring
+# Generate different shapes for different ranks
+def _v_shape(shape, i):
+  if not shape:
+    return shape
+  shape[0] *= (i + 1)
+  return shape
+
+
+def _test_allgather(rank, world_size, shapes):
+  r'''Test Allgather.
+  '''
+  import tensorflow as tf
+
+  import hybridbackend.tensorflow as hb
+
+  all_inputs = []
+  allgathers = []
+  allgathervs = []
+  with tf.Graph().as_default(), hb.scope():
+    for i, shape in enumerate(shapes):
+      comm_inputs = []
+      for d in range(world_size):
+        comm_inputs.append(
+          tf.get_variable(
+            f'input{i}/replicas{d}',
+            initializer=tf.random_normal(
+              shape,
+              mean=100,
+              stddev=80,
+              seed=i * len(shapes) * 100 + d)))
+      all_inputs.append(comm_inputs)
+      allgathers.append(
+        hb.distribute.allgather(comm_inputs[rank], varying_size=False))
+      allgathervs.append(hb.distribute.allgather(comm_inputs[rank]))
+    baselines = [
+      tf.concat(all_inputs[i], 0) if shape else tf.stack(all_inputs[i])
+      for i, shape in enumerate(shapes)]
+    with tf.train.MonitoredTrainingSession('') as sess:
+      results = sess.run({
+        'baselines': baselines,
+        'allgathers': allgathers,
+        'allgathervs': allgathervs})
+      results['baselines'] = [o.tolist() for o in results['baselines']]
+      results['allgathers'] = [o.tolist() for o in results['allgathers']]
+      results['allgathervs'] = [o.tolist() for o in results['allgathervs']]
+      return results
+
+
+def _test_allgatherv(rank, world_size, shapes):
+  r'''Test Allgatherv.
+  '''
+  import tensorflow as tf
+
+  import hybridbackend.tensorflow as hb
+
+  all_inputs = []
+  allgathervs = []
+  with tf.Graph().as_default(), hb.scope():
+    for i, shape in enumerate(shapes):
+      comm_inputs = []
+      for d in range(world_size):
+        comm_inputs.append(
+          tf.get_variable(
+            f'input{i}/replicas{d}',
+            initializer=tf.random_normal(
+              _v_shape(shape, i),
+              mean=100,
+              stddev=80,
+              seed=i * len(shapes) * 100 + d)))
+      all_inputs.append(comm_inputs)
+      allgathervs.append(hb.distribute.allgather(comm_inputs[rank]))
+    baselines = [
+      tf.concat(all_inputs[i], 0) if shape else tf.stack(all_inputs[i])
+      for i, shape in enumerate(shapes)]
+    with tf.train.MonitoredTrainingSession('') as sess:
+      results = sess.run({
+        'baselines': baselines,
+        'allgathervs': allgathervs})
+      results['baselines'] = [o.tolist() for o in results['baselines']]
+      results['allgathervs'] = [o.tolist() for o in results['allgathervs']]
+      return results
+
+
 @unittest.skipUnless(
   os.getenv('HYBRIDBACKEND_WITH_CUDA') == 'ON', 'GPU required')
 @unittest.skipUnless(
@@ -41,110 +122,53 @@ class AllgatherTest(unittest.TestCase):
     os.environ['CUDA_VISIBLE_DEVICES'] = '0,1'
     os.environ['NCCL_DEBUG'] = 'INFO'
     os.environ['NCCL_DEBUG_SUBSYS'] = 'ALL'
-    os.environ['NCCL_LAUNCH_MODE'] = 'GROUP'
-    os.environ['TF_CPP_VMODULE'] = 'nccl_allgather=1'
+    os.environ['TF_CPP_VMODULE'] = (
+      'nccl_comm=1,'
+      'nccl_create=1,'
+      'nccl_allgather=1,'
+      'nccl_allgatherv=1')
 
   def tearDown(self):  # pylint: disable=invalid-name
     del os.environ['TF_CPP_VMODULE']
     del os.environ['CUDA_VISIBLE_DEVICES']
 
-  def _test_allgather(self, devices, shapes):
-    hb.context.options.update(comm_pubsub_device='')
-
-    num_comms = len(shapes)
-    num_devices = len(devices)
-    all_inputs = []
-    allgathers = []
-    allgathervs = []
-
-    with tf.Graph().as_default(), hb.scope():
-      prev_comm_gathers = None
-      prev_commv_gathers = None
-      for i in xrange(num_comms):
-        comm_inputs = []
-        comm_gathers = []
-        commv_gathers = []
-        shared_name = f'comm_{i}'
-        shared_namev = f'commv_{i}'
-        for d in xrange(num_devices):
-          with tf.device(devices[d]):
-            comm_inputs.append(
-              tf.get_variable(
-                f'input{i}/part_{d}',
-                initializer=tf.random_normal(
-                  shapes[i], mean=100, stddev=80)))
-            comm = hb.distribute.Communicator.build(shared_name, devices)
-            with tf.control_dependencies(
-                [prev_comm_gathers[d]] if prev_comm_gathers else None):
-              ga1 = comm.allgather(comm_inputs[d])
-            comm_gathers.append(ga1)
-            commv = hb.distribute.Communicator.build(shared_namev, devices)
-            with tf.control_dependencies(
-                [prev_commv_gathers[d]] if prev_commv_gathers else None):
-              ga2 = commv.allgatherv(comm_inputs[d])
-            commv_gathers.append(ga2)
-        prev_comm_gathers = comm_gathers
-        prev_commv_gathers = commv_gathers
-        all_inputs.append(comm_inputs)
-        allgathers.append(comm_gathers)
-        allgathervs.append(commv_gathers)
-      baselines = [
-        tf.concat(all_inputs[i], axis=0)
-        if shapes[i] else tf.stack(all_inputs[i])
-        for i in xrange(num_comms)]
-
-      with tf.train.MonitoredTrainingSession('') as sess:
-        expects = sess.run(baselines)
-        actuals = sess.run(allgathers)
-        actuals_by_v = sess.run(allgathervs)
-      for i in xrange(num_comms):
-        for d in xrange(num_devices):
-          np.testing.assert_allclose(actuals[i][d], expects[i], atol=1e-4)
-          np.testing.assert_allclose(actuals_by_v[i][d], expects[i], atol=1e-4)
-
-  def test_one_device_one_tensor_allgather(self):
-    self._test_allgather(
-      [f'/job:localhost/replica:0/task:0/device:GPU:{d}' for d in [0]],
-      [[16, 4]])
-
-  def test_two_devices_scalar_tensors_allgather(self):
-    self._test_allgather(
-      [f'/job:localhost/replica:0/task:0/device:GPU:{d}' for d in [0, 1]],
-      [[]])
-
-  def test_two_devices_four_tensors_allgather(self):
-    self._test_allgather(
-      [f'/job:localhost/replica:0/task:0/device:GPU:{d}' for d in [0, 1]],
-      [[17, 41, 37], [19, 121], [1], [16, 6]])
-
-  def test_allgather_grad(self):
-    hb.context.options.update(comm_pubsub_device='')
-
-    devices = ['/gpu:0', '/gpu:1']
-    shared_name = 'comm'
-    with tf.Graph().as_default(), hb.scope():
-      with tf.device('/gpu:0'):
-        a = tf.constant(1.0, shape=[2, 10])
-        comm0 = hb.distribute.Communicator.build(shared_name, devices)
-        recv0 = comm0.allgather(a)
-        loss0 = tf.reduce_mean(recv0) * 20.0
-      with tf.device('/gpu:1'):
-        b = tf.constant(2.0, shape=[2, 10])
-        comm1 = hb.distribute.Communicator.build(shared_name, devices)
-        recv1 = comm1.allgather(b * 0.75)
-        loss1 = tf.reduce_mean(recv1) * 10.0
-      loss = loss0 * loss1
-      grad0, grad1 = tf.gradients([loss], [a, b], [2.0])
-      with tf.train.MonitoredTrainingSession('') as sess:
-        g0, g1 = sess.run([grad0, grad1])
+  def _test_allgather(self, world_size, shapes):
+    results = hbtest.Spawn(world_size)(
+      lambda rank: _test_allgather(rank, world_size, shapes))
+    for d in range(world_size):
+      r = results[d]
+      for i, _ in enumerate(shapes):
         np.testing.assert_allclose(
-          g0,
-          [[25.0] * 10] * 2,
-          rtol=1e-6)
+          r['baselines'][i], r['allgathers'][i], atol=1e-4)
         np.testing.assert_allclose(
-          g1,
-          [[18.75] * 10] * 2,
-          rtol=1e-6)
+          r['baselines'][i], r['allgathervs'][i], atol=1e-4)
+
+  def test_allgather_scalar(self):
+    self._test_allgather(2, [[]])
+
+  def test_allgather_fallback(self):
+    self._test_allgather(1, [[6, 14]])
+
+  def test_allgather_n(self):
+    self._test_allgather(2, [[17, 3, 4], [2, 3], [1], [16, 6]])
+
+  def _test_allgatherv(self, world_size, shapes):
+    results = hbtest.Spawn(world_size)(
+      lambda rank: _test_allgatherv(rank, world_size, shapes))
+    for d in range(world_size):
+      r = results[d]
+      for i, _ in enumerate(shapes):
+        np.testing.assert_allclose(
+          r['baselines'][i], r['allgathervs'][i], atol=1e-4)
+
+  def test_allgatherv_scalar(self):
+    self._test_allgatherv(2, [[]])
+
+  def test_allgatherv_fallback(self):
+    self._test_allgatherv(1, [[6, 14]])
+
+  def test_allgatherv_n(self):
+    self._test_allgatherv(2, [[2, 3, 4], [2, 3], [1], [2, 6]])
 
 
 if __name__ == '__main__':

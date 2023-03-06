@@ -45,16 +45,14 @@ from hybridbackend.tensorflow.training.session import \
 from hybridbackend.tensorflow.training.sync_replicas_optimizer import \
   SyncReplicasOptimizer
 from hybridbackend.tensorflow.training.variables import \
-  EmbeddingLookupRewritingForVariables as _patch_variables
+  EmbeddingWeightsRewritingForVariables as _patch_variables
 
 _ = (
   _ctx.get().options
   .register('grad_lazy_sync', False, env='HB_GRAD_LAZY_SYNC')
-  .register('grad_nbuckets', 1, env='HB_GRAD_NBUCKETS')
   .register('sharding', False)
   .register('batch_size', -1)
   .register('model_dir', None)
-  .register('eval_dir', None)
   .register('keep_checkpoint_max', None)
   .register('keep_checkpoint_every_n_hours', None)
   .register('mode', _mode_keys.TRAIN))

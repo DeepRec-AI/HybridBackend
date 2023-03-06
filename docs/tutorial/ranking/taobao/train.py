@@ -144,7 +144,8 @@ def main(args):
   if args.eval_every_n_iter is not None:
     hooks.append(hb.train.EvaluationHook(
       lambda: model.evaluate(eval_filenames),
-      every_n_iter=args.eval_every_n_iter))
+      every_n_iter=args.eval_every_n_iter,
+      summary_dir=args.output_dir))
   if args.log_every_n_iter is not None:
     hooks.append(
       tf.train.LoggingTensorHook(

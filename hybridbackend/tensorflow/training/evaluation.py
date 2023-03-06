@@ -115,6 +115,7 @@ class EvaluationHook(session_run_hook.SessionRunHook):
       self, fn,
       steps=100,
       every_n_iter=1000,
+      summary_dir=None,
       history=None):
     r'''Evaluates specific function.
 
@@ -122,6 +123,7 @@ class EvaluationHook(session_run_hook.SessionRunHook):
       fn: Function returns update_op, metric ops and hooks.
       steps: Number of steps for which to evaluate model.
       every_n_iter: `int`, runs the evaluator once every N training iteration.
+      summary_dir: Directory for summaries.
       history: History of eval metrics. history should support `append` method.
     Raises:
       ValueError: if `every_n_iter` is non-positive or it's not a single machine
@@ -132,6 +134,7 @@ class EvaluationHook(session_run_hook.SessionRunHook):
     self._fn = fn
     self._steps = steps
     self._every_n_iter = every_n_iter
+    self._summary_dir = summary_dir
     self._history = history
 
   def begin(self):
@@ -148,7 +151,6 @@ class EvaluationHook(session_run_hook.SessionRunHook):
     self._timer = basic_session_run_hooks.SecondOrStepTimer(
       every_steps=self._every_n_iter)
     self._timer.reset()
-    self._summary_dir = Context.get().options.eval_dir or '.'
 
     with ops.device(device_function), reuse_variables(vs.AUTO_REUSE):
       with scope(mode=ModeKeys.EVAL, comm_pool_name=ModeKeys.EVAL):
@@ -251,7 +253,7 @@ class EvaluationHook(session_run_hook.SessionRunHook):
     return eval_results
 
   def _write_dict_to_summary(self, dictionary):
-    r'''Write evaluation results to eval_dir.
+    r'''Write evaluation results to summary directory.
     '''
     current_global_step = dictionary[ops.GraphKeys.GLOBAL_STEP]
     prev_np_printoptions = np.get_printoptions()

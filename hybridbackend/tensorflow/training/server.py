@@ -23,9 +23,9 @@ from __future__ import print_function
 from tensorflow.python.training import monitored_session as _monitored_session
 from tensorflow.python.training import server_lib
 
+from hybridbackend.tensorflow.framework.config import wraps_session_config
 from hybridbackend.tensorflow.framework.context import Context
 from hybridbackend.tensorflow.framework.rewriting import scope
-from hybridbackend.tensorflow.training.config import configure
 
 
 class HybridBackendServerBase(object):  # pylint: disable=useless-object-inheritance
@@ -47,21 +47,21 @@ def wraps_server(cls):
     @classmethod
     def get(class_):
       if class_._default is None:
-        class_._default = class_()
+        class_._default = class_(None)
       return class_._default
 
-    def __init__(self, server_or_cluster_def=None, **kwargs):
+    def __init__(self, server_or_cluster_def, **kwargs):
       r'''Creates a new server with the given definition.
       '''
       if server_or_cluster_def is None:
         server_or_cluster_def = Context.get().cluster_spec
+        kwargs['job_name'] = Context.get().task_type
+        kwargs['task_index'] = Context.get().task_id
       if server_or_cluster_def is None:
         self._is_local = True
         return
       self._is_local = False
-      kwargs['job_name'] = Context.get().task_type
-      kwargs['task_index'] = Context.get().task_id
-      kwargs['config'] = configure(prototype=kwargs.pop('config', None))
+      kwargs['config'] = wraps_session_config(kwargs.pop('config', None))
       super().__init__(server_or_cluster_def, **kwargs)
 
     @property

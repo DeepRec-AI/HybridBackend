@@ -26,11 +26,11 @@ from tensorflow.python.training import basic_session_run_hooks
 from tensorflow.python.training import monitored_session as _monitored_session
 from tensorflow.python.training import training
 
+from hybridbackend.tensorflow.framework.config import wraps_session_config
 from hybridbackend.tensorflow.framework.context import Context
 from hybridbackend.tensorflow.framework.device import device_function
 from hybridbackend.tensorflow.framework.rewriting import GraphRewriting
 from hybridbackend.tensorflow.framework.rewriting import SessionRunRewriting
-from hybridbackend.tensorflow.training.config import configure
 from hybridbackend.tensorflow.training.hooks import Policy
 from hybridbackend.tensorflow.training.server import Server
 
@@ -105,7 +105,7 @@ def wraps_monitored_training_session(fn):
           output_dir=summary_dir))
     kwargs['hooks'] = hooks
     kwargs['chief_only_hooks'] = chief_only_hooks
-    kwargs['config'] = configure(prototype=kwargs.pop('config', None))
+    kwargs['config'] = wraps_session_config(kwargs.pop('config', None))
     kwargs['is_chief'] = True
     args = list(args)
     if args:
@@ -119,9 +119,7 @@ def wraps_monitored_training_session(fn):
         master = Server.get().target
       kwargs['master'] = master
 
-    with ops.device(device_function), Context.scope(
-        model_dir=checkpoint_dir,
-        eval_dir=Context.get().options.eval_dir or summary_dir):
+    with ops.device(device_function), Context.scope(model_dir=checkpoint_dir):
       prev_monitored_session = _monitored_session.MonitoredSession
       _monitored_session.MonitoredSession = wraps_monitored_session(
         prev_monitored_session,

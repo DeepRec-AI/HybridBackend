@@ -41,9 +41,15 @@ from tensorflow.python.keras.engine import network as _network
 from tensorflow.python.keras.engine import training as _keras_training
 from tensorflow.python.keras.engine import training_arrays as _training_arrays
 from tensorflow.python.keras.engine import training_utils as _training_utils
+from tensorflow.python.keras.optimizers import TFOptimizer as _tf_optimizer
 from tensorflow.python.keras.utils import tf_utils
-from tensorflow.python.keras.utils.mode_keys import ModeKeys as _ModeKeys
+
+try:
+  from tensorflow.python.keras.utils.mode_keys import ModeKeys as _ModeKeys
+except ImportError:
+  pass
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import clip_ops
 from tensorflow.python.ops import gen_resource_variable_ops
 from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import state_ops
@@ -123,6 +129,86 @@ class PatchGetSessionForKerasModel(object):  # pylint: disable=useless-object-in
         K._get_session = self._prev_get_session
         PatchGetSessionForKerasModel._sess_map[self._name] = None
       PatchGetSessionForKerasModel._stack_depth -= 1
+
+
+class PatchOptimizerForKerasModel(object):  # pylint: disable=useless-object-inheritance
+  r'''Context manager that patches TF APIs for `tf.keras.Optimizers`.
+  '''
+  _lock = threading.Lock()
+  _stack_depth = 0
+
+  def __init__(
+      self, clipnorm, clipvalue):
+    self._clipnorm = clipnorm
+    self._clipvalue = clipvalue
+
+  def __enter__(self):
+    with PatchOptimizerForKerasModel._lock:
+      PatchOptimizerForKerasModel._stack_depth += 1
+      if PatchOptimizerForKerasModel._stack_depth <= 1:
+
+        def wraps_get_updates():  # pylint: disable=unused-argument
+          r'''replace the default TFOptimizer's get_gradients.
+          '''
+
+          def wrapped_get_updates(cls, loss, params):  # pylint: disable=unused-argument
+            if distribution_strategy_context.has_strategy():
+              cls.updates = []
+
+              if not params:
+                grads = cls.optimizer.compute_gradients(loss)
+              else:
+                grads = cls.optimizer.compute_gradients(loss, params)
+              if self._clipnorm is not None:
+                grads = [
+                  (clip_ops.clip_by_norm(g[0], self._clipnorm)
+                   if g[0] is not None else g[0], g[1])
+                  for g in grads
+                ]
+              if self._clipvalue is not None:
+                grads = [
+                  (clip_ops.clip_by_value(
+                    g[0], -self._clipvalue, self._clipvalue)
+                    if g[0] is not None else g[0], g[1])
+                  for g in grads
+                ]
+              global_step = training_util.get_global_step()
+              opt_update = cls.optimizer.apply_gradients(grads, global_step)
+            else:
+              if not params:
+                cls.updates = [state_ops.assign_add(cls.iterations, 1)]
+                return cls.updates
+
+              cls.updates = []
+              grads = cls.optimizer.compute_gradients(loss, params)
+              if self._clipnorm is not None:
+                grads = [
+                  (clip_ops.clip_by_norm(g[0], self._clipnorm)
+                   if g[0] is not None else g[0], g[1])
+                  for g in grads
+                ]
+              if self._clipvalue is not None:
+                grads = [
+                  (clip_ops.clip_by_value(
+                    g[0], -self._clipvalue, self._clipvalue)
+                    if g[0] is not None else g[0], g[1])
+                  for g in grads
+                ]
+              opt_update = cls.optimizer.apply_gradients(
+                grads, global_step=cls.iterations)
+            cls.updates.append(opt_update)
+            return cls.updates
+          return wrapped_get_updates
+        self._prev_get_updates = _tf_optimizer.get_updates
+        _tf_optimizer.get_updates = wraps_get_updates()
+
+      return self
+
+  def __exit__(self, exc_type, exc_val, exc_tb):
+    with PatchOptimizerForKerasModel._lock:
+      if PatchOptimizerForKerasModel._stack_depth <= 1:
+        _tf_optimizer.get_updates = self._prev_get_updates
+      PatchOptimizerForKerasModel._stack_depth -= 1
 
 
 class PatchCallbacksForKerasModel(object):  # pylint: disable=useless-object-inheritance
@@ -469,6 +555,12 @@ def wraps_keras_model(cls):
       self._run_eagerly = kwargs.pop('run_eagerly', None)
       self._experimental_run_tf_function = kwargs.pop(
         'experimental_run_tf_function', True)
+      self._clipnorm = kwargs.pop('clipnorm', None)
+      if self._clipnorm is not None and self._clipnorm < 0:
+        raise ValueError(f'Expected clipnorm >=0, received: {self._clipnorm}')
+      self._clipvalue = kwargs.pop('clipvalue', None)
+      if self._clipvalue is not None and self._clipvalue < 0:
+        raise ValueError(f'Expected clipvalue >=0, received: {self._clipvalue}')
       self._set_optimizer(optimizer)
       is_any_optimizer_v1 = any(isinstance(opt, optimizers.Optimizer)
                                 for opt in nest.flatten(self.optimizer))
@@ -612,8 +704,9 @@ def wraps_keras_model(cls):
               y = labels
 
           validation_data = kwargs.pop('validation_data', None)
-          if validation_data is not None and isinstance(
-              validation_data, dataset_ops.DatasetV2):
+          if validation_data is not None:
+            if not isinstance(validation_data, dataset_ops.DatasetV2):
+              raise ValueError('validation_data must be a Dataset')
             with Context.scope(mode=ModeKeys.EVAL):
               val_feature, val_labels = dataset_ops.make_one_shot_iterator(
                 validation_data.repeat()).get_next()
@@ -825,15 +918,16 @@ def wraps_keras_model(cls):
           K.get_graph()._unsafe_unfinalize()  # pylint: disable=protected-access
         with K.get_graph().as_default() as g, g.device(self._device_fn):
           with K.name_scope('training'):
-            # Training updates
-            updates = self.optimizer.get_updates(
-              params=self._collected_trainable_weights, loss=self.total_loss)
-            # Unconditional updates
-            updates += self.get_updates_for(None)
-            # Conditional updates relevant to this model
-            updates += self.get_updates_for(self.inputs)
-            global_step = training_util.get_or_create_global_step()
-            updates += [state_ops.assign_add(global_step, 1)]
+            with PatchOptimizerForKerasModel(self._clipnorm, self._clipvalue):
+              # Training updates
+              updates = self.optimizer.get_updates(
+                params=self._collected_trainable_weights, loss=self.total_loss)
+              # Unconditional updates
+              updates += self.get_updates_for(None)
+              # Conditional updates relevant to this model
+              updates += self.get_updates_for(self.inputs)
+              global_step = training_util.get_or_create_global_step()
+              updates += [state_ops.assign_add(global_step, 1)]
 
           metrics = self._get_training_eval_metrics()
           metrics_tensors = [
