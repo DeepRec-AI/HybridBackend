@@ -51,13 +51,13 @@ def benchmark(params):
   with tf.Graph().as_default():
     step = tf.train.get_or_create_global_step()
     if params.baseline:
-      ds = hb.data.TabularDataset.from_parquet(params.filenames)
+      ds = hb.data.Dataset.from_parquet(params.filenames)
       ds = ds.map(lambda data: data)  # Prevent fusion
       if params.shuffle:
         ds = ds.shuffle(params.batch_size * 10)
       ds = ds.batch(params.batch_size, drop_remainder=True)
     else:
-      ds = hb.data.TabularDataset.from_parquet(params.filenames)
+      ds = hb.data.Dataset.from_parquet(params.filenames)
       if params.shuffle:
         ds = ds.shuffle_batch(
           params.batch_size, drop_remainder=True,

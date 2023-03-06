@@ -23,65 +23,67 @@ from __future__ import division
 from __future__ import print_function
 
 from tensorflow.python.data.ops import dataset_ops
+from tensorflow.python.data.util import random_seed
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.util import nest
 
 from hybridbackend.tensorflow.common import oplib as _ops
-from hybridbackend.tensorflow.data.dataframe import input_fields
 
 
 class RebatchDatasetV2(dataset_ops.DatasetV2):
   r'''A dataset that adjusts batches.
   '''
   def __init__(
-      self, input_dataset,
-      batch_size,
-      min_batch_size=None,
-      fields=None,
+      self, input_dataset, fields, batch_size,
       drop_remainder=False,
-      num_parallel_scans=1):
+      shuffle_buffer_size=None,
+      shuffle_seed=None,
+      reshuffle_each_iteration=None):
     r'''Create a `RebatchDatasetV2`.
 
     Args:
       input_dataset: A dataset outputs batches.
-      batch_size: Maxium number of samples in an output batch.
-      min_batch_size: (Optional.) Minimum number of samples in a non-final
-        batch. Same to `batch_size` by default.
-      fields: (Optional.) List of DataFrame fields. Fetched from `input_dataset`
+      fields: List of DataFrame fields. Fetched from `input_dataset`
         by default.
+      batch_size: Maxium number of samples in an output batch.
       drop_remainder: (Optional.) If True, smaller final batch is dropped.
         `False` by default.
-      num_parallel_scans: (Optional.) Number of concurrent scans against fields
-        of input dataset.
+      shuffle_buffer_size: A `tf.int64` scalar `tf.Tensor`, representing the
+        number of elements from this dataset from which the new
+        dataset will sample.
+      shuffle_seed: (Optional.) A `tf.int64` scalar `tf.Tensor`, representing
+        the random seed that will be used to create the distribution. See
+        @{tf.set_random_seed} for behavior.
+      reshuffle_each_iteration: (Optional.) A boolean, which if true indicates
+        that the dataset should be pseudorandomly reshuffled each time it is
+        iterated over. (Defaults to `True`.)
     '''
     self._input_dataset = input_dataset
+    self._fields = fields
     self._batch_size = ops.convert_to_tensor(
       batch_size,
       dtype=dtypes.int64,
       name='batch_size')
-    if min_batch_size is None:
-      min_batch_size = batch_size
-    self._min_batch_size = ops.convert_to_tensor(
-      min_batch_size,
-      dtype=dtypes.int64,
-      name='min_batch_size')
-    self._fields = input_fields(input_dataset, fields)
     self._drop_remainder = drop_remainder
-    if num_parallel_scans == dataset_ops.AUTOTUNE:
-      num_parallel_scans = len(self._fields)
-    self._num_parallel_scans = num_parallel_scans
-    self._impl = _ops.hb_rebatch_tabular_dataset(
+    self._shuffle_buffer_size = ops.convert_to_tensor(
+      shuffle_buffer_size or 0, dtype=dtypes.int64, name='buffer_size')
+    self._seed, self._seed2 = random_seed.get_seed(shuffle_seed)
+    self._reshuffle_each_iteration = reshuffle_each_iteration or True
+    self._impl = _ops.hb_rebatch_tabular_dataset_v2(
       self._input_dataset._variant_tensor,  # pylint: disable=protected-access
       self._batch_size,
-      self._min_batch_size,
+      self._shuffle_buffer_size,
+      self._seed,
+      self._seed2,
       field_ids=nest.flatten({
         f.name: f.map(lambda _, j=idx: j)
         for idx, f in enumerate(self._fields)}),
       field_ragged_indices=nest.flatten(
         {f.name: f.ragged_indices for f in self._fields}),
       drop_remainder=self._drop_remainder,
-      num_parallel_scans=self._num_parallel_scans)
+      reshuffle_each_iteration=self._reshuffle_each_iteration,
+      **self._flat_structure)
     super().__init__(self._impl)
 
   @property
@@ -91,10 +93,6 @@ class RebatchDatasetV2(dataset_ops.DatasetV2):
   @property
   def drop_remainder(self):
     return self._drop_remainder
-
-  @property
-  def num_parallel_scans(self):
-    return self._num_parallel_scans
 
   def _inputs(self):
     return [self._input_dataset]

@@ -29,8 +29,7 @@ from hybridbackend.tensorflow.data.parquet.dataset import read_parquet
 from hybridbackend.tensorflow.data.prefetch.ops import Iterator
 from hybridbackend.tensorflow.data.rebatch.dataset import RebatchDataset
 from hybridbackend.tensorflow.data.rebatch.dataset import rebatch
-from hybridbackend.tensorflow.data.rectify.dataset import rectify
-from hybridbackend.tensorflow.data.tabular.dataset import TabularDataset
+from hybridbackend.tensorflow.data.tabular.dataset import Dataset
 
 # HybridBackend operators must be loaded before TensorFlow operators to
 # make AWS SDK implementation correct.

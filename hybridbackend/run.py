@@ -69,6 +69,8 @@ def run(command):
     command: Function or command to run
   '''
   visible_devices = _query_visible_devices()
+  local_world_size_str = str(len(visible_devices))
+
   port = int(os.getenv('HB_RUN_BASE_PORT', '20001'))
   device_to_ports = []
   for d in visible_devices:
@@ -126,6 +128,8 @@ def run(command):
     new_tf_config['task']['type'] = task_type
     new_tf_config['task']['index'] = task_id
     os.environ['TF_CONFIG'] = json.dumps(new_tf_config)
+    os.environ['TF_TASK_TYPE'] = str(task_type)
+    os.environ['TF_TASK_INDEX'] = str(task_id)
     os.environ['CUDA_VISIBLE_DEVICES'] = ''
     os.environ['HB_OP_OPTIMIZATION_DISABLED'] = '1'
     if callable(command):
@@ -165,7 +169,10 @@ def run(command):
       gpu_tf_config['task']['index'] = gpu_index
     gpu_env = os.environ.copy()
     gpu_env['TF_CONFIG'] = json.dumps(gpu_tf_config)
+    gpu_env['TF_TASK_TYPE'] = gpu_tf_config['task']['type']
+    gpu_env['TF_TASK_INDEX'] = str(gpu_tf_config['task']['index'])
     gpu_env['CUDA_VISIBLE_DEVICES'] = device
+    gpu_env['LOCAL_WORLD_SIZE'] = local_world_size_str
     if interop_threads_gpu:
       gpu_env['TF_NUM_INTEROP_THREADS'] = str(interop_threads_gpu)
     if intraop_threads_gpu:

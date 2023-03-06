@@ -56,11 +56,11 @@ class ParquetDatasetTest(unittest.TestCase):
   def test_read(self):
     batch_size = 32
     with tf.Graph().as_default() as graph:
-      ds = hb.data.ParquetDataset(
+      ds = hb.data.Dataset.from_parquet(
         self._filename,
-        batch_size=batch_size,
         fields=[hb.data.DataFrame.Field('A', tf.int64),
                 hb.data.DataFrame.Field('C', tf.int64)])
+      ds = ds.batch(batch_size)
       ds = ds.prefetch(4)
       batch = tf.data.make_one_shot_iterator(ds).get_next()
 
@@ -77,7 +77,8 @@ class ParquetDatasetTest(unittest.TestCase):
   def test_schema_auto_detection_read(self):
     batch_size = 32
     with tf.Graph().as_default() as graph:
-      ds = hb.data.ParquetDataset([self._filename], batch_size=batch_size)
+      ds = hb.data.Dataset.from_parquet([self._filename])
+      ds = ds.batch(batch_size)
       ds = ds.prefetch(4)
       batch = tf.data.make_one_shot_iterator(ds).get_next()
 
@@ -92,10 +93,8 @@ class ParquetDatasetTest(unittest.TestCase):
   def test_dtype_auto_detection_read(self):
     batch_size = 32
     with tf.Graph().as_default() as graph:
-      ds = hb.data.ParquetDataset(
-        [self._filename],
-        batch_size=batch_size,
-        fields=['B', 'C'])
+      ds = hb.data.Dataset.from_parquet([self._filename], fields=['B', 'C'])
+      ds = ds.batch(batch_size)
       ds = ds.prefetch(4)
       batch = tf.data.make_one_shot_iterator(ds).get_next()
 
@@ -110,13 +109,11 @@ class ParquetDatasetTest(unittest.TestCase):
   def test_dtype_auto_detection_read_lower(self):
     batch_size = 32
     with tf.Graph().as_default() as graph:
-      actual_fields = hb.data.ParquetDataset.read_schema(
+      actual_fields = hb.data.Dataset.schema_from_parquet(
         self._filename, ['B', 'D'], lower=True)
       fld = actual_fields[1].name
-      ds = hb.data.ParquetDataset(
-        [self._filename],
-        batch_size=batch_size,
-        fields=actual_fields)
+      ds = hb.data.Dataset.from_parquet([self._filename], fields=actual_fields)
+      ds = ds.batch(batch_size)
       ds = ds.prefetch(4)
       batch = tf.data.make_one_shot_iterator(ds).get_next()
 

@@ -59,15 +59,14 @@ class ParquetDatasetReshapeTest(unittest.TestCase):
   def test_reshape(self):
     batch_size = 32
     with tf.Graph().as_default() as graph:
-      ds = hb.data.ParquetDataset(
+      ds = hb.data.Dataset.from_parquet(
         [self._filename],
-        batch_size=batch_size,
         fields=[
           hb.data.DataFrame.Field('col2'),
           hb.data.DataFrame.Field('col0', shape=[4])])
+      ds = ds.batch(batch_size)
       ds = ds.prefetch(4)
       batch = tf.data.make_one_shot_iterator(ds).get_next()
-      batch = hb.data.DataFrame.parse(batch)
 
     c = self._df['col0']
     with tf.Session(graph=graph) as sess:

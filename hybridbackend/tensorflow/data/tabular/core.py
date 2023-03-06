@@ -29,7 +29,7 @@ from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 
 from hybridbackend.tensorflow.data.dataframe import parse
-from hybridbackend.tensorflow.data.rectify.dataset import RectifyDataset
+from hybridbackend.tensorflow.data.rebatch.dataset import RebatchDataset
 
 
 class TabularDatasetCreator(object):  # pylint: disable=useless-object-inheritance
@@ -136,37 +136,12 @@ class TabularDatasetCreator(object):  # pylint: disable=useless-object-inheritan
   def num_parallel_parser_calls(self):
     return self._num_parallel_reads
 
-  def read(self):
-    r'''Read records in the dataset.
+  def _create_dataset(self, batch_size):
+    r'''Create dataset for specific batch size in parallel.
     '''
     def _creator(filename):
       filename = ops.convert_to_tensor(filename, dtypes.string, name='filename')
-      ds = self._fn(filename, 256)
-      ds = ds.apply(parse(pad=self._sparse_to_dense))
-      return ds.unbatch()
-
-    if self._num_parallel_reads == 1:
-      return self._filenames.flat_map(_creator)
-    if (self._num_parallel_reads is None
-        or self._num_parallel_reads == dataset_ops.AUTOTUNE):
-      return self._filenames.interleave(
-        _creator,
-        num_parallel_calls=self._num_parallel_reads)
-    return readers.ParallelInterleaveDataset(
-      self._filenames, _creator,
-      cycle_length=self._num_parallel_reads,
-      block_length=1,
-      sloppy=True,
-      buffer_output_elements=None,
-      prefetch_input_elements=1)
-
-  def _create_batched_dataset(self, batch_size):
-    r'''Create batched dataset for specific batch size.
-    '''
-    def _creator(filename):
-      filename = ops.convert_to_tensor(filename, dtypes.string, name='filename')
-      ds = self._fn(filename, batch_size)
-      return ds.apply(parse(pad=self._sparse_to_dense))
+      return self._fn(filename, batch_size)
 
     if self._num_parallel_reads == 1:
       return self._filenames.flat_map(_creator)
@@ -181,6 +156,13 @@ class TabularDatasetCreator(object):  # pylint: disable=useless-object-inheritan
       sloppy=True,
       buffer_output_elements=None,
       prefetch_input_elements=1)
+
+  def read(self):
+    r'''Read records in the dataset.
+    '''
+    ds = self._create_dataset(256)  # Prefetch 256 rows to speed up
+    ds = ds.apply(parse(pad=self._sparse_to_dense))
+    return ds.unbatch()
 
   def batch(self, batch_size, drop_remainder=False):
     r'''Combines consecutive elements of this dataset into batches.
@@ -199,13 +181,17 @@ class TabularDatasetCreator(object):  # pylint: disable=useless-object-inheritan
         whether the last batch should be dropped in the case its has fewer than
         `batch_size` elements; the default behavior is not to drop the smaller
         batch.
+      allow_smaller: (Optional.) A `tf.bool` scalar `tf.Tensor`, representing
+        whether a batch could be smaller.
 
     Returns:
       Dataset: A `Dataset`.
     '''
-    return RectifyDataset(
-      self._create_batched_dataset(batch_size),
-      batch_size, drop_remainder=drop_remainder)
+    ds = self._create_dataset(batch_size)
+    ds = RebatchDataset(
+      ds, self._fields, batch_size,
+      drop_remainder=drop_remainder)
+    return ds.apply(parse(pad=self._sparse_to_dense))
 
   def shuffle_batch(
       self, batch_size,
@@ -238,10 +224,11 @@ class TabularDatasetCreator(object):  # pylint: disable=useless-object-inheritan
     '''
     if buffer_size is None:
       buffer_size = batch_size
-    return RectifyDataset(
-      self._create_batched_dataset(batch_size),
-      batch_size,
+    ds = self._create_dataset(batch_size)
+    ds = RebatchDataset(
+      ds, self._fields, batch_size,
       drop_remainder=drop_remainder,
       shuffle_buffer_size=buffer_size,
       shuffle_seed=seed,
       reshuffle_each_iteration=reshuffle_each_iteration)
+    return ds.apply(parse(pad=self._sparse_to_dense))

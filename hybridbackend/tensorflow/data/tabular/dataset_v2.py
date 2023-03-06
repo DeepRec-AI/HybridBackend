@@ -27,6 +27,7 @@ import abc
 from tensorflow.python.data.ops import dataset_ops
 
 from hybridbackend.tensorflow.data.parquet.dataset_v2 import _ParquetDatasetV2
+from hybridbackend.tensorflow.data.parquet.schema import parquet_fields
 from hybridbackend.tensorflow.data.parquet.schema import \
   parquet_filenames_and_fields
 from hybridbackend.tensorflow.data.tabular.core import TabularDatasetCreator
@@ -40,6 +41,20 @@ class TabularDatasetV2(dataset_ops.DatasetV2):  # pylint: disable=abstract-metho
   @classmethod
   def from_parquet(cls, filenames, **kwargs):
     return ParquetRecordDatasetV2(filenames, **kwargs)
+
+  @classmethod
+  def schema_from_parquet(cls, filename, fields=None, lower=False):
+    r'''Read schema from a parquet file.
+
+    Args:
+      filename: Path of the parquet file.
+      fields: Existing field definitions or field names.
+      lower: Convert field name to lower case if not found.
+
+    Returns:
+      Field definition list.
+    '''
+    return parquet_fields(filename, fields, lower=lower)
 
   def __init__(
       self, filenames,
