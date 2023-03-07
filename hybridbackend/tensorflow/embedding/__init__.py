@@ -13,20 +13,19 @@
 # limitations under the License.
 # =============================================================================
 
-r'''DeepRec related classes and functions.
+r'''Support for various embedding backends.
 '''
 
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from hybridbackend.tensorflow.framework.context import Context as _ctx
-from hybridbackend.tensorflow.framework.options import DictOption as _dict
-
 # pylint: disable=ungrouped-imports
 try:
-  from .ev import \
-    EmbeddingWeightsRewritingForDeepRecEV  # pylint: disable=unused-import
+  from .deeprecev import \
+    ShardedEmbeddingWeightsRewritingForDeepRecEV as _patch_ev
+  from .variables import \
+    ShardedEmbeddingWeightsRewritingForVariables as _patch_var
 except ImportError:
   pass
 # pylint: enable=ungrouped-imports

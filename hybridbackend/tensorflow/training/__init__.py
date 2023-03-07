@@ -30,6 +30,7 @@ from hybridbackend.tensorflow.training.evaluation import EvaluationHook
 from hybridbackend.tensorflow.training.evaluation import EvaluationSpec
 from hybridbackend.tensorflow.training.hooks import Policy
 from hybridbackend.tensorflow.training.hooks import StepStatHook
+from hybridbackend.tensorflow.training.optimizer import SyncReplicasOptimizer
 from hybridbackend.tensorflow.training.optimizer import \
   wraps_optimizer as _wraps
 from hybridbackend.tensorflow.training.saved_model import export
@@ -42,15 +43,14 @@ from hybridbackend.tensorflow.training.server import target
 from hybridbackend.tensorflow.training.server import wraps_server
 from hybridbackend.tensorflow.training.session import \
   wraps_monitored_training_session
-from hybridbackend.tensorflow.training.sync_replicas_optimizer import \
-  SyncReplicasOptimizer
-from hybridbackend.tensorflow.training.variables import \
-  EmbeddingWeightsRewritingForVariables as _patch_variables
 
 _ = (
   _ctx.get().options
   .register('grad_lazy_sync', False, env='HB_GRAD_LAZY_SYNC')
   .register('sharding', False)
+  .register(
+    'use_hierarchical_embedding_lookup', True,
+    env='HB_USE_HIERARCHICAL_EMBEDDING_LOOKUP')
   .register('batch_size', -1)
   .register('model_dir', None)
   .register('keep_checkpoint_max', None)
