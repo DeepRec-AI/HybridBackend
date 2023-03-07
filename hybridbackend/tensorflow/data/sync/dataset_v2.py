@@ -13,7 +13,7 @@
 # limitations under the License.
 # =============================================================================
 
-r'''DetectEndDataset that reports the existence of next element.
+r'''A dataset that syncs data between replicas.
 
 This class is compatible with Tensorflow 1.15.
 '''
@@ -26,13 +26,14 @@ from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import tensor_spec
 
 from hybridbackend.tensorflow.common import oplib as _ops
+from hybridbackend.tensorflow.data.sync.hook import SyncReplicasDatasetHook
 
 
-class DetectEndDatasetV2(dataset_ops.DatasetV2):
-  r'''Wrapping a dataset to notify whether it still has next input.
+class _SyncReplicasDatasetV2(dataset_ops.DatasetV2):
+  r'''A dataset that syncs data between replicas.
   '''
   def __init__(self, input_dataset):
-    r'''Create a `_DetectEndDatasetV2`.
+    r'''Create a `_SyncReplicasDatasetV2`.
 
     Args:
       input_dataset: A `dataset` to be wrapped to verify its last element.
@@ -40,7 +41,7 @@ class DetectEndDatasetV2(dataset_ops.DatasetV2):
     self._input_dataset = input_dataset
     self._should_stop_spec = tensor_spec.TensorSpec(
       shape=[], dtype=dtypes.int32)
-    variant_tensor = _ops.hb_detect_end_dataset(
+    variant_tensor = _ops.hb_sync_replicas_dataset(
       self._input_dataset._variant_tensor)  # pylint: disable=protected-access
     super().__init__(variant_tensor)
 
@@ -50,3 +51,42 @@ class DetectEndDatasetV2(dataset_ops.DatasetV2):
   @property
   def element_spec(self):
     return self._should_stop_spec, self._input_dataset.element_spec  # pylint: disable=protected-access
+
+
+class SyncReplicasDatasetV2(dataset_ops.DatasetV2):
+  r'''A dataset that syncs data between replicas.
+  '''
+  @classmethod
+  def apply(cls, world, rank):
+    r'''Sync replicas for input dataset.
+    '''
+    def _apply_fn(dataset):
+      return cls(dataset, world, rank)
+    return _apply_fn
+
+  @classmethod
+  def hooks(cls):
+    return SyncReplicasDatasetHook.all_instances()
+
+  @classmethod
+  def sync(cls, features=None):
+    return SyncReplicasDatasetHook.sync_all_instances(features)
+
+  def __init__(self, input_dataset, world, rank):
+    r'''Create a `SyncReplicasDatasetV2`.
+
+    Args:
+      input_dataset: A `dataset` to be wrapped to verify its last element.
+    '''
+    self._input_dataset = input_dataset
+    self._hook = SyncReplicasDatasetHook(world, rank)
+    self._impl = _SyncReplicasDatasetV2(self._input_dataset).map(
+      self._hook.register)
+    super().__init__(self._impl._variant_tensor)  # pylint: disable=protected-access
+
+  def _inputs(self):
+    return [self._input_dataset]
+
+  @property
+  def element_spec(self):
+    return self._input_dataset.element_spec  # pylint: disable=protected-access

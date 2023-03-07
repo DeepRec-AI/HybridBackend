@@ -29,8 +29,8 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.training import session_run_hook
 
-from hybridbackend.tensorflow.data.detect_end.dataset import DetectEndDataset
-from hybridbackend.tensorflow.data.prefetch.ops import Iterator
+from hybridbackend.tensorflow.data.prefetch.iterator import Iterator
+from hybridbackend.tensorflow.data.sync.dataset import _SyncReplicasDataset
 from hybridbackend.tensorflow.distribute.collective import Collective
 from hybridbackend.tensorflow.distribute.ops import CollectiveOps
 from hybridbackend.tensorflow.framework.context import Context
@@ -82,14 +82,19 @@ class IteratorRewriting(GraphRewriting):
   def wraps_make_iterator(self, fn):
     r'''Wraps make_*_iterator.
     '''
-    def wrapped_make_iterator(ds):
+    def wrapped_make_iterator(ds, *args, **kwargs):
+      if isinstance(ds, _SyncReplicasDataset):
+        return fn(ds, *args, **kwargs)
+      if isinstance(ds, dataset_ops.DatasetV1Adapter):
+        if isinstance(ds._dataset, _SyncReplicasDataset):  # pylint: disable=protected-access
+          return fn(ds, *args, **kwargs)
       with ops.device('/cpu:0'):
         options = Context.get().options
         if options.mode == ModeKeys.TRAIN:
-          return fn(DetectEndDataset(ds))
+          return fn(_SyncReplicasDataset(ds), *args, **kwargs)
         if options.mode == ModeKeys.EVAL:
-          return fn(ds.repeat())
-        return fn(ds)
+          return fn(ds.repeat(), *args, **kwargs)
+        return fn(ds, *args, **kwargs)
     return wrapped_make_iterator
 
   def wraps_iterator(self, cls):
@@ -128,13 +133,22 @@ class IteratorRewriting(GraphRewriting):
     dataset_ops.make_one_shot_iterator = self.wraps_make_iterator(
       self._prev_make_one_shot_iterator)
     tf.data.make_one_shot_iterator = dataset_ops.make_one_shot_iterator
-    self._prev_make_initializable_iterator = \
-      dataset_ops.make_initializable_iterator
+    self._prev_make_one_shot_iterator_method = (
+      dataset_ops.DatasetV1._make_one_shot_iterator)  # pylint: disable=protected-access
+    dataset_ops.DatasetV1._make_one_shot_iterator = self.wraps_make_iterator(  # pylint: disable=protected-access
+      self._prev_make_one_shot_iterator_method)
+    self._prev_make_initializable_iterator = (
+      dataset_ops.make_initializable_iterator)
     dataset_ops.make_initializable_iterator = self.wraps_make_iterator(
       self._prev_make_initializable_iterator)
     self._prev_keras_get_iterator = training_utils.get_iterator
-    tf.data.make_initializable_iterator = \
-      dataset_ops.make_initializable_iterator
+    tf.data.make_initializable_iterator = (
+      dataset_ops.make_initializable_iterator)
+    self._prev_make_initializable_iterator_method = (
+      dataset_ops.DatasetV1._make_initializable_iterator)  # pylint: disable=protected-access
+    dataset_ops.DatasetV1._make_initializable_iterator = (  # pylint: disable=protected-access
+      self.wraps_make_iterator(
+        self._prev_make_initializable_iterator_method))
     training_utils.get_iterator = self.wraps_make_iterator(
       self._prev_keras_get_iterator)
     self._prev_iterator = iterator_ops.Iterator
@@ -147,10 +161,14 @@ class IteratorRewriting(GraphRewriting):
     iterator_ops.Iterator = self._prev_iterator
     dataset_ops.make_one_shot_iterator = self._prev_make_one_shot_iterator
     tf.data.make_one_shot_iterator = dataset_ops.make_one_shot_iterator
-    dataset_ops.make_initializable_iterator = \
-      self._prev_make_initializable_iterator
-    tf.data.make_initializable_iterator = \
-      dataset_ops.make_initializable_iterator
+    dataset_ops.DatasetV1._make_one_shot_iterator = (  # pylint: disable=protected-access
+      self._prev_make_one_shot_iterator_method)
+    dataset_ops.make_initializable_iterator = (
+      self._prev_make_initializable_iterator)
+    tf.data.make_initializable_iterator = (
+      dataset_ops.make_initializable_iterator)
+    dataset_ops.DatasetV1._make_initializable_iterator = (  # pylint: disable=protected-access
+      self._prev_make_initializable_iterator_method)
     training_utils.get_iterator = self._prev_keras_get_iterator
 
 
@@ -187,7 +205,7 @@ class DataSyncRewriting(SessionRunRewriting):
     else:
       with ops.device(should_stop_all_ops[0].device):
         self._should_stop_all = math_ops.reduce_max(
-          array_ops.concat(should_stop_all_ops, 0), 0)
+          array_ops.stack(should_stop_all_ops), 0)
 
   def before_run(self, run_context):  # pylint: disable=unused-argument
     r'''Call this before sess run.
