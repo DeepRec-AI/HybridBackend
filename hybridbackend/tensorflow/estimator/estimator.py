@@ -21,6 +21,7 @@ from __future__ import division
 from __future__ import print_function
 
 import six
+import time
 
 from tensorflow.python.distribute import estimator_training
 from tensorflow.python.eager import context as _context
@@ -39,6 +40,10 @@ try:
     run_config as run_config_lib
   from tensorflow_estimator.python.estimator.export import export_lib
   from tensorflow_estimator.python.estimator.training import _assert_eval_spec
+  from tensorflow_estimator.python.estimator.training import \
+    _DELAY_SECS_PER_WORKER
+  from tensorflow_estimator.python.estimator.training import _is_google_env
+  from tensorflow_estimator.python.estimator.training import _MAX_DELAY_SECS
   from tensorflow_estimator.python.estimator.training import _TrainingExecutor
 except ImportError:
   # pylint: disable=ungrouped-imports
@@ -90,6 +95,8 @@ class RunConfig(run_config_lib.RunConfig):
     kwargs['device_fn'] = device_function
     super().__init__(**kwargs)
     self._is_chief = True  # pylint: disable=protected-access
+    if self.evaluation_master == '':  # pylint: disable=protected-access
+      self._evaluation_master = self.master  # pylint: disable=protected-access
 
 
 def wraps_model_fn(model_fn, model_dir, config):
@@ -136,6 +143,19 @@ def wraps_model_fn(model_fn, model_dir, config):
         training_chief_hooks=training_chief_hooks)
       return estimator_spec
   return wrapped_model_fn
+
+
+def start_std_server(config):
+  r'''Creates, starts, and returns a server_lib.Server.
+  '''
+  logging.info('Start Tensorflow server.')
+  return wraps_server(server_lib.Server)(
+    config.cluster_spec,
+    job_name=config.task_type,
+    task_index=config.task_id,
+    config=wraps_session_config(config.session_config),
+    start=True,
+    protocol=config.protocol)
 
 
 class HybridBackendEstimatorBase(object):  # pylint: disable=useless-object-inheritance
@@ -190,6 +210,45 @@ def wraps_estimator(cls):
           input_fn, hooks=hooks, max_steps=max_steps,
           saving_listeners=saving_listeners)
 
+    def evaluate(self,
+                 input_fn,
+                 steps=None,
+                 hooks=None,
+                 checkpoint_path=None,
+                 name=None):
+      r'''support standalone evaluation.
+      '''
+      _estimator_lib._estimator_api_gauge.get_cell('evaluate').set(True)  # pylint: disable=protected-access
+      if self.config.cluster_spec:
+        if estimator_training.should_run_distribute_coordinator(self.config):
+          raise ValueError(
+            'Running `evaluate` with Distribute Coordinator '
+            'not supported.')
+        if not _is_google_env():
+          start_std_server(self.config)
+
+        start_delay_secs = 0
+        if self.config.task_type == run_config_lib.TaskType.WORKER:
+          max_delay_secs = _MAX_DELAY_SECS
+          if self.config.experimental_max_worker_delay_secs is not None:
+            max_delay_secs = int(self.config.experimental_max_worker_delay_secs)
+          start_delay_secs = min(
+            max_delay_secs,
+            (self.config.task_id + 1) * _DELAY_SECS_PER_WORKER)
+
+        if start_delay_secs > 0:
+          logging.info(
+            f'Waiting {start_delay_secs} secs before starting evaluation.')
+          time.sleep(start_delay_secs)
+
+      return self._actual_eval(
+        input_fn,
+        strategy=self._eval_distribution,
+        steps=steps,
+        hooks=hooks,
+        checkpoint_path=checkpoint_path,
+        name=name)
+
     def _actual_eval(
         self, input_fn, strategy=None, steps=None, hooks=None,
         checkpoint_path=None, name=None):
@@ -213,21 +272,18 @@ def wraps_estimator(cls):
           checkpoint_path = latest_path
 
         with ops.Graph().as_default() as g, g.device(self._device_fn):  # pylint: disable=protected-access
-          with scope(
-              mode=ModeKeys.EVAL,
-              data_sync_drop_remainder=self._eval_drop_remainder):
-            with ops.name_scope(ModeKeys.EVAL), reuse_variables(vs.AUTO_REUSE):
-              (scaffold, update_op, eval_dict, all_hooks) = (
-                self._evaluate_build_graph(  # pylint: disable=protected-access
-                  input_fn,
-                  hooks, checkpoint_path))
-              return self._evaluate_run(  # pylint: disable=protected-access
-                checkpoint_path=checkpoint_path,
-                scaffold=scaffold,
-                update_op=update_op,
-                eval_dict=eval_dict,
-                all_hooks=all_hooks,
-                output_dir=self.eval_dir(name))
+          with ops.name_scope(ModeKeys.EVAL), reuse_variables(vs.AUTO_REUSE):
+            (scaffold, update_op, eval_dict, all_hooks) = (
+              self._evaluate_build_graph(  # pylint: disable=protected-access
+                input_fn,
+                hooks, checkpoint_path))
+            return self._evaluate_run(  # pylint: disable=protected-access
+              checkpoint_path=checkpoint_path,
+              scaffold=scaffold,
+              update_op=update_op,
+              eval_dict=eval_dict,
+              all_hooks=all_hooks,
+              output_dir=self.eval_dir(name))
 
     def train_and_evaluate(
         self, train_spec, eval_spec,
@@ -392,7 +448,7 @@ def wraps_estimator(cls):
         modes=[mode],
         **kwargs)
 
-    def predict(
+    def _actual_predict(
         self, input_fn,
         predict_keys=None,
         hooks=None,
@@ -400,7 +456,6 @@ def wraps_estimator(cls):
         yield_single_examples=True):
       r'''Predict method of estimator in HB.
       '''
-      _estimator_lib._estimator_api_gauge.get_cell('predict').set(True)  # pylint: disable=protected-access
       with _context.graph_mode(), Context.scope(
           mode=ModeKeys.PREDICT,
           model_dir=self._model_dir,
@@ -453,6 +508,30 @@ def wraps_estimator(cls):
                     for key, value in six.iteritems(preds_evaluated)
                   }
 
+    def predict(
+        self, input_fn,
+        predict_keys=None,
+        hooks=None,
+        checkpoint_path=None,
+        yield_single_examples=True):
+      r'''Predict method of estimator in HB.
+      '''
+      _estimator_lib._estimator_api_gauge.get_cell('predict').set(True)  # pylint: disable=protected-access
+      if self.config.cluster_spec:
+        if estimator_training.should_run_distribute_coordinator(self.config):
+          raise ValueError(
+            'Running `evaluate` with Distribute Coordinator '
+            'not supported.')
+        if not _is_google_env():
+          start_std_server(self.config)
+
+      return self._actual_predict(
+        input_fn,
+        predict_keys=predict_keys,
+        hooks=hooks,
+        checkpoint_path=checkpoint_path,
+        yield_single_examples=yield_single_examples)
+
   return HybridBackendEstimator
 
 
@@ -464,14 +543,7 @@ class TrainingExecutor(_TrainingExecutor):
   '''
   def _start_std_server(self, config):
     r'''Creates, starts, and returns a server_lib.Server.'''
-    logging.info('Start Tensorflow server.')
-    return wraps_server(server_lib.Server)(
-      config.cluster_spec,
-      job_name=config.task_type,
-      task_index=config.task_id,
-      config=wraps_session_config(config.session_config),
-      start=True,
-      protocol=config.protocol)
+    start_std_server(config)
 
 
 def train_and_evaluate(estimator, train_spec, eval_spec, **kwargs):
