@@ -37,7 +37,9 @@ limitations under the License.
 namespace tensorflow {
 
 using CPUDevice = Eigen::ThreadPoolDevice;
+#if GOOGLE_CUDA
 using GPUDevice = Eigen::GpuDevice;
+#endif  // GOOGLE_CUDA
 
 namespace hybridbackend {
 
@@ -101,17 +103,23 @@ class PartitionByModuloOp : public OpKernel {
 #define TF_CALL_SHUFFLE_PARTITION_TYPES(m) \
   TF_CALL_int32(m) TF_CALL_uint32(m) TF_CALL_int64(m) TF_CALL_uint64(m)
 
-#define REGISTER_SHUFFLE_PARTITION_KERNEL(TYPE)                 \
-  REGISTER_KERNEL_BUILDER(Name("HbPartitionByModulo")           \
-                              .Device(DEVICE_CPU)               \
-                              .TypeConstraint<TYPE>("T"),       \
-                          PartitionByModuloOp<CPUDevice, TYPE>) \
-  REGISTER_KERNEL_BUILDER(Name("HbPartitionByModulo")           \
-                              .Device(DEVICE_GPU)               \
-                              .TypeConstraint<TYPE>("T"),       \
+#define REGISTER_SHUFFLE_PARTITION_KERNEL(TYPE)           \
+  REGISTER_KERNEL_BUILDER(Name("HbPartitionByModulo")     \
+                              .Device(DEVICE_CPU)         \
+                              .TypeConstraint<TYPE>("T"), \
+                          PartitionByModuloOp<CPUDevice, TYPE>)
+TF_CALL_SHUFFLE_PARTITION_TYPES(REGISTER_SHUFFLE_PARTITION_KERNEL);
+#undef REGISTER_SHUFFLE_PARTITION_KERNEL
+
+#if GOOGLE_CUDA
+#define REGISTER_SHUFFLE_PARTITION_KERNEL(TYPE)           \
+  REGISTER_KERNEL_BUILDER(Name("HbPartitionByModulo")     \
+                              .Device(DEVICE_GPU)         \
+                              .TypeConstraint<TYPE>("T"), \
                           PartitionByModuloOp<GPUDevice, TYPE>)
 TF_CALL_SHUFFLE_PARTITION_TYPES(REGISTER_SHUFFLE_PARTITION_KERNEL);
 #undef REGISTER_SHUFFLE_PARTITION_KERNEL
+#endif  // GOOGLE_CUDA
 
 REGISTER_OP("HbPartitionByModuloN")
     .Output("outputs: N * T")
