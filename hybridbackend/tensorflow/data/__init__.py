@@ -26,9 +26,10 @@ from hybridbackend.tensorflow.data.dataframe import parse
 from hybridbackend.tensorflow.data.dataframe import unbatch_and_to_sparse
 from hybridbackend.tensorflow.data.parquet.dataset import ParquetDataset
 from hybridbackend.tensorflow.data.parquet.dataset import read_parquet
-from hybridbackend.tensorflow.data.prefetch.ops import Iterator
+from hybridbackend.tensorflow.data.prefetch.iterator import Iterator
 from hybridbackend.tensorflow.data.rebatch.dataset import RebatchDataset
 from hybridbackend.tensorflow.data.rebatch.dataset import rebatch
+from hybridbackend.tensorflow.data.sync.dataset import SyncReplicasDataset
 from hybridbackend.tensorflow.data.tabular.dataset import Dataset
 
 # HybridBackend operators must be loaded before TensorFlow operators to

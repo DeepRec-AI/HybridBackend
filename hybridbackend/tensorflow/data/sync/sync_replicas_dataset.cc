@@ -24,15 +24,15 @@ limitations under the License.
 namespace tensorflow {
 namespace hybridbackend {
 
-REGISTER_OP("HbDetectEndDataset")
+REGISTER_OP("HbSyncReplicasDataset")
     .Input("input_dataset: variant")
     .Output("handle: variant")
     .SetIsStateful()
     .SetShapeFn(shape_inference::ScalarShape);
 
-class DetectEndDatasetOp : public UnaryDatasetOpKernel {
+class SyncReplicasDatasetOp : public UnaryDatasetOpKernel {
  public:
-  explicit DetectEndDatasetOp(OpKernelConstruction* ctx)
+  explicit SyncReplicasDatasetOp(OpKernelConstruction* ctx)
       : UnaryDatasetOpKernel(ctx) {}
 
   void MakeDataset(OpKernelContext* ctx, DatasetBase* input,
@@ -73,7 +73,7 @@ class DetectEndDatasetOp : public UnaryDatasetOpKernel {
     }
 
     string DebugString() const override {
-      return "DetectEndDatasetOp()::Dataset";
+      return "SyncReplicasDatasetOp::Dataset";
     }
 
    protected:
@@ -170,9 +170,9 @@ class DetectEndDatasetOp : public UnaryDatasetOpKernel {
   };
 };
 
-REGISTER_KERNEL_BUILDER(Name("HbDetectEndDataset").Device(DEVICE_CPU),
-                        DetectEndDatasetOp);
+REGISTER_KERNEL_BUILDER(Name("HbSyncReplicasDataset").Device(DEVICE_CPU),
+                        SyncReplicasDatasetOp);
 
-WHITELIST_STATEFUL_OP_FOR_DATASET_FUNCTIONS("HbDetectEndDataset");
+WHITELIST_STATEFUL_OP_FOR_DATASET_FUNCTIONS("HbSyncReplicasDataset");
 }  // namespace hybridbackend
 }  // namespace tensorflow

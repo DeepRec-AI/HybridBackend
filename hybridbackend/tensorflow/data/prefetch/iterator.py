@@ -31,19 +31,15 @@ from tensorflow.python.eager import context
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor
+from tensorflow.python.framework import tensor_spec
 from tensorflow.python.ops import array_ops
 from tensorflow.python.platform import tf_logging as logging
+from tensorflow.python.training import session_run_hook
 from tensorflow.python.util import nest
 
-from hybridbackend.tensorflow.common import oplib as _ops
 from hybridbackend.tensorflow.framework.ops import ModeKeys
 from hybridbackend.tensorflow.framework.rewriting import SessionRunRewriting
-
-ops.NotDifferentiable('HbPrefetchBufferPut')
-ops.NotDifferentiable('HbPrefetchBufferTake')
-ops.NotDifferentiable('HbPrefetchBufferCancel')
-ops.NotDifferentiable('HbPrefetchBufferClose')
-ops.NotDifferentiable('HbPrefetchBufferSize')
+from hybridbackend.tensorflow.framework.view import OperationLike
 
 
 class Iterator(object):  # pylint: disable=useless-object-inheritance
@@ -101,16 +97,21 @@ class Iterator(object):  # pylint: disable=useless-object-inheritance
     self._exceptions_raised = []
 
     with ops.name_scope(self._name):
-      self._cancel_op = _ops.hb_prefetch_buffer_cancel(
+      self._cancel_op = OperationLike('CancelPrefetch').finalize(
         shared_name=self._name,
-        shared_capacity=capacity)
-      self._resume_op = _ops.hb_prefetch_buffer_cancel(
-        is_cancelled=False,
+        capacity=capacity,
+        num_takers=num_takers,
+        num_runners=num_runners)
+      self._resume_op = OperationLike('ResumePrefetch').finalize(
         shared_name=self._name,
-        shared_capacity=capacity)
-      self._close_op = _ops.hb_prefetch_buffer_close(
+        capacity=capacity,
+        num_takers=num_takers,
+        num_runners=num_runners)
+      self._stop_op = OperationLike('StopPrefetch').finalize(
         shared_name=self._name,
-        shared_capacity=capacity)
+        capacity=capacity,
+        num_takers=num_takers,
+        num_runners=num_runners)
       self._runner_per_thread = []
 
       if isinstance(inputs, iterator_ops.Iterator):
@@ -128,23 +129,31 @@ class Iterator(object):  # pylint: disable=useless-object-inheritance
         if v is not None:
           tensor_indices.append(i)
           tensors.append(v)
-      runner = _ops.hb_prefetch_buffer_put(
-        tensors,
-        shared_name=self._name,
-        shared_capacity=capacity)
       tensor_dtypes = []
       tensor_shapes = []
       for v in tensors:
         tensor_dtypes.append(v.dtype)
         tensor_shapes.append(v.shape if hasattr(v, 'shape') else None)
-      self._runner_per_thread = [runner for _ in range(num_runners)]
 
-      num_takers = max(num_takers, capacity)
-      next_tensors = _ops.hb_prefetch_buffer_take(
+      run_op = OperationLike('RunPrefetch').finalize(
+        tensors,
         dtypes=tensor_dtypes,
         shared_name=self._name,
-        shared_capacity=capacity,
-        shared_threads=num_takers)
+        capacity=capacity,
+        num_takers=num_takers,
+        num_runners=num_runners)
+      self._runner_per_thread = [run_op for _ in range(num_runners)]
+      num_takers = max(num_takers, capacity)
+      next_tensors = (
+        OperationLike('TakeFromPrefetch')
+        .returns_tensors(
+          *(tensor_spec.TensorSpec(None, dt) for dt in tensor_dtypes))
+        .finalize(
+          dtypes=tensor_dtypes,
+          shared_name=self._name,
+          capacity=capacity,
+          num_takers=num_takers,
+          num_runners=num_runners))
       if not isinstance(next_tensors, (tuple, list)):
         next_tensors = [next_tensors]
       next_tensors = [array_ops.identity(t) for t in next_tensors]
@@ -246,7 +255,7 @@ class Iterator(object):  # pylint: disable=useless-object-inheritance
             decremented = True
             if self._runs_per_session[sess] == 0:
               try:
-                sess.run(self._close_op)
+                sess.run(self._stop_op)
               except Exception:
                 pass
             return
@@ -380,12 +389,19 @@ class Iterator(object):  # pylint: disable=useless-object-inheritance
           sess, coord=coord, daemon=True, start=True))
     return threads
 
-  class Hook(SessionRunRewriting):
+  class Hook(session_run_hook.SessionRunHook):
     r'''SessionRunHook that starts prefetching threads after session creation.
     '''
     def after_create_session(self, session, coord):
       Iterator.start(session, coord=coord)
 
 
+class IteratorRewriting(SessionRunRewriting):
+  r'''SessionRunHook that starts prefetching threads after session creation.
+  '''
+  def after_create_session(self, session, coord):
+    Iterator.start(session, coord=coord)
+
+
 SessionRunRewriting.register(
-  Iterator.Hook, [ModeKeys.TRAIN, ModeKeys.EVAL, ModeKeys.PREDICT])
+  IteratorRewriting, [ModeKeys.TRAIN, ModeKeys.EVAL, ModeKeys.PREDICT])

@@ -13,7 +13,7 @@
 # limitations under the License.
 # =============================================================================
 
-r'''DetectEndDataset that reports the existence of next element.
+r'''A dataset that syncs data between replicas.
 
 This class is compatible with Tensorflow 1.12.
 '''
@@ -27,13 +27,14 @@ from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
 
 from hybridbackend.tensorflow.common import oplib as _ops
+from hybridbackend.tensorflow.data.sync.hook import SyncReplicasDatasetHook
 
 
-class DetectEndDatasetV1(dataset_ops.Dataset):
-  r'''Wrapping a dataset to notify whether it still has next input.
+class _SyncReplicasDatasetV1(dataset_ops.Dataset):
+  r'''A dataset that syncs data between replicas.
   '''
   def __init__(self, input_dataset):
-    r'''Create a `_DetectEndDatasetV1`.
+    r'''Create a `_SyncReplicasDatasetV1`.
 
     Args:
       input_dataset: A `dataset` to be wrapped to verify its last element.
@@ -42,7 +43,7 @@ class DetectEndDatasetV1(dataset_ops.Dataset):
     super().__init__()
 
   def _as_variant_tensor(self):
-    return _ops.hb_detect_end_dataset(
+    return _ops.hb_sync_replicas_dataset(
       self._input_dataset._as_variant_tensor())  # pylint: disable=protected-access
 
   def _inputs(self):
@@ -59,3 +60,53 @@ class DetectEndDatasetV1(dataset_ops.Dataset):
   @property
   def output_classes(self):
     return ops.Tensor, self._input_dataset.output_classes
+
+
+class SyncReplicasDatasetV1(dataset_ops.Dataset):
+  r'''A dataset that syncs data between replicas.
+  '''
+  @classmethod
+  def apply(cls, world, rank):
+    r'''Sync replicas for input dataset.
+    '''
+    def _apply_fn(dataset):
+      return cls(dataset, world, rank)
+    return _apply_fn
+
+  @classmethod
+  def hooks(cls):
+    return SyncReplicasDatasetHook.all_instances()
+
+  @classmethod
+  def sync(cls, features=None):
+    return SyncReplicasDatasetHook.sync_all_instances(features)
+
+  def __init__(self, input_dataset, world, rank):
+    r'''Create a `SyncReplicasDatasetV1`.
+
+    Args:
+      input_dataset: A `dataset` to be wrapped to verify its last element.
+    '''
+    self._input_dataset = input_dataset
+    self._hook = SyncReplicasDatasetHook(world, rank)
+    self._impl = _SyncReplicasDatasetV1(self._input_dataset).map(
+      self._hook.register)
+    super().__init__()
+
+  def _as_variant_tensor(self):
+    return self._impl._as_variant_tensor()  # pylint: disable=protected-access
+
+  def _inputs(self):
+    return [self._input_dataset]
+
+  @property
+  def output_shapes(self):
+    return self._input_dataset.output_shapes
+
+  @property
+  def output_types(self):
+    return self._input_dataset.output_types
+
+  @property
+  def output_classes(self):
+    return self._input_dataset.output_classes
