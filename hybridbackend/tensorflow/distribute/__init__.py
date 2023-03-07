@@ -20,12 +20,9 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from hybridbackend.tensorflow.distribute.communicator import \
-  CollectiveOps as ops
-from hybridbackend.tensorflow.distribute.communicator import Communicator
-from hybridbackend.tensorflow.distribute.communicator_pool import \
-  CommunicatorPool
-from hybridbackend.tensorflow.distribute.nccl.comm import NcclCommunicator
+from hybridbackend.tensorflow.distribute.collective import *
+from hybridbackend.tensorflow.distribute.ops import CollectiveOps as ops
+from hybridbackend.tensorflow.distribute.partition.ops import *
 from hybridbackend.tensorflow.framework.context import Context as _ctx
 
 _ = (
@@ -33,4 +30,5 @@ _ = (
   .register('comm_default', 'NCCL', env='HB_COMM_DEFAULT')
   .register('comm_pool_name', 'default')
   .register('comm_pool_capacity', 1)
-  .register('comm_pubsub_device', '/cpu:0'))
+  .register('comm_wire_dtype', None)
+  .register('comm_gradient_wire_dtype', None))

@@ -20,14 +20,11 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import fnmatch
 import os
 
-from Cython.Build import cythonize
 from Cython.Distutils import build_ext
 from setuptools import find_packages
 from setuptools import setup
-from setuptools.command.build_py import build_py
 from setuptools.dist import Distribution
 from setuptools.extension import Extension
 
@@ -37,32 +34,18 @@ from hybridbackend import __version__
 NAME = f'hybridbackend{os.getenv("WHEEL_ALIAS", "")}'
 VERSION = f'{__version__}{os.getenv("WHEEL_BUILD", "")}'
 REQUIRES = os.getenv('WHEEL_REQUIRES', '').split(';')
-DEBUG = os.getenv('WHEEL_DEBUG', 'OFF')
 PACKAGES = find_packages(exclude=['tests'])
 PACKAGE_DATA = {'': ['*.so', '*.so.*']}
 
 
-class build_nonlib_py(build_py):  # pylint: disable=invalid-name
-  def find_package_modules(self, package, package_dir):
-    modules = super().find_package_modules(package, package_dir)
-    if DEBUG != 'ON':
-      modules = [
-        (pkg, mod, f) for (pkg, mod, f) in modules
-        if not fnmatch.fnmatchcase(f, pat='*/*_lib.py')]
-    return modules
+class NoExtensionBuilder(build_ext):
+  r'''Build extensions to do nothing.
+  '''
+  def build_extension(self, ext):
+    return
 
 
-if DEBUG == 'ON':
-  EXT_SOURCES = []
-else:
-  EXT_SOURCES = ['**/*_lib.py']
-EXT_MODULES = cythonize(
-  [Extension('hybridbackend.*', sources=EXT_SOURCES)],
-  language_level=3,
-  compiler_directives=dict(always_allow_keywords=True))
-CMDCLASS = dict(build_ext=build_ext, build_py=build_nonlib_py)
-
-
+CMDCLASS = dict(build_ext=NoExtensionBuilder)
 DESCRIPTION = ('A high-performance framework for training wide-and-deep '
                'recommender systems on heterogeneous cluster')
 LONG_DESCRIPTION = DESCRIPTION
@@ -89,7 +72,7 @@ setup(
   include_package_data=True,
   package_data=PACKAGE_DATA,
   install_requires=REQUIRES,
-  ext_modules=EXT_MODULES,
+  ext_modules=[Extension('', sources=[])],
   cmdclass=CMDCLASS,
   distclass=BinaryDistribution,
   zip_safe=False,

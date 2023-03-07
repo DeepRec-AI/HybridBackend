@@ -13,7 +13,7 @@
 # limitations under the License.
 # =============================================================================
 
-r'''Tests for Broadcast.
+r'''Tests for broadcast collective communication.
 '''
 
 from __future__ import absolute_import
@@ -27,25 +27,24 @@ import numpy as np
 
 import hybridbackend.common.test as hbtest
 
+# pylint: disable=missing-docstring,import-outside-toplevel
+
 
 def _test_broadcast(rank, a, b):
   r'''Test Broadcast.
   '''
-  # pylint: disable=import-outside-toplevel
   import tensorflow as tf
 
   import hybridbackend.tensorflow as hb
 
   with tf.Graph().as_default():
     with hb.scope():
-      comm = hb.distribute.Communicator.build('comm0', hb.context.devices)
-      root = tf.constant(a) if rank == 0 else tf.constant(b)
-      recv = comm.broadcast(root, root_rank=0)
+      data = tf.constant(a) if rank == 0 else tf.constant(b)
+      recv = hb.distribute.broadcast(data, root_rank=0)
       with tf.train.MonitoredTrainingSession('') as sess:
         return sess.run(recv)
 
 
-# pylint: disable=missing-docstring
 @unittest.skipUnless(
   os.getenv('HYBRIDBACKEND_WITH_CUDA') == 'ON', 'GPU required')
 @unittest.skipUnless(
@@ -55,7 +54,10 @@ class BroadcastTest(unittest.TestCase):
     os.environ['CUDA_VISIBLE_DEVICES'] = '0,1'
     os.environ['NCCL_DEBUG'] = 'INFO'
     os.environ['NCCL_DEBUG_SUBSYS'] = 'ALL'
-    os.environ['TF_CPP_VMODULE'] = 'nccl_broadcast=1'
+    os.environ['TF_CPP_VMODULE'] = (
+      'nccl_comm=1,'
+      'nccl_create=1,'
+      'nccl_broadcast=1')
 
   def tearDown(self):  # pylint: disable=invalid-name
     del os.environ['TF_CPP_VMODULE']

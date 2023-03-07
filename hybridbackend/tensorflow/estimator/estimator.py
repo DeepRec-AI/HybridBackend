@@ -24,8 +24,6 @@ import six
 
 from tensorflow.python.distribute import estimator_training
 from tensorflow.python.eager import context as _context
-from tensorflow.python.estimator import estimator as _estimator
-from tensorflow.python.estimator import run_config
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import random_seed
 from tensorflow.python.ops import variable_scope as vs
@@ -37,20 +35,25 @@ from tensorflow.python.training import server_lib
 
 try:
   from tensorflow_estimator.python.estimator import estimator as _estimator_lib
+  from tensorflow_estimator.python.estimator import \
+    run_config as run_config_lib
   from tensorflow_estimator.python.estimator.export import export_lib
+  from tensorflow_estimator.python.estimator.training import _assert_eval_spec
   from tensorflow_estimator.python.estimator.training import _TrainingExecutor
 except ImportError:
   # pylint: disable=ungrouped-imports
   from tensorflow.python.estimator import estimator as _estimator_lib  # pylint: disable=reimported
+  from tensorflow.python.estimator import run_config as run_config_lib
   from tensorflow.python.estimator.export import export_lib
   from tensorflow.python.estimator.training import _TrainingExecutor
+  from tensorflow.python.estimator.training import _assert_eval_spec
   # pylint: enable=ungrouped-imports
 
+from hybridbackend.tensorflow.framework.config import wraps_session_config
 from hybridbackend.tensorflow.framework.context import Context
 from hybridbackend.tensorflow.framework.device import device_function
 from hybridbackend.tensorflow.framework.ops import ModeKeys
 from hybridbackend.tensorflow.framework.rewriting import scope
-from hybridbackend.tensorflow.training.config import configure
 from hybridbackend.tensorflow.training.evaluation import EvaluationHook
 from hybridbackend.tensorflow.training.evaluation import EvaluationSpec
 from hybridbackend.tensorflow.training.hooks import Policy
@@ -62,7 +65,7 @@ from hybridbackend.tensorflow.training.server import wraps_server
 from hybridbackend.tensorflow.training.variables import reuse_variables
 
 
-class RunConfig(run_config.RunConfig):
+class RunConfig(run_config_lib.RunConfig):
   r'''RunConfig for estimators.
   '''
   @classmethod
@@ -73,7 +76,7 @@ class RunConfig(run_config.RunConfig):
       return cls(**kwargs)
     prototype = prototype.replace(device_fn=device_function)
     prototype._is_chief = True  # pylint: disable=protected-access
-    prototype._session_config = configure(prototype=prototype.session_config)  # pylint: disable=protected-access
+    prototype._session_config = wraps_session_config(prototype.session_config)  # pylint: disable=protected-access
     if prototype._evaluation_master == '':  # pylint: disable=protected-access
       prototype._evaluation_master = prototype.master  # pylint: disable=protected-access
 
@@ -82,8 +85,8 @@ class RunConfig(run_config.RunConfig):
   def __init__(self, **kwargs):
     r'''Creates a wrapped RunConfig.
     '''
-    kwargs['session_config'] = configure(
-      prototype=kwargs.pop('session_config', None))
+    kwargs['session_config'] = wraps_session_config(
+      kwargs.pop('session_config', None))
     kwargs['device_fn'] = device_function
     super().__init__(**kwargs)
     self._is_chief = True  # pylint: disable=protected-access
@@ -200,7 +203,7 @@ def wraps_estimator(cls):
           comm_pool_name=ModeKeys.EVAL,
           mode=ModeKeys.EVAL,
           model_dir=self._model_dir):
-        hooks = _estimator._check_hooks_type(hooks)  # pylint: disable=protected-access
+        hooks = _estimator_lib._check_hooks_type(hooks)  # pylint: disable=protected-access
         hooks.extend(self._convert_eval_steps_to_hooks(steps))  # pylint: disable=protected-access
         if not checkpoint_path:
           latest_path = checkpoint_management.latest_checkpoint(self._model_dir)  # pylint: disable=protected-access
@@ -254,13 +257,13 @@ def wraps_estimator(cls):
               hooks=hooks,
               update_op=update_op,
               eval_dict=eval_dict)
-        with Context.scope(eval_dir=self.eval_dir()):
-          eval_hook = EvaluationHook(
-            _eval_fn,
-            steps=eval_spec.steps,
-            every_n_iter=eval_every_n_iter,
-            history=eval_history)
-          train_hooks.append(eval_hook)
+        eval_hook = EvaluationHook(
+          _eval_fn,
+          steps=eval_spec.steps,
+          every_n_iter=eval_every_n_iter,
+          summary_dir=self.eval_dir(),
+          history=eval_history)
+        train_hooks.append(eval_hook)
 
       if self.config.cluster_spec:
         executor = TrainingExecutor(
@@ -272,14 +275,12 @@ def wraps_estimator(cls):
           raise ValueError(
             'Running `train_and_evaluate` with Distribute Coordinator '
             'not supported.')
-        with Context.scope(eval_dir=self.eval_dir()):
-          return executor.run()
+        return executor.run()
 
-      with Context.scope(eval_dir=self.eval_dir()):
-        return self.train(
-          train_spec.input_fn,
-          hooks=tuple(train_spec.hooks) + tuple(train_hooks),
-          max_steps=train_spec.max_steps)
+      return self.train(
+        train_spec.input_fn,
+        hooks=tuple(train_spec.hooks) + tuple(train_hooks),
+        max_steps=train_spec.max_steps)
 
     def export_saved_model(
         self, export_dir_base, serving_input_receiver_fn,
@@ -403,7 +404,6 @@ def wraps_estimator(cls):
       with _context.graph_mode(), Context.scope(
           mode=ModeKeys.PREDICT,
           model_dir=self._model_dir,
-          eval_dir=self.eval_dir(),
           comm_pool_capacity=1,
           comm_pool_name=ModeKeys.PREDICT):
         hooks = _estimator_lib._check_hooks_type(hooks)  # pylint: disable=protected-access
@@ -456,7 +456,7 @@ def wraps_estimator(cls):
   return HybridBackendEstimator
 
 
-Estimator = wraps_estimator(_estimator.Estimator)
+Estimator = wraps_estimator(_estimator_lib.Estimator)
 
 
 class TrainingExecutor(_TrainingExecutor):
@@ -469,27 +469,37 @@ class TrainingExecutor(_TrainingExecutor):
       config.cluster_spec,
       job_name=config.task_type,
       task_index=config.task_id,
-      config=configure(prototype=config.session_config),
+      config=wraps_session_config(config.session_config),
       start=True,
       protocol=config.protocol)
 
 
-def train_and_evaluate(
-    estimator, train_spec, eval_spec,
-    eval_every_n_iter=None,
-    eval_history=None):
+def train_and_evaluate(estimator, train_spec, eval_spec, **kwargs):
   r'''Train and evaluate the `estimator`.
-
-  Args:
-    eval_every_n_iter: `int`, runs parallel evaluation once every
-      N training iteration. If None, disable the evaluation.
-    eval_history: History of eval metrics. eval_history should support `append`
-      method.
   '''
-  if not isinstance(estimator, Estimator):
-    raise TypeError('estimator must be `hb.estimator.Estimator`')
+  if hasattr(estimator, 'train_and_evaluate'):
+    return estimator.train_and_evaluate(train_spec, eval_spec, **kwargs)
 
-  return estimator.train_and_evaluate(
-    train_spec, eval_spec,
-    eval_every_n_iter=eval_every_n_iter,
-    eval_history=eval_history)
+  _assert_eval_spec(eval_spec)  # fail fast if eval_spec is invalid.
+
+  executor = TrainingExecutor(
+    estimator=estimator,
+    train_spec=train_spec,
+    eval_spec=eval_spec)
+  config = estimator.config
+
+  # If `distribute_coordinator_mode` is set and running in distributed
+  # environment, we run `train_and_evaluate` via distribute coordinator.
+  if estimator_training.should_run_distribute_coordinator(config):
+    logging.info('Running `train_and_evaluate` with Distribute Coordinator.')
+    estimator_training.train_and_evaluate(
+      estimator, train_spec, eval_spec, TrainingExecutor)
+    return None
+
+  if (config.task_type == run_config_lib.TaskType.EVALUATOR
+      and config.task_id > 0):
+    raise ValueError(
+      'For distributed training, there can only be one `evaluator` task '
+      f'(with task id 0).  Given task id {config.task_id}')
+
+  return executor.run()

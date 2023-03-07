@@ -20,8 +20,34 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from hybridbackend.tensorflow.ops.floormod_shuffle.ops import \
-  floormod_partition
-from hybridbackend.tensorflow.ops.floormod_shuffle.ops import floormod_shuffle
-from hybridbackend.tensorflow.ops.floormod_shuffle.ops import \
-  floormod_shuffle_n
+import os as _os
+
+
+def disable_optimization():
+  r'''Disable optimizations for operators on GPU.
+  '''
+  _os.environ['HB_OP_OPTIMIZATION_DISABLED'] = '1'
+
+
+def enable_optimization(logging_level=None, relocate_ops=False):
+  r'''Enable optimizations for operators on GPU.
+
+  Args:
+    logging_level: Level of details to optimize operators.
+    relocate_ops: Enable relocation of ops.
+  '''
+  _os.environ['HB_OP_OPTIMIZATION_DISABLED'] = '0'
+  if logging_level is not None:
+    if 'TF_CPP_VMODULE' not in _os.environ:
+      _os.environ['TF_CPP_VMODULE'] = ''
+    if _os.environ['TF_CPP_VMODULE']:
+      _os.environ['TF_CPP_VMODULE'] += ','
+    _os.environ['TF_CPP_VMODULE'] += (
+      f'op_optimization={logging_level},'
+      f'replacing={logging_level},'
+      f'pruning={logging_level},'
+      f'relocation={logging_level},'
+      f'packing={logging_level},'
+      f'fusion={logging_level}')
+  if relocate_ops:
+    _os.environ['HB_OP_RELOCATION_ENABLED'] = '1'

@@ -31,9 +31,8 @@ from tensorflow.python.ops import variable_scope as vs
 from tensorflow.python.ops import weights_broadcast_ops
 from tensorflow.python.platform import tf_logging as logging
 
-from hybridbackend.tensorflow.distribute.communicator import CollectiveOps
-from hybridbackend.tensorflow.distribute.communicator_pool import \
-  CommunicatorPool
+from hybridbackend.tensorflow.distribute.collective import Collective
+from hybridbackend.tensorflow.distribute.ops import CollectiveOps
 
 
 def _confusion_matrix_at_thresholds(labels,
@@ -167,8 +166,8 @@ def _confusion_matrix_at_thresholds(labels,
   stacked = array_ops.stack([tp_sum, fn_sum, tn_sum, fp_sum])
   if isinstance(stacked, (list, tuple)):
     stacked = stacked[0]
-  sum_stacked = CommunicatorPool.get().allreduce(
-    stacked, reduce_op=CollectiveOps.SUM, trainable=False)
+  sum_stacked = Collective.get().allreduce(
+    stacked, reduce_op=CollectiveOps.SUM)
   if isinstance(sum_stacked, (list, tuple)):
     sum_stacked = sum_stacked[0]
   tp_sum, fn_sum, tn_sum, fp_sum = array_ops.unstack(sum_stacked)

@@ -21,7 +21,7 @@ limitations under the License.
 
 #include <vector>
 
-#include "hybridbackend/tensorflow/distribute/nccl/comm.h"
+#include "hybridbackend/tensorflow/distribute/nccl/collective.h"
 
 namespace tensorflow {
 namespace hybridbackend {
@@ -29,10 +29,10 @@ namespace hybridbackend {
 #if HYBRIDBACKEND_NCCL
 
 REGISTER_OP("HbNcclAllgather")
-    .Output("output: T")
+    .Output("output: dtype")
     .Input("handle: resource")
-    .Input("input: T")
-    .Attr("T: {int8, uint8, int32, uint32, int64, uint64, half, float, double}")
+    .Input("input: dtype")
+    .Attr("dtype: {" TF_OP_NCCL_DTYPE_LIST "}")
     .SetIsStateful()
     .SetShapeFn([](shape_inference::InferenceContext* c) {
       shape_inference::ShapeHandle input = c->input(1);
@@ -62,38 +62,41 @@ input: A tensor to gather.
 )doc");
 
 #if GOOGLE_CUDA
-class NcclAllgatherOp : public NcclCommAsyncOp {
+class NcclAllgatherOp : public NcclCollectiveAsyncOp {
  public:
-  explicit NcclAllgatherOp(OpKernelConstruction* ctx) : NcclCommAsyncOp(ctx) {}
+  explicit NcclAllgatherOp(OpKernelConstruction* ctx)
+      : NcclCollectiveAsyncOp(ctx) {}
 
-  void ComputeAsyncWithComm(NcclComm* comm, OpKernelContext* ctx,
-                            DoneCallback done) override {
+  void CollectiveComputeAsync(NcclCollective* coll, OpKernelContext* ctx,
+                              DoneCallback done) override {
     const Tensor* input;
     OP_REQUIRES_OK_ASYNC(ctx, ctx->input("input", &input), done);
     // Allocate output with a N times larger buffer than input, here N is the
     // communicator size which indicates the device amounts.
     TensorShape out_shape(input->shape());
     if (out_shape.dims() == 0) {
-      out_shape.AddDim(comm->size());
+      out_shape.AddDim(coll->world_size());
     } else {
-      out_shape.set_dim(0, out_shape.dim_size(0) * comm->size());
+      out_shape.set_dim(0, out_shape.dim_size(0) * coll->world_size());
     }
     Tensor* output;
     OP_REQUIRES_OK_ASYNC(ctx, ctx->allocate_output(0, out_shape, &output),
                          done);
 
-    comm->RunAsync(
-        "NcclAllgather", ctx, done, [input, output, this, comm, ctx, done]() {
-          VLOG(1) << comm->DebugString() << " [" << name() << "] [Allgather]";
-          OP_REQUIRES_OK_ASYNC(ctx, comm->Allgather(*input, output), done);
+    coll->stream()->LaunchUntilComputeDone(
+        ctx, [input, output, this, coll, ctx, done]() {
+          VLOG(1) << coll->DebugString() << " [" << name() << "] [Allgather]";
+          OP_REQUIRES_OK_ASYNC(ctx, coll->Allgather(*input, output), done);
+          coll->stream()->BlockComputeUntilDone(ctx, done);
         });
   }
 };
 
-#define REGISTER_KERNEL(TYPE)                                               \
-  REGISTER_KERNEL_BUILDER(                                                  \
-      Name("HbNcclAllgather").Device(DEVICE_GPU).TypeConstraint<TYPE>("T"), \
-      NcclAllgatherOp);
+#define REGISTER_KERNEL(TYPE)                                 \
+  REGISTER_KERNEL_BUILDER(Name("HbNcclAllgather")             \
+                              .Device(DEVICE_GPU)             \
+                              .TypeConstraint<TYPE>("dtype"), \
+                          NcclAllgatherOp);
 TF_CALL_NCCL_TYPES(REGISTER_KERNEL);
 #undef REGISTER_KERNEL
 #endif  // GOOGLE_CUDA

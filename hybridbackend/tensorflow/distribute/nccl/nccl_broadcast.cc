@@ -21,7 +21,7 @@ limitations under the License.
 
 #include <vector>
 
-#include "hybridbackend/tensorflow/distribute/nccl/comm.h"
+#include "hybridbackend/tensorflow/distribute/nccl/collective.h"
 
 namespace tensorflow {
 namespace hybridbackend {
@@ -29,11 +29,11 @@ namespace hybridbackend {
 #if HYBRIDBACKEND_NCCL
 
 REGISTER_OP("HbNcclBroadcast")
-    .Output("output: T")
+    .Output("output: dtype")
     .Input("handle: resource")
-    .Input("input: T")
+    .Input("input: dtype")
     .Attr("root_rank: int >= 0 = 0")
-    .Attr("T: {int8, uint8, int32, uint32, int64, uint64, half, float, double}")
+    .Attr("dtype: {" TF_OP_NCCL_DTYPE_LIST "}")
     .SetShapeFn([](shape_inference::InferenceContext* c) {
       c->set_output(0, c->input(1));
       return Status::OK();
@@ -49,18 +49,19 @@ root_rank: Rank of the broadcast root.
 )doc");
 
 #if GOOGLE_CUDA
-class NcclBroadcastOp : public NcclCommAsyncOp {
+class NcclBroadcastOp : public NcclCollectiveAsyncOp {
  public:
-  explicit NcclBroadcastOp(OpKernelConstruction* ctx) : NcclCommAsyncOp(ctx) {
+  explicit NcclBroadcastOp(OpKernelConstruction* ctx)
+      : NcclCollectiveAsyncOp(ctx) {
     OP_REQUIRES_OK(ctx, ctx->GetAttr("root_rank", &root_rank_));
     OP_REQUIRES(ctx, root_rank_ >= 0,
                 errors::InvalidArgument("root_rank should be >= 0"));
   }
 
-  void ComputeAsyncWithComm(NcclComm* comm, OpKernelContext* ctx,
-                            DoneCallback done) override {
+  void CollectiveComputeAsync(NcclCollective* coll, OpKernelContext* ctx,
+                              DoneCallback done) override {
     OP_REQUIRES_ASYNC(
-        ctx, root_rank_ < comm->size(),
+        ctx, root_rank_ < coll->world_size(),
         errors::InvalidArgument("root_rank should be within communicator size"),
         done);
 
@@ -70,11 +71,12 @@ class NcclBroadcastOp : public NcclCommAsyncOp {
     OP_REQUIRES_OK_ASYNC(ctx, ctx->allocate_output(0, input->shape(), &output),
                          done);
 
-    comm->RunAsync(
-        "NcclBroadcast", ctx, done, [input, output, this, comm, ctx, done]() {
-          VLOG(1) << comm->DebugString() << " [" << name() << "] [Broadcast]";
-          OP_REQUIRES_OK_ASYNC(ctx, comm->Broadcast(*input, root_rank_, output),
+    coll->stream()->LaunchUntilComputeDone(
+        ctx, [input, output, this, coll, ctx, done]() {
+          VLOG(1) << coll->DebugString() << " [" << name() << "] [Broadcast]";
+          OP_REQUIRES_OK_ASYNC(ctx, coll->Broadcast(*input, root_rank_, output),
                                done);
+          coll->stream()->BlockComputeUntilDone(ctx, done);
         });
   }
 
@@ -82,10 +84,11 @@ class NcclBroadcastOp : public NcclCommAsyncOp {
   int32 root_rank_;
 };
 
-#define REGISTER_KERNEL(TYPE)                                               \
-  REGISTER_KERNEL_BUILDER(                                                  \
-      Name("HbNcclBroadcast").Device(DEVICE_GPU).TypeConstraint<TYPE>("T"), \
-      NcclBroadcastOp);
+#define REGISTER_KERNEL(TYPE)                                 \
+  REGISTER_KERNEL_BUILDER(Name("HbNcclBroadcast")             \
+                              .Device(DEVICE_GPU)             \
+                              .TypeConstraint<TYPE>("dtype"), \
+                          NcclBroadcastOp);
 TF_CALL_NCCL_TYPES(REGISTER_KERNEL);
 #undef REGISTER_KERNEL
 #endif  // GOOGLE_CUDA

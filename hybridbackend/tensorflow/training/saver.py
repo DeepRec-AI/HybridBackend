@@ -30,6 +30,7 @@ from tensorflow.python.ops import data_flow_ops
 from tensorflow.python.ops import gen_io_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import string_ops
+from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.training import checkpoint_management
 from tensorflow.python.training import checkpoint_utils
 from tensorflow.python.training import saver
@@ -134,6 +135,10 @@ def wraps_saver_builder(cls):
           saveables = [
             s for s in saveables
             if s.op in sharded_saveables or s in sharded_saveables]
+        logging.vlog(
+          1,
+          f'Saving {len(saveables)} saveables for shard {shard} at process '
+          f'{self._rank}: {[s.name for s in saveables]}')
         last_device = device
         with ops.device(device):
           with ops.device('/cpu:0'):

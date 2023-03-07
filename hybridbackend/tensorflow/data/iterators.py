@@ -31,9 +31,8 @@ from tensorflow.python.training import session_run_hook
 
 from hybridbackend.tensorflow.data.detect_end.dataset import DetectEndDataset
 from hybridbackend.tensorflow.data.prefetch.ops import Iterator
-from hybridbackend.tensorflow.distribute.communicator import CollectiveOps
-from hybridbackend.tensorflow.distribute.communicator_pool import \
-  CommunicatorPool
+from hybridbackend.tensorflow.distribute.collective import Collective
+from hybridbackend.tensorflow.distribute.ops import CollectiveOps
 from hybridbackend.tensorflow.framework.context import Context
 from hybridbackend.tensorflow.framework.ops import ModeKeys
 from hybridbackend.tensorflow.framework.ops import MultiValues
@@ -168,12 +167,12 @@ class DataSyncRewriting(SessionRunRewriting):
     with ops.device(Context.get().devices[Context.get().rank]):
       should_stop = math_ops.cast(should_stop, dtypes.int32)
       if Context.get().options.data_sync_drop_remainder:
-        should_stop_all = CommunicatorPool.get().allreduce(
-          should_stop, reduce_op=CollectiveOps.MAX, trainable=False)
+        should_stop_all = Collective.get().allreduce(
+          should_stop, reduce_op=CollectiveOps.MAX)
         return SessionRunRewriting.add_to_collection(
           DataSyncRewriting.__name__, should_stop_all)
-      should_stop_all = CommunicatorPool.get().allreduce(
-        should_stop, reduce_op=CollectiveOps.MIN, trainable=False)
+      should_stop_all = Collective.get().allreduce(
+        should_stop, reduce_op=CollectiveOps.MIN)
       return SessionRunRewriting.add_to_collection(
         DataSyncRewriting.__name__, should_stop_all)
 

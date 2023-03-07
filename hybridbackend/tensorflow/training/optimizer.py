@@ -32,13 +32,13 @@ from tensorflow.python.ops import variables
 from tensorflow.python.training import distribution_strategy_context
 from tensorflow.python.training import training
 
-from hybridbackend.tensorflow.distribute.gradient import aggregate_gradients
-from hybridbackend.tensorflow.distribute.pubsub import PubSub
+from hybridbackend.tensorflow.distribute.rpc import RpcCollective
 from hybridbackend.tensorflow.framework.context import Context
 from hybridbackend.tensorflow.framework.ops import GraphKeys
 from hybridbackend.tensorflow.framework.ops import ModeKeys
 from hybridbackend.tensorflow.framework.rewriting import GraphRewriting
 from hybridbackend.tensorflow.framework.rewriting import SessionRunRewriting
+from hybridbackend.tensorflow.training.gradient import aggregate_gradients
 
 
 class HybridBackendOptimizerBase(object):  # pylint: disable=useless-object-inheritance
@@ -48,22 +48,18 @@ class HybridBackendOptimizerBase(object):  # pylint: disable=useless-object-inhe
 
 def wraps_optimizer(
     cls,
-    num_buckets=None,
     aggregation=None):
   r'''Decorator to create hybridbackend optimizer class.
 
   Args:
     optimizer_type: The actual optimizer type that will be used to compute and
       apply the gradients. Must be one of the Optimizer classes.
-    num_buckets: Max number of gradient groups.
     aggregation: Aggregate gradients inside `compute_gradients` or
       `apply_gradients`.
 
   Returns:
     hb_optimizer_type: The hybridbackend optimizer type for `optimizer_type`
   '''
-  if num_buckets is None:
-    num_buckets = Context.get().options.grad_nbuckets
   if aggregation is None:
     aggregation = (
       'apply_gradients'
@@ -124,7 +120,7 @@ def wraps_optimizer(
         # Do nothing if this function resides in a distribution context.
         return grads_and_vars
 
-      return aggregate_gradients(grads_and_vars, num_buckets)
+      return aggregate_gradients(grads_and_vars)
 
     def compute_gradients(self, *args, **kwargs):
       r'''Compute gradients of "loss" for the variables in "var_list".
@@ -222,7 +218,7 @@ class VariablesInitializationRewriting(SessionRunRewriting):
           ops.get_collection_ref(GraphKeys.TRAINABLE_REPLICATED)))
       for v in replicated_variables:
         try:
-          self._set_initializer(v, Context.get().devices)
+          self._set_initializer(v)
         except:  # pylint: disable=bare-except
           pass
 
@@ -250,12 +246,13 @@ class VariablesInitializationRewriting(SessionRunRewriting):
     return state_ops.assign(var._variable, self._get_initial_value(var)).op
     # pylint:enable=protected-access
 
-  def _set_initializer(self, var, devices, name=None):
+  def _set_initializer(self, var, name=None):
     r'''Initialize variables.
     '''
     if name is None:
       name = var.name.split(':')[0]
-    rank = Context.get().current_index()
+    devices = Context.get().devices
+    rank = Context.get().rank
     with ops.name_scope('initializers/'):
       with ops.name_scope(f'{name}/initializer'):
         with ops.control_dependencies(None):
@@ -268,11 +265,12 @@ class VariablesInitializationRewriting(SessionRunRewriting):
             # pylint:disable=protected-access
             var._initial_value = initial_value
             if len(devices) > 1:
-              var._initial_value = PubSub(devices, rank=rank)(
-                lambda: initial_value,
-                initial_value.shape,
-                initial_value.dtype,
-                name=f'{name}_pubsub')
+              var._initial_value = (
+                RpcCollective(devices, rank).broadcast(
+                  lambda: initial_value,
+                  initial_value.dtype,
+                  initial_value.shape,
+                  name=f'{name}_initial_value/rpc_broadcast'))
             var._initializer_op = self._get_initializer_op(var)
             # pylint:enable=protected-access
 
