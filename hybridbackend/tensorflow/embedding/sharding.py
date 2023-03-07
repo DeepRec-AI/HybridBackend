@@ -38,7 +38,7 @@ from hybridbackend.tensorflow.framework.ops import ModeKeys
 from hybridbackend.tensorflow.framework.rewriting import GraphRewriting
 
 
-class EmbeddingWeightsRewriting(GraphRewriting):  # pylint: disable=useless-object-inheritance
+class ShardedEmbeddingWeightsRewriting(GraphRewriting):  # pylint: disable=useless-object-inheritance
   r'''Rewriting embedding weights.
   '''
   @classmethod
@@ -131,7 +131,7 @@ class EmbeddingWeightsRewriting(GraphRewriting):  # pylint: disable=useless-obje
     '''
 
 
-class EmbeddingLookupRewriting(GraphRewriting):
+class ShardedEmbeddingLookupRewriting(GraphRewriting):
   r'''Embedding lookup rewriting for tf.nn.embedding_lookup.
   '''
   def __init__(self):
@@ -221,7 +221,6 @@ class EmbeddingLookupRewriting(GraphRewriting):
     '''
     import tensorflow as tf  # pylint: disable=import-outside-toplevel
     self._prev_lookup = embedding_ops.embedding_lookup
-
     embedding_ops.embedding_lookup = self.wraps_embedding_lookup(
       embedding_ops.embedding_lookup)
     tf.nn.embedding_lookup = self.wraps_embedding_lookup(
@@ -244,4 +243,4 @@ class EmbeddingLookupRewriting(GraphRewriting):
       self._prev_shared_emb_get_dense_tensor_internal)
 
 
-GraphRewriting.register(EmbeddingLookupRewriting)
+GraphRewriting.register(ShardedEmbeddingLookupRewriting)

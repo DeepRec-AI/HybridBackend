@@ -13,7 +13,7 @@
 # limitations under the License.
 # =============================================================================
 
-r'''DeepRec EV backend of embedding tables.
+r'''DeepRec EV as embedding tables.
 '''
 
 from __future__ import absolute_import
@@ -24,11 +24,12 @@ from tensorflow.python.ops import variable_scope as vs
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import tf_logging as logging
 
-from hybridbackend.tensorflow.training.embedding import \
-  EmbeddingWeightsRewriting
+from hybridbackend.tensorflow.embedding.sharding import \
+  ShardedEmbeddingWeightsRewriting
 
 
-class EmbeddingWeightsRewritingForDeepRecEV(EmbeddingWeightsRewriting):  # pylint: disable=useless-object-inheritance
+class ShardedEmbeddingWeightsRewritingForDeepRecEV(
+    ShardedEmbeddingWeightsRewriting):  # pylint: disable=useless-object-inheritance
   r'''Embedding lookup decorator for DeepRec EV.
   '''
   def __init__(self):
@@ -102,4 +103,5 @@ class EmbeddingWeightsRewritingForDeepRecEV(EmbeddingWeightsRewriting):  # pylin
       pass
 
 
-EmbeddingWeightsRewriting.register(EmbeddingWeightsRewritingForDeepRecEV)
+ShardedEmbeddingWeightsRewriting.register(
+  ShardedEmbeddingWeightsRewritingForDeepRecEV)

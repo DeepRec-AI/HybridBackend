@@ -34,10 +34,10 @@ from hybridbackend.tensorflow.wraps import wraps
 
 from . import data
 from . import distribute
+from . import embedding
 from . import estimator
 from . import keras
 from . import metrics
-from . import plugins
 from . import training as train
 
 __version__ = buildinfo()
