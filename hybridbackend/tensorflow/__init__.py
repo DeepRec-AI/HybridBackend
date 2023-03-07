@@ -38,6 +38,7 @@ from . import embedding
 from . import estimator
 from . import keras
 from . import metrics
+from . import pipeline
 from . import training as train
 
 __version__ = buildinfo()
