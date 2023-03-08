@@ -150,18 +150,32 @@ def main(args):
   estimator = hb.estimator.Estimator(
     model.call,
     model_dir=args.output_dir)
-  estimator.train_and_evaluate(
-    tf.estimator.TrainSpec(
+
+  if args.evaluate:
+    estimator.evaluate(
       input_fn=lambda: model.input_dataset(
-        train_filenames, args.train_batch_size),
-      max_steps=args.train_max_steps),
-    tf.estimator.EvalSpec(
+        eval_filenames, args.eval_batch_size),
+      steps=args.eval_max_steps)
+  elif args.predict:
+    pred_result = estimator.predict(
       input_fn=lambda: model.input_dataset(
-        eval_filenames, args.eval_batch_size)),
-    eval_every_n_iter=args.eval_every_n_iter)
-  estimator.export_saved_model(
-    args.savedmodel_dir,
-    model.input_receiver)
+        eval_filenames, args.pred_batch_size),
+      predict_keys=['score'],
+      yield_single_examples=False)
+    print(next(pred_result))
+  else:
+    estimator.train_and_evaluate(
+      tf.estimator.TrainSpec(
+        input_fn=lambda: model.input_dataset(
+          train_filenames, args.train_batch_size),
+        max_steps=args.train_max_steps),
+      tf.estimator.EvalSpec(
+        input_fn=lambda: model.input_dataset(
+          eval_filenames, args.eval_batch_size)),
+      eval_every_n_iter=args.eval_every_n_iter)
+    estimator.export_saved_model(
+      args.savedmodel_dir,
+      model.input_receiver)
 
 
 if __name__ == '__main__':
@@ -190,7 +204,11 @@ if __name__ == '__main__':
     '--mlp-dims', nargs='+', default=[1024, 1024, 512, 256, 1])
   parser.add_argument('--train-batch-size', type=int, default=64000)
   parser.add_argument('--train-max-steps', type=int, default=None)
+  parser.add_argument('--evaluate', default=False, action='store_true')
   parser.add_argument('--eval-batch-size', type=int, default=100)
+  parser.add_argument('--eval-max-steps', type=int, default=10)
+  parser.add_argument('--predict', default=False, action='store_true')
+  parser.add_argument('--pred-batch-size', type=int, default=10)
   parser.add_argument('--eval-every-n-iter', type=int, default=50)
   parser.add_argument('--log-every-n-iter', type=int, default=10)
   parser.add_argument('--profile-every-n-iter', type=int, default=None)
