@@ -37,7 +37,16 @@ jobs:
         kubectl exec -it ${PODNAME} -- \
         sh -c 'tar -czf hybridbackend.tgz -C build/release/ .' && \
         kubectl cp ${PODNAME}:hybridbackend.tgz ./hybridbackend.tgz --retries=3 && \
-        mkdir -p dist && tar -xzf ./hybridbackend.tgz -C dist/
+        mkdir -p dist && tar -xzf ./hybridbackend.tgz -C dist/ && \
+        kubectl exec -it ${PODNAME} -- \
+        sh -c 'tar -czf reports.tgz -C build/reports/ .' && \
+        kubectl cp ${PODNAME}:reports.tgz ./reports.tgz --retries=3 && \
+        mkdir -p reports && tar -xzf ./reports.tgz -C reports/
+    - name: Report
+      uses: EnricoMi/publish-unit-test-result-action@v2
+      with:
+        check_name: Test Results
+        files: "reports/**/*.xml"
     - name: Publish
       uses: pypa/gh-action-pypi-publish@release/v1
       with:
