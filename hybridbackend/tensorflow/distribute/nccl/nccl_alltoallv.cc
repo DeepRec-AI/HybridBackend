@@ -42,8 +42,11 @@ struct NcclAlltoallvCall {
                     CollectiveTopology topology, OpKernelContext* ctx,
                     NcclCollective* coll, NcclCollectiveAsyncOp* comm_op) {
     coll->stream()->ThenWaitUntilComputeDone(ctx);
-    VLOG(1) << coll->DebugString() << " [" << comm_op->name()
-            << "] [Alltoallv] (" << input.TotalBytes() << "B)";
+    VLOG(1) << "[" << ctx->step_id() << "]" << coll->DebugString() << " ["
+            << comm_op->name() << "] [Alltoallv] ["
+            << DataTypeString(input.dtype()) << "] ["
+            << CollectiveTopologyString(topology) << "] (" << input.TotalBytes()
+            << "B)";
     TF_RETURN_IF_ERROR(coll->Alltoallv(input, send_counts, recv_counts,
                                        common_size, output, topology));
     return Status::OK();
@@ -61,15 +64,22 @@ struct NcclAlltoallvCall<float, Eigen::half> {
     TF_RETURN_IF_ERROR(
         ctx->allocate_temp(DT_HALF, output->shape(), comm_output));
     coll->stream()->ThenWaitUntilComputeDone(ctx);
-    VLOG(1) << coll->DebugString() << " [" << comm_op->name() << "] [CastIn] ("
-            << input.TotalBytes() << "B)";
+    VLOG(1) << "[" << ctx->step_id() << "]" << coll->DebugString() << " ["
+            << comm_op->name() << "] [CastIn] ["
+            << DataTypeString(input.dtype()) << "] (" << input.TotalBytes()
+            << "B)";
     functor::Cast<float, Eigen::half>()(input, comm_input, ctx,
                                         coll->stream()->get());
-    VLOG(1) << coll->DebugString() << " [" << comm_op->name()
-            << "] [Alltoallv] (" << comm_input->TotalBytes() << "B)";
+    VLOG(1) << "[" << ctx->step_id() << "]" << coll->DebugString() << " ["
+            << comm_op->name() << "] [Alltoallv] ["
+            << DataTypeString(comm_input->dtype()) << "] ["
+            << CollectiveTopologyString(topology) << "] ("
+            << comm_input->TotalBytes() << "B)";
     TF_RETURN_IF_ERROR(coll->Alltoallv(*comm_input, send_counts, recv_counts,
                                        common_size, comm_output, topology));
-    VLOG(1) << coll->DebugString() << " [" << comm_op->name() << "] [CastOut] ("
+    VLOG(1) << "[" << ctx->step_id() << "]" << coll->DebugString() << " ["
+            << comm_op->name() << "] [CastOut] ["
+            << DataTypeString(comm_output->dtype()) << "] ("
             << comm_output->TotalBytes() << "B)";
     functor::Cast<Eigen::half, float>()(*comm_output, output, ctx,
                                         coll->stream()->get());
@@ -100,9 +110,11 @@ struct NcclAlltoallvNCall {
       for (size_t idx = 0; idx < n_input.size(); ++idx) {
         input_total_bytes += n_input[idx].TotalBytes();
       }
-      VLOG(1) << coll->DebugString() << " [" << comm_op->name()
-              << "] [AlltoallvN] (" << n_input.size() << " inputs, "
-              << input_total_bytes << "B)";
+      VLOG(1) << "[" << ctx->step_id() << "]" << coll->DebugString() << " ["
+              << comm_op->name() << "] [AlltoallvN] ["
+              << DataTypeString(n_input[0].dtype()) << "] ["
+              << CollectiveTopologyString(topology) << "] (" << n_input.size()
+              << " inputs, " << input_total_bytes << "B)";
     }
     TF_RETURN_IF_ERROR(coll->AlltoallvN(n_input, n_send_sizes_vec,
                                         n_recv_sizes_vec, n_common_size,
@@ -143,9 +155,10 @@ struct NcclAlltoallvNCall<float, Eigen::half> {
       for (size_t idx = 0; idx < n_input.size(); ++idx) {
         input_total_bytes += n_input[idx].TotalBytes();
       }
-      VLOG(1) << coll->DebugString() << " [" << comm_op->name()
-              << "] [CastNIn] (" << n_input.size() << " inputs, "
-              << input_total_bytes << "B)";
+      VLOG(1) << "[" << ctx->step_id() << "]" << coll->DebugString() << " ["
+              << comm_op->name() << "] [CastNIn] ["
+              << DataTypeString(n_input[0].dtype()) << "] (" << n_input.size()
+              << " inputs, " << input_total_bytes << "B)";
     }
     functor::CastN<float, Eigen::half>()(n_input, n_comm_input, ctx,
                                          coll->stream()->get());
@@ -154,9 +167,12 @@ struct NcclAlltoallvNCall<float, Eigen::half> {
       for (size_t idx = 0; idx < n_comm_input->size(); ++idx) {
         input_total_bytes += n_comm_input->at(idx)->TotalBytes();
       }
-      VLOG(1) << coll->DebugString() << " [" << comm_op->name()
-              << "] [AlltoallvN] (" << n_comm_input->size() << " inputs, "
-              << input_total_bytes << "B)";
+      VLOG(1) << "[" << ctx->step_id() << "]" << coll->DebugString() << " ["
+              << comm_op->name() << "] [AlltoallvN] ["
+              << DataTypeString(n_comm_input->at(0)->dtype()) << "] ["
+              << CollectiveTopologyString(topology) << "] ("
+              << n_comm_input->size() << " inputs, " << input_total_bytes
+              << "B)";
     }
     TF_RETURN_IF_ERROR(coll->AlltoallvN(*n_comm_input, n_send_sizes_vec,
                                         n_recv_sizes_vec, n_common_size,
@@ -166,9 +182,11 @@ struct NcclAlltoallvNCall<float, Eigen::half> {
       for (size_t idx = 0; idx < n_comm_output->size(); ++idx) {
         input_total_bytes += n_comm_output->at(idx)->TotalBytes();
       }
-      VLOG(1) << coll->DebugString() << " [" << comm_op->name()
-              << "] [CastNOut] (" << n_comm_output->size() << " inputs, "
-              << input_total_bytes << "B)";
+      VLOG(1) << "[" << ctx->step_id() << "]" << coll->DebugString() << " ["
+              << comm_op->name() << "] [CastNOut] ["
+              << DataTypeString(n_comm_output->at(0)->dtype()) << "] ("
+              << n_comm_output->size() << " inputs, " << input_total_bytes
+              << "B)";
     }
     functor::CastN<Eigen::half, float>()(*n_comm_output, n_output, ctx,
                                          coll->stream()->get());
@@ -280,7 +298,10 @@ class NcclAlltoallvOp : public NcclCollectiveAsyncOp {
                   input_sizes->TotalBytes()),
               host_input_sizes->TotalBytes());
           // Collect sizes of all inputs across devices.
-          VLOG(1) << coll->DebugString() << " [" << name() << "] [Alltoall] ("
+          VLOG(1) << "[" << ctx->step_id() << "]" << coll->DebugString() << " ["
+                  << name() << "] [Alltoall] ["
+                  << DataTypeString(input_sizes->dtype()) << "] ["
+                  << CollectiveTopologyString(topology_) << "] ("
                   << input_sizes->TotalBytes() << "B)";
           OP_REQUIRES_OK_ASYNC(
               ctx, coll->Alltoall(*input_sizes, output_sizes, topology_),
@@ -488,9 +509,12 @@ class NcclAlltoallvNOp : public NcclCollectiveAsyncOp {
             for (size_t idx = 0; idx < n_input_sizes->size(); ++idx) {
               input_total_bytes += n_input_sizes->at(idx).TotalBytes();
             }
-            VLOG(1) << coll->DebugString() << " [" << name()
-                    << "] [AlltoallN] (" << n_input_sizes->size() << " inputs, "
-                    << input_total_bytes << "B)";
+            VLOG(1) << "[" << ctx->step_id() << "]" << coll->DebugString()
+                    << " [" << name() << "] [AlltoallN] ["
+                    << DataTypeString(n_input_sizes->at(0).dtype()) << "] ["
+                    << CollectiveTopologyString(topology_) << "] ("
+                    << n_input_sizes->size() << " inputs, " << input_total_bytes
+                    << "B)";
           }
           OP_REQUIRES_OK_ASYNC(
               ctx, coll->AlltoallN(*n_input_sizes, n_output_sizes, topology_),
@@ -713,9 +737,12 @@ class NcclAlltoallvMergedNOp : public NcclCollectiveAsyncOp {
             for (size_t idx = 0; idx < n_input_sizes->size(); ++idx) {
               input_total_bytes += n_input_sizes->at(idx).TotalBytes();
             }
-            VLOG(1) << coll->DebugString() << " [" << name()
-                    << "] [AlltoallN] (" << n_input_sizes->size() << " inputs, "
-                    << input_total_bytes << "B)";
+            VLOG(1) << "[" << ctx->step_id() << "]" << coll->DebugString()
+                    << " [" << name() << "] [AlltoallN] ["
+                    << DataTypeString(n_input_sizes->at(0).dtype()) << "] ["
+                    << CollectiveTopologyString(topology_) << "] ("
+                    << n_input_sizes->size() << " inputs, " << input_total_bytes
+                    << "B)";
           }
           OP_REQUIRES_OK_ASYNC(
               ctx, coll->AlltoallN(*n_input_sizes, n_output_sizes, topology_),

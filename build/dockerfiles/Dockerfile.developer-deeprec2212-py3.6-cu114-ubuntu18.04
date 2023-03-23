@@ -61,12 +61,6 @@ RUN cp -rf /usr/lib/llvm-7/bin/clang-format /opt/tools/bin/clang-format && \
     ln -sf libedit.so.2.0.56 /opt/tools/lib/libedit.so.2 && \
     ln -sf /usr/local/cuda/bin/cuda-gdb /opt/tools/bin/gdb
 
-FROM devel_base AS devel_sparsehash
-
-COPY sparsehash/build.sh /src/sparsehash/
-RUN cd /src/sparsehash && \
-    ./build.sh /opt/sparsehash
-
 FROM devel_base AS devel_arrow
 
 ENV HYBRIDBACKEND_USE_CXX11_ABI=0 \
@@ -99,10 +93,6 @@ FROM devel_base
 COPY --from=devel_auditwheel /opt/_internal /opt/_internal
 COPY --from=devel_auditwheel /opt/python /opt/python
 COPY --from=devel_auditwheel /opt/auditwheel /home/pai
-
-# Install SparseHash
-COPY --from=devel_sparsehash /opt/sparsehash /opt/sparsehash
-ENV SPARSEHASH_HOME=/opt/sparsehash
 
 # Install Arrow
 COPY --from=devel_arrow /opt/arrow /opt/arrow

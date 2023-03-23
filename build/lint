@@ -33,7 +33,7 @@ if [[ ! -z ${PYSOURCES} ]]; then
     --rcfile=.pylintrc \
     --jobs=32 \
     ${PYSOURCES}
-    if [[ ! -z "${USE_RUFF}" ]]; then
+    if [[ ! -z "${HYBRIDBACKEND_USE_RUFF}" ]]; then
     ruff check ${PYSOURCES}
     else
     $PYTHON -m pycodestyle \

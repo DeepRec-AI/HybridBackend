@@ -154,6 +154,7 @@ void CloseArrowFile(std::shared_ptr<::arrow::fs::FileSystem>& fs,
   // If ARROW_NUM_THREADS < 0, all threads will be used.
   const int kArrowNumThreads = EnvVarGetInt("ARROW_NUM_THREADS", 0);
   if (kArrowNumThreads > 0) {
+    HB_LOG(1) << "[INFO] ARROW_NUM_THREADS=" << kArrowNumThreads;
     auto s = ::arrow::SetCpuThreadPoolCapacity(kArrowNumThreads);
     if (ARROW_PREDICT_TRUE(s.ok())) {
       (*reader)->set_use_threads(true);
@@ -161,6 +162,7 @@ void CloseArrowFile(std::shared_ptr<::arrow::fs::FileSystem>& fs,
   }
   const int kArrowMemoryDecayMillis = EnvVarGetInt("HB_MEMORY_DECAY_MILLIS", 0);
   if (kArrowMemoryDecayMillis > 0) {
+    HB_LOG(1) << "[INFO] HB_MEMORY_DECAY_MILLIS=" << kArrowMemoryDecayMillis;
     auto s = ::arrow::jemalloc_set_decay_ms(kArrowMemoryDecayMillis);
     if (!ARROW_PREDICT_TRUE(s.ok())) {
       HB_LOG(0) << "[ERROR] Failed to set memory decay of arrow";

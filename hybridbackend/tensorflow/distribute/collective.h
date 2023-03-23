@@ -55,6 +55,18 @@ enum CollectiveTopology {
   kCollectiveDevicesInterNode = 2
 };
 
+inline string CollectiveTopologyString(const CollectiveTopology& topology) {
+  switch (topology) {
+    case kCollectiveAllDevices:
+      return "AllDevices";
+    case kCollectiveDevicesIntraNode:
+      return "DevicesIntraNode";
+    case kCollectiveDevicesInterNode:
+      return "DevicesInterNode";
+  }
+  return "Unknown";
+}
+
 class Collective : public ResourceBase {
  public:
   string shared_name() const { return shared_name_; }

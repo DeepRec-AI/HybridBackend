@@ -80,12 +80,6 @@ RUN cp -rf /usr/lib/llvm-7/bin/clang-format /opt/tools/bin/clang-format && \
     cp -rf /usr/lib/x86_64-linux-gnu/libedit.so.2.0.55 /opt/tools/lib/ && \
     ln -sf libedit.so.2.0.55 /opt/tools/lib/libedit.so.2
 
-FROM devel_base AS devel_sparsehash
-
-COPY sparsehash/build.sh /src/sparsehash/
-RUN cd /src/sparsehash && \
-    ./build.sh /opt/sparsehash
-
 FROM devel_base AS devel_arrow
 
 ENV HYBRIDBACKEND_USE_CXX11_ABI=0 \
@@ -116,10 +110,6 @@ FROM devel_base
 
 # Install Pstack
 COPY --from=devel_pstack /opt/pstack ${PYTHON_HOME}
-
-# Install SparseHash
-COPY --from=devel_sparsehash /opt/sparsehash /opt/sparsehash
-ENV SPARSEHASH_HOME=/opt/sparsehash
 
 # Install Arrow
 COPY --from=devel_arrow /opt/arrow /opt/arrow
