@@ -26,6 +26,10 @@ from ranking.data import DataSpec
 from ranking.model import dlrm
 from ranking.optimization import lr_with_linear_warmup_and_polynomial_decay
 import tensorflow as tf
+from tensorflow.contrib.layers.python.layers import \
+  feature_column as contrib_fc
+from tensorflow.contrib.layers.python.layers import \
+  feature_column_ops as contrib_fc_ops
 from tensorflow.python.util import module_wrapper as _deprecation  # pylint: disable=protected-access
 
 import hybridbackend.tensorflow as hb
@@ -48,29 +52,47 @@ class RankingModel(tf.layers.Layer):
       fs.name for fs in self._args.data_spec.feature_specs
       if fs.name not in ('label')
       and self._args.data_spec.embedding_dims[fs.name] is not None]
+    if self._args.use_shared_emb_feats is not None:
+      shared_emb_feats = self._args.use_shared_emb_feats.split(',')
+    else:
+      shared_emb_feats = []
     non_shared_categorical_fields = [
       f for f in self._categorical_fields
-      if f not in self._args.use_shared_emb_feats]
-    self._embedding_columns = [
-      tf.feature_column.embedding_column(
-        tf.feature_column.categorical_column_with_identity(
-          key=f,
-          num_buckets=self._args.data_spec.embedding_sizes[f],
-          default_value=self._args.data_spec.defaults[f]),
-        dimension=self._args.embedding_dim,
-        initializer=tf.random_uniform_initializer(-1e-3, 1e-3))
-      for f in non_shared_categorical_fields]
+      if f not in shared_emb_feats]
+    emb_var_names_in_ckpt = {}
+    if self._args.load_ckpt_dir is not None:
+      restoreable_saveables, _ = zip(
+        *tf.train.list_variables(self._args.load_ckpt_dir))
+      for f in self._categorical_fields:
+        for vname in list(restoreable_saveables):
+          if f in vname:
+            emb_var_names_in_ckpt[f] = vname
+            break
+          emb_var_names_in_ckpt[f] = None
+    else:
+      emb_var_names_in_ckpt = {f: None for f in self._categorical_fields}
 
-    if self._args.use_shared_emb_feats:
-      self._embedding_columns.extend(tf.feature_column.shared_embedding_columns(
-        [tf.feature_column.categorical_column_with_identity(
-          key=f,
-          num_buckets=self._args.data_spec.embedding_sizes[f],
-          default_value=self._args.data_spec.defaults[f])
-          for f in self._args.use_shared_emb_feats],
+    self._embedding_columns = [
+      contrib_fc.embedding_column(
+        contrib_fc.sparse_column_with_integerized_feature(
+          f,
+          self._args.data_spec.embedding_sizes[f]),
         dimension=self._args.embedding_dim,
-        initializer=tf.random_uniform_initializer(-1e-3, 1e-3)
-      ))
+        initializer=tf.random_uniform_initializer(-1e-3, 1e-3),
+        ckpt_to_load_from=self._args.load_ckpt_dir,
+        tensor_name_in_ckpt=emb_var_names_in_ckpt[f])
+      for f in non_shared_categorical_fields]
+    if shared_emb_feats:
+      self._embedding_columns.extend(
+        contrib_fc.shared_embedding_columns(
+          [contrib_fc.sparse_column_with_integerized_feature(
+            f,
+            self._args.data_spec.embedding_sizes[f])
+            for f in shared_emb_feats],
+          dimension=self._args.embedding_dim,
+          initializer=tf.random_uniform_initializer(-1e-3, 1e-3),
+          ckpt_to_load_from=self._args.load_ckpt_dir,
+          tensor_name_in_ckpt=emb_var_names_in_ckpt[shared_emb_feats[0]]))
 
   def call(self, features, labels=None, **kwargs):
     r'''Model function for estimator.
@@ -81,10 +103,10 @@ class RankingModel(tf.layers.Layer):
       self._args.data_spec.transform_numeric(f, features[f])
       for f in self._numeric_fields]
     cols_to_output_tensors = {}
-    tf.feature_column.input_layer(
+    contrib_fc_ops.input_from_feature_columns(
       {f: features[f] for f in self._categorical_fields},
       self._embedding_columns,
-      cols_to_output_tensors=cols_to_output_tensors)
+      cols_to_outs=cols_to_output_tensors)
     categorical_features = [
       cols_to_output_tensors[f] for f in self._embedding_columns]
     logits = dlrm(
@@ -210,7 +232,7 @@ if __name__ == '__main__':
   parser.add_argument(
     '--use-ev', default=False, action='store_true')
   parser.add_argument(
-    '--use-shared-emb-feats', type=str, nargs='+', default=[])
+    '--use-shared-emb-feats', type=str, default=None)
   parser.add_argument('--num-parsers', type=int, default=16)
   parser.add_argument('--num-prefetches', type=int, default=2)
   parser.add_argument('--lr-initial-value', type=float, default=24.)
@@ -231,6 +253,7 @@ if __name__ == '__main__':
   parser.add_argument('--eval-batch-size', type=int, default=100)
   parser.add_argument('--eval-max-steps', type=int, default=1)
   parser.add_argument('--output-dir', default='./outputs')
+  parser.add_argument('--load-ckpt-dir', default=None)
   parser.add_argument('--weights-dir', default=None)
   parser.add_argument(
     '--data-spec-filename', default='ranking/criteo/data/spec.json')

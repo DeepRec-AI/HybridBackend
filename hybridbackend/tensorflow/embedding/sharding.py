@@ -22,9 +22,12 @@ from __future__ import print_function
 
 import abc
 
+from tensorflow.contrib.layers.python.layers import \
+  feature_column as _contrib_feature_column
 from tensorflow.python.feature_column.feature_column import \
   _SharedEmbeddingColumn as _shared_emb
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import tensor_shape
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import embedding_ops
@@ -206,7 +209,9 @@ class ShardedEmbeddingLookupRewriting(GraphRewriting):
       shared_embedding_collection = ops.get_collection(
         cls.shared_embedding_collection_name)
       if shared_embedding_collection:
-        embedding_shape = (cls.categorical_column._num_buckets, cls.dimension)  # pylint: disable=protected-access
+        embedding_shape = tensor_shape.TensorShape(
+          [tensor_shape.as_dimension(cls.categorical_column._num_buckets),  # pylint: disable=protected-access
+           tensor_shape.as_dimension(cls.dimension)])
         embedding_weights = shared_embedding_collection[0]
         prev_embedding_shape = embedding_weights.get_shape
         embedding_weights.get_shape = lambda: embedding_shape
@@ -215,6 +220,33 @@ class ShardedEmbeddingLookupRewriting(GraphRewriting):
         return ret
       return fn(cls, *args, **kwargs)
     return _wrapped_shared_embedding_get_dense_tensor_internal
+
+  def wraps_embeddings_from_arguments(self, fn):
+    r'''Rewrites to prevent an incorrect embedding_shape.
+    '''
+    def _wrapped_embeddings_from_arguments(
+        column, arg, *args, **kwargs):
+      r'''Get dense tensors in shared embedding column.
+      '''
+      if arg.shared_embedding_name is not None:
+        shared_embedding_collection_name = ('SHARED_EMBEDDING_COLLECTION_'
+                                            + arg.shared_embedding_name.upper())
+        graph = ops.get_default_graph()
+        shared_embedding_collection = (
+          graph.get_collection_ref(shared_embedding_collection_name))
+        if shared_embedding_collection:
+          embedding_shape = tensor_shape.TensorShape(
+            [tensor_shape.as_dimension(arg.vocab_size),  # pylint: disable=protected-access
+             tensor_shape.as_dimension(arg.dimension)])
+          embedding_weights = shared_embedding_collection[0]
+          prev_embedding_shape = embedding_weights.get_shape
+          embedding_weights.get_shape = lambda: embedding_shape
+          ret = fn(column, arg, *args, **kwargs)
+          embedding_weights.get_shape = prev_embedding_shape
+          return ret
+        return fn(column, arg, *args, **kwargs)
+      return fn(column, arg, *args, **kwargs)
+    return _wrapped_embeddings_from_arguments
 
   def begin(self):
     r'''Rewrites API.
@@ -233,6 +265,13 @@ class ShardedEmbeddingLookupRewriting(GraphRewriting):
       self.wraps_shared_embedding_get_dense_tensor_internal(
         self._prev_shared_emb_get_dense_tensor_internal))
 
+    # pylint: disable=protected-access
+    self._prev_embeddings_from_arguments = (
+      _contrib_feature_column._embeddings_from_arguments)
+    _contrib_feature_column._embeddings_from_arguments = (
+      self.wraps_embeddings_from_arguments(
+        self._prev_embeddings_from_arguments))
+
   def end(self):
     r'''Revert API rewriting.
     '''
@@ -241,6 +280,8 @@ class ShardedEmbeddingLookupRewriting(GraphRewriting):
     tf.nn.embedding_lookup = self._prev_lookup
     _shared_emb._get_dense_tensor_internal = (  # pylint: disable=protected-access
       self._prev_shared_emb_get_dense_tensor_internal)
+    _contrib_feature_column._embeddings_from_arguments = (  # pylint: disable=protected-access
+      self._prev_embeddings_from_arguments)
 
 
 GraphRewriting.register(ShardedEmbeddingLookupRewriting)
