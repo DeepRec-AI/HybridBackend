@@ -203,25 +203,33 @@ def main(args):
   val_dataset = dlrm_in_keras.input_dataset(
     eval_filenames, args.eval_batch_size)
 
-  dlrm_in_keras.fit(
-    x=train_dataset,
-    y=None,
-    epochs=1,
-    validation_data=val_dataset,
-    batch_size=args.train_batch_size,
-    validation_steps=args.eval_max_steps,
-    steps_per_epoch=args.train_max_steps,
-    checkpoint_dir=args.output_dir,
-    keep_checkpoint_max=2,
-    monitor='val_auc',
-    mode='max',
-    save_best_only=True)
+  if args.evaluate:
+    dlrm_in_keras.evaluate(
+      x=val_dataset,
+      y=None,
+      batch_size=args.eval_batch_size,
+      checkpoint_dir=args.output_dir,
+      steps=args.eval_max_steps)
+  else:
+    dlrm_in_keras.fit(
+      x=train_dataset,
+      y=None,
+      epochs=1,
+      validation_data=val_dataset,
+      batch_size=args.train_batch_size,
+      validation_steps=args.eval_max_steps,
+      steps_per_epoch=args.train_max_steps,
+      checkpoint_dir=args.output_dir,
+      keep_checkpoint_max=2,
+      monitor='val_auc',
+      mode='max',
+      save_best_only=True)
 
-  dlrm_in_keras.summary()
+    dlrm_in_keras.summary()
 
-  dlrm_in_keras.export_saved_model(
-    args.output_dir,
-    lambda: predict_fn(args))
+    dlrm_in_keras.export_saved_model(
+      args.output_dir,
+      lambda: predict_fn(args))
 
 
 if __name__ == '__main__':
@@ -250,6 +258,7 @@ if __name__ == '__main__':
     '--mlp-dims', type=int, nargs='+', default=[1024, 1024, 512, 256, 1])
   parser.add_argument('--train-batch-size', type=int, default=64000)
   parser.add_argument('--train-max-steps', type=int, default=None)
+  parser.add_argument('--evaluate', default=False, action='store_true')
   parser.add_argument('--eval-batch-size', type=int, default=100)
   parser.add_argument('--eval-max-steps', type=int, default=1)
   parser.add_argument('--output-dir', default='./outputs')
