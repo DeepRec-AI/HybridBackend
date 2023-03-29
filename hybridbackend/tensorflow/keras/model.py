@@ -234,7 +234,8 @@ class PatchCallbacksForKerasModel(object):  # pylint: disable=useless-object-inh
       self._monitor_op = np.greater
       self._best = -np.Inf
     else:
-      if 'acc' in self._monitor or self._monitor.startswith('fmeasure'):
+      if (self._monitor is not None
+          and ('acc' in self._monitor or self._monitor.startswith('fmeasure'))):
         self._monitor_op = np.greater
         self._best = -np.Inf
       else:
@@ -717,14 +718,27 @@ def wraps_keras_model(cls):
     def evaluate(self, *args, **kwargs):
       r'''Returns the loss value & metrics values for the model in test mode.
       '''
+      self._checkpoint_dir = kwargs.pop('checkpoint_dir', None)
+
       with Context.scope(
           mode=ModeKeys.EVAL,
           data_sync_drop_remainder=self._eval_drop_remainder,
           comm_pool_capacity=1,
           comm_pool_name=ModeKeys.EVAL):
-        with PatchTensorflowAPIForKerasModel(model=self), reuse_variables(
+        with PatchTensorflowAPIForKerasModel(
+          model=self, checkpoint_dir=self._checkpoint_dir), reuse_variables(
             vs.AUTO_REUSE):
-          super().evaluate(*args, **kwargs)
+          x = kwargs.pop('x', None)
+          y = kwargs.pop('y', None)
+          if x is not None and isinstance(x, dataset_ops.DatasetV2):
+            with Context.scope(mode=ModeKeys.EVAL):
+              feature, labels = dataset_ops.make_one_shot_iterator(x).get_next()
+              if y is not None:
+                raise ValueError(
+                  'When x is a tf.data.Dataset, y should not be specified')
+              x = feature
+              y = labels
+          super().evaluate(*args, x=x, y=y, **kwargs)
 
     def _get_initial_value(self, var):
       r'''Get initial value of a variable without uninitialized dependencies.
@@ -971,6 +985,8 @@ def wraps_keras_model(cls):
 
         with K.name_scope('evaluation'):
           updates = self.state_updates
+          global_step = training_util.get_or_create_global_step()
+          updates += [state_ops.assign_add(global_step, 1)]
           # Return loss and metrics, no gradient updates.
           # Does update the network states.
           fn = K.function(

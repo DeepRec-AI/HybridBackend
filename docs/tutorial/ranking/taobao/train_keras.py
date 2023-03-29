@@ -147,23 +147,31 @@ def main(args):
     clipnorm=1.0,
     clipvalue=1.0)
 
-  dcnv2_in_keras.fit(
-    x=None,
-    y=None,
-    epochs=1,
-    validation_data=val_dataset,
-    batch_size=args.train_batch_size,
-    validation_steps=args.eval_max_steps,
-    steps_per_epoch=args.train_max_steps,
-    checkpoint_dir=args.output_dir,
-    keep_checkpoint_max=2,
-    monitor='val_auc',
-    mode='max',
-    save_best_only=True)
+  if args.evaluate:
+    dcnv2_in_keras.evaluate(
+      x=None,
+      y=None,
+      batch_size=args.eval_batch_size,
+      checkpoint_dir=args.output_dir,
+      steps=args.eval_max_steps)
+  else:
+    dcnv2_in_keras.fit(
+      x=None,
+      y=None,
+      epochs=1,
+      validation_data=val_dataset,
+      batch_size=args.train_batch_size,
+      validation_steps=args.eval_max_steps,
+      steps_per_epoch=args.train_max_steps,
+      checkpoint_dir=args.output_dir,
+      keep_checkpoint_max=2,
+      monitor='val_auc',
+      mode='max',
+      save_best_only=True)
 
-  dcnv2_in_keras.export_saved_model(
-    args.output_dir,
-    lambda: predict_fn(args))
+    dcnv2_in_keras.export_saved_model(
+      args.output_dir,
+      lambda: predict_fn(args))
 
 
 if __name__ == '__main__':
@@ -179,6 +187,7 @@ if __name__ == '__main__':
     '--mlp-dims', nargs='+', default=[1024, 1024, 512, 256, 1])
   parser.add_argument('--train-batch-size', type=int, default=16000)
   parser.add_argument('--train-max-steps', type=int, default=None)
+  parser.add_argument('--evaluate', default=False, action='store_true')
   parser.add_argument('--eval-batch-size', type=int, default=100)
   parser.add_argument('--eval-max-steps', type=int, default=1)
   parser.add_argument('--eval-every-n-iter', type=int, default=50)
