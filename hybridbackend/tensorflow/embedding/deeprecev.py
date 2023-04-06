@@ -45,8 +45,7 @@ class ShardedEmbeddingWeightsRewritingForDeepRecEV(
   def build_unsharded_weights(self, fn, *args, **kwargs):
     r'''Build unsharded embedding weights.
     '''
-    var_scope, var_store, name, *next_args = args
-    return fn(var_scope, var_store, f'{name}/part_0', *next_args, **kwargs)
+    return fn(*args, **kwargs)
 
   def build_sharded_weights(
       self, shard, num_shards, shard_collections, fn, *args, **kwargs):
@@ -57,8 +56,9 @@ class ShardedEmbeddingWeightsRewritingForDeepRecEV(
     if embedding_dim is None:
       raise ValueError('missing embedding_dim for tf.get_embedding_variable')
     var_scope, var_store, name, *next_args = args
+    name = f'{name}/part_{shard}' if name else f'part_{shard}'
     embedding_weights = fn(
-      var_scope, var_store, f'{name}/part_{shard}', *next_args, **kwargs)
+      var_scope, var_store, name, *next_args, **kwargs)
     full_name = embedding_weights.name.split(':')[0]
     full_name = full_name[:full_name.rfind('/part')]
     if hasattr(embedding_weights, '_set_save_slice_info'):

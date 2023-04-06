@@ -112,8 +112,9 @@ class ShardedEmbeddingWeightsRewritingForVariables(
     kwargs['shape'] = shape
 
     var_scope, var_store, name, *next_args = args
+    name = f'{name}/part_{shard}' if name else f'part_{shard}'
     embedding_weights = fn(
-      var_scope, var_store, f'{name}/part_{shard}', *next_args, **kwargs)
+      var_scope, var_store, name, *next_args, **kwargs)
     bucket_offset = (bucket_size // num_shards) * shard
     remained_buckets = bucket_size % num_shards
     if shard < remained_buckets:
