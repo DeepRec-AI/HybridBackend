@@ -548,7 +548,7 @@ class SyncReplicasOptimizer(optimizer.Optimizer):
 
       # sync_op will be assigned to the same device as the global step.
       with ops.device(global_step.device), ops.name_scope(''):
-        update_op = self._opt.apply_gradients(aggregated_grads_and_vars,
+        update_op = self._opt.apply_gradients(list(aggregated_grads_and_vars),
                                               global_step)
 
       # Create token queue.

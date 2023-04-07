@@ -62,11 +62,15 @@ class DinModel(tf.keras.layers.Layer):
       with tf.device(self._args.embedding_weight_device):
         for f in self._categorical_fields:
           if self._args.use_ev:
-            self._embedding_weights[f] = tf.get_embedding_variable(
-              f'{f}_weight',
-              key_dtype=self._categorical_dtypes[f],
-              embedding_dim=self._args.data_spec.embedding_dims[f],
-              initializer=tf.random_uniform_initializer(-1e-3, 1e-3))
+            with tf.variable_scope(
+                f'{f}_embedding',
+                partitioner=tf.fixed_size_partitioner(
+                  hb.context.world_size)):
+              self._embedding_weights[f] = tf.get_embedding_variable(
+                f'{f}_weight',
+                key_dtype=self._categorical_dtypes[f],
+                embedding_dim=self._args.data_spec.embedding_dims[f],
+                initializer=tf.random_uniform_initializer(-1e-3, 1e-3))
           else:
             self._embedding_weights[f] = tf.get_variable(
               f'{f}_weight',
