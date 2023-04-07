@@ -90,9 +90,18 @@ class RankingModel:
           initializer=tf.random_uniform_initializer(-1e-3, 1e-3))
         for fs in categorical_fields]
     with hb.embedding_scope(), tf.device('/cpu:0'):
-      deep_features = [
-        tf.feature_column.input_layer(features, [c])
-        for c in embedding_columns]
+      if self._args.use_ev:
+        with tf.variable_scope(
+            'embedding',
+            partitioner=tf.fixed_size_partitioner(
+              hb.context.world_size)):
+          deep_features = [
+            tf.feature_column.input_layer(features, [c])
+            for c in embedding_columns]
+      else:
+        deep_features = [
+          tf.feature_column.input_layer(features, [c])
+          for c in embedding_columns]
     logits = stacked_dcn_v2(wide_features + deep_features, self._args.mlp_dims)
 
     if mode == tf.estimator.ModeKeys.TRAIN:

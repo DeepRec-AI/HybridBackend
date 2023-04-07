@@ -73,11 +73,15 @@ class RankingModel:
           with hb.scope(sharding=True):
             with tf.device(self._args.embedding_weight_device):
               if self._args.use_ev:
-                embedding_weights = tf.get_embedding_variable(
-                  f'{f}_weight',
-                  key_dtype=feature.dtype,
-                  embedding_dim=self._args.embedding_dim,
-                  initializer=tf.random_uniform_initializer(-1e-3, 1e-3))
+                with tf.variable_scope(
+                    f'{f}_embedding',
+                    partitioner=tf.fixed_size_partitioner(
+                      hb.context.world_size)):
+                  embedding_weights = tf.get_embedding_variable(
+                    f'{f}_weight',
+                    key_dtype=feature.dtype,
+                    embedding_dim=self._args.embedding_dim,
+                    initializer=tf.random_uniform_initializer(-1e-3, 1e-3))
               else:
                 embedding_weights = tf.get_variable(
                   f'{f}_weight',
