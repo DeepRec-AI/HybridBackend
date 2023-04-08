@@ -22,12 +22,6 @@ fi
 
 cd ${HERE}
 
-mkdir -p lz4
-LZ4TGZ=https://github.com/lz4/lz4/archive/refs/tags/v1.9.4.tar.gz
-wget --no-check-certificate -nv ${LZ4TGZ} -O /tmp/lz4.tar.gz
-tar -xzf /tmp/lz4.tar.gz --strip-components 1 -C lz4/
-cd lz4 && CFLAGS='-O3 -fPIC' make -j8 && cd ..
-
 mkdir -p arrow
 SRCTGZ=https://github.com/apache/arrow/archive/refs/tags/apache-arrow-9.0.0.tar.gz
 wget --no-check-certificate -nv ${SRCTGZ} -O /tmp/arrow.tar.gz
@@ -103,6 +97,3 @@ fi
 set -x
 cp -rf ../patches/cpp ../arrow/
 make install
-
-cp -rf ../lz4/lib/liblz4.a* ${ARROW_DIST}/lib/
-cp -rf ../lz4/lib/liblz4.so* ${ARROW_DIST}/lib/
