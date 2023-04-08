@@ -26,6 +26,6 @@ try:
     ShardedEmbeddingWeightsRewritingForDeepRecEV as _patch_ev
   from .variables import \
     ShardedEmbeddingWeightsRewritingForVariables as _patch_var
-except ImportError:
+except:  # pylint: disable=bare-except
   pass
 # pylint: enable=ungrouped-imports

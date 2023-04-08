@@ -2,9 +2,9 @@
 
 FROM quay.io/pypa/manylinux_2_24_x86_64 AS pypa
 
-FROM dsw-registry.cn-shanghai.cr.aliyuncs.com/pai/tensorflow-training:1.15PAI-gpu-py36-cu114-ubuntu18.04 AS devel_base
+FROM registry.cn-shanghai.aliyuncs.com/pai-dlc/tensorflow-training:deeprec2212-gpu-py36-cu114-ubuntu18.04 AS devel_base
 
-RUN pip3 uninstall hybridbackend-deeprec2208-cu114 || true
+RUN pip3 uninstall hybridbackend-deeprec2212-cu114 || true
 
 LABEL com.nvidia.volumes.needed="nvidia_driver"
 LABEL com.nvidia.cuda.version="${CUDA_VERSION}"
@@ -111,9 +111,10 @@ ENV HYBRIDBACKEND_WITH_CUDA=ON \
     HYBRIDBACKEND_WITH_ARROW_ZEROCOPY=ON \
     HYBRIDBACKEND_WITH_TENSORFLOW_HALF=OFF \
     HYBRIDBACKEND_USE_CXX11_ABI=0 \
-    HYBRIDBACKEND_WHEEL_ALIAS=-deeprec2208-cu114 \
+    HYBRIDBACKEND_WHEEL_ALIAS=-deeprec2212-cu114 \
     SSL_HOME=/home/pai \
     ZSTD_HOME=/home/pai \
     TENSORFLOW_DISTRO=99881015 \
     TF_DISABLE_EV_ALLOCATOR=true \
-    HB_OP_RELOCATION_ENABLED=1
+    HB_OP_RELOCATION_ENABLED=0 \
+    HB_OP_SPARSE_SEGMENT_REDUCTION_OPTIMIZATION_DISABLED=1

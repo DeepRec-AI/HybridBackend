@@ -143,6 +143,7 @@ COMMON_LDFLAGS := $(COMMON_LDFLAGS) \
 	-lcurl
 ifeq ($(HYBRIDBACKEND_WITH_ARROW),ON)
 ARROW_HOME ?= build/arrow/dist
+LZ4_HOME ?= build/arrow/dist
 ARROW_API_H := $(ARROW_HOME)/include/arrow/api.h
 THIRDPARTY_DEPS := $(THIRDPARTY_DEPS) $(ARROW_API_H)
 CFLAGS := $(CFLAGS) \
@@ -164,7 +165,8 @@ COMMON_LDFLAGS := \
 	-larrow \
 	-larrow_dataset \
 	-larrow_bundled_dependencies \
-	-lparquet
+	-lparquet \
+	-llz4
 else
 COMMON_LDFLAGS := \
 	$(COMMON_LDFLAGS) \
@@ -174,6 +176,8 @@ COMMON_LDFLAGS := \
 	-larrow_dataset \
 	-larrow_bundled_dependencies \
 	-lparquet \
+	-L$(LZ4_HOME)/lib \
+	-l:liblz4.a \
 	-Wl,--no-whole-archive
 endif
 RE2_HOME ?=
