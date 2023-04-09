@@ -176,6 +176,10 @@ COMMON_LDFLAGS := \
 	-lparquet \
 	-Wl,--no-whole-archive
 endif
+LZ4_HOME ?=
+ifneq ($(strip $(LZ4_HOME)),)
+COMMON_LDFLAGS := $(COMMON_LDFLAGS) -L$(LZ4_HOME)/lib -llz4
+endif
 RE2_HOME ?=
 ifneq ($(strip $(RE2_HOME)),)
 COMMON_LDFLAGS := $(COMMON_LDFLAGS) -L$(RE2_HOME)/lib -lre2

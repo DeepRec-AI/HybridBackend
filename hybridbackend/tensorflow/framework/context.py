@@ -338,6 +338,7 @@ class Context(object):  # pylint: disable=useless-object-inheritance
     if task_type:
       self._task_type = task_type
     if self._task_type not in ('localhost', 'chief', 'worker'):
+      logging.info('No valid configuration for non-worker roles')
       return
 
     if task_id:

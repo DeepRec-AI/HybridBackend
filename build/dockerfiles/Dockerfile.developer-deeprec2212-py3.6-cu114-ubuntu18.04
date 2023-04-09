@@ -2,9 +2,9 @@
 
 FROM quay.io/pypa/manylinux_2_24_x86_64 AS pypa
 
-FROM dsw-registry.cn-shanghai.cr.aliyuncs.com/pai/tensorflow-training:1.15PAI-gpu-py36-cu114-ubuntu18.04 AS devel_base
+FROM registry.cn-beijing.aliyuncs.com/myjktest/deeprec:deeprec2212-gpu-py36-cu114-ubuntu18.04-tmp_dlc_release AS devel_base
 
-RUN pip3 uninstall hybridbackend-deeprec2208-cu114 || true
+RUN pip3 uninstall hybridbackend-deeprec2212-cu114 || true
 
 LABEL com.nvidia.volumes.needed="nvidia_driver"
 LABEL com.nvidia.cuda.version="${CUDA_VERSION}"
@@ -81,6 +81,18 @@ RUN cd /src/arrow/ && \
     ARROW_S3=${HYBRIDBACKEND_WITH_ARROW_S3} \
     ./build.sh /opt/arrow
 
+FROM devel_base AS devel_lz4
+
+RUN wget --no-check-certificate -nv \
+    https://github.com/lz4/lz4/archive/refs/tags/v1.9.4.tar.gz \
+    -O /tmp/lz4.tar.gz && \
+    mkdir -p /tmp/lz4 && \
+    tar -xzf /tmp/lz4.tar.gz --strip-components 1 -C /tmp/lz4/
+RUN cd /tmp/lz4 && \
+    CFLAGS='-O3 -fPIC' make -j8 && \
+    mkdir -p /opt/lz4/lib && \
+    cp -rf /tmp/lz4/lib/liblz4.* /opt/lz4/lib/
+
 FROM devel_base
 
 # Install Auditwheel
@@ -94,7 +106,13 @@ ENV SPARSEHASH_HOME=/opt/sparsehash
 
 # Install Arrow
 COPY --from=devel_arrow /opt/arrow /opt/arrow
-ENV ARROW_HOME=/opt/arrow
+ENV ARROW_HOME=/opt/arrow \
+    SSL_HOME=/home/pai \
+    ZSTD_HOME=/home/pai
+
+# Install LZ4
+COPY --from=devel_lz4 /opt/lz4 /opt/lz4
+ENV LZ4_HOME=/opt/lz4
 
 # Install Tools
 COPY --from=devel_tools /opt/tools /home/pai
@@ -111,9 +129,8 @@ ENV HYBRIDBACKEND_WITH_CUDA=ON \
     HYBRIDBACKEND_WITH_ARROW_ZEROCOPY=ON \
     HYBRIDBACKEND_WITH_TENSORFLOW_HALF=OFF \
     HYBRIDBACKEND_USE_CXX11_ABI=0 \
-    HYBRIDBACKEND_WHEEL_ALIAS=-deeprec2208-cu114 \
-    SSL_HOME=/home/pai \
-    ZSTD_HOME=/home/pai \
+    HYBRIDBACKEND_WHEEL_ALIAS=-deeprec2212-cu114 \
     TENSORFLOW_DISTRO=99881015 \
     TF_DISABLE_EV_ALLOCATOR=true \
-    HB_OP_RELOCATION_ENABLED=1
+    HB_OP_RELOCATION_ENABLED=0 \
+    HB_OP_SPARSE_SEGMENT_REDUCTION_OPTIMIZATION_DISABLED=1

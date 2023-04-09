@@ -118,7 +118,9 @@ ENV SPARSEHASH_HOME=/opt/sparsehash
 
 # Install Arrow
 COPY --from=devel_arrow /opt/arrow /opt/arrow
-ENV ARROW_HOME=/opt/arrow
+ENV ARROW_HOME=/opt/arrow \
+    ZSTD_HOME=/usr/lib/x86_64-linux-gnu \
+    LZ4_HOME=/usr/lib/x86_64-linux-gnu
 
 # Install Tools
 COPY --from=devel_tools /opt/tools /usr/local
@@ -131,5 +133,4 @@ ENV HYBRIDBACKEND_WITH_CUDA=ON \
     HYBRIDBACKEND_WHEEL_ALIAS=-tf115-cu118 \
     TENSORFLOW_DISTRO=1015 \
     TENSORFLOW_HOME=/opt/tensorflow/tensorflow-source \
-    ZSTD_HOME=/usr/lib/x86_64-linux-gnu \
     LD_LIBRARY_PATH=$LD_LIBRARY_PATH:/usr/local/lib:/usr/local/cuda/lib64
