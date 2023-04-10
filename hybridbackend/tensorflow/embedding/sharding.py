@@ -33,12 +33,17 @@ from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import embedding_ops
 
 from hybridbackend.tensorflow.distribute.collective import Collective
+from hybridbackend.tensorflow.distribute.ops import Topology
 from hybridbackend.tensorflow.distribute.partition.ops import \
   partition_by_modulo
 from hybridbackend.tensorflow.framework.context import Context
 from hybridbackend.tensorflow.framework.ops import GraphKeys
 from hybridbackend.tensorflow.framework.ops import ModeKeys
 from hybridbackend.tensorflow.framework.rewriting import GraphRewriting
+from hybridbackend.tensorflow.ops.partition_by_dual_modulo.ops import \
+  partition_by_dual_modulo_stage_one
+from hybridbackend.tensorflow.ops.partition_by_dual_modulo.ops import \
+  partition_by_dual_modulo_stage_two
 
 
 class ShardedEmbeddingWeightsRewriting(GraphRewriting):  # pylint: disable=useless-object-inheritance
@@ -199,6 +204,79 @@ class ShardedEmbeddingLookupRewriting(GraphRewriting):
 
     return _wrapped_embedding_lookup
 
+  def wraps_hierarchical_embedding_lookup(self, fn):
+    r'''Rewrites embedding_lookup.
+    '''
+    def _wrapped_embedding_lookup(params, ids, **kwargs):
+      r'''Looks up `ids` in a list of embedding tensors.
+      '''
+      if not self.issharded(params):
+        with Context.scope(sharding=False):
+          return fn(params, ids, **kwargs)
+
+      current_device = control_flow_ops.no_op().device
+      with Context.scope(sharding=False):
+        with ops.device(Context.get().devices[Context.get().rank]):
+          s0_ids_shards, s0_ids_sizes, s0_shard_index =\
+            partition_by_dual_modulo_stage_one(
+              array_ops.reshape(ids, shape=[-1]),
+              self._local_world_size, self._num_nodes,
+              name='s0_shard_partition')
+          s0_shard_ids, s0_shard_sizes = Collective.get().alltoall(
+            s0_ids_shards,
+            sizes=s0_ids_sizes,
+            topology=Topology.INTRA_NODE)
+
+          s0_shard_ids, s0_shard_unique_index = array_ops.unique(
+            array_ops.reshape(s0_shard_ids, shape=[-1]),
+            name='s0_shard_unique')
+          s1_ids_shards, s1_ids_sizes, s1_shard_index =\
+            partition_by_dual_modulo_stage_two(
+              s0_shard_ids, self._num_nodes, self._local_world_size,
+              name='s1_shard_partition')
+          s1_shard_ids, s1_shard_sizes = Collective.get().alltoall(
+            s1_ids_shards,
+            sizes=s1_ids_sizes,
+            topology=Topology.INTER_NODE)
+          s1_shard_ids, s1_shard_unique_index = array_ops.unique(
+            array_ops.reshape(s1_shard_ids, shape=[-1]),
+            name='s1_shard_unique')
+
+          if params not in ops.get_collection_ref(GraphKeys.DYNAMIC_VARIABLES):
+            s1_shard_ids = s1_shard_ids // Context.get().world_size
+
+          with ops.device(current_device):
+            embeddings = fn(params, s1_shard_ids, **kwargs)
+            dimension = int(embeddings.shape[-1])
+
+          embeddings = array_ops.gather(
+            embeddings, s1_shard_unique_index,
+            name='s1_shard_unique_restore')
+
+          embeddings, _ = Collective.get().alltoall(
+            embeddings,
+            sizes=s1_shard_sizes,
+            common_shape=[dimension],
+            topology=Topology.INTER_NODE)
+          embeddings = array_ops.gather(
+            embeddings, s1_shard_index,
+            name='s1_shard_stitch')
+          embeddings = array_ops.gather(
+            embeddings, s0_shard_unique_index,
+            name='s0_shard_unique_restore')
+
+          embeddings, _ = Collective.get().alltoall(
+            embeddings,
+            sizes=s0_shard_sizes,
+            common_shape=[dimension],
+            topology=Topology.INTRA_NODE)
+          embeddings = array_ops.gather(
+            embeddings, s0_shard_index,
+            name='s0_shard_stitch')
+        return embeddings
+
+    return _wrapped_embedding_lookup
+
   def wraps_shared_embedding_get_dense_tensor_internal(self, fn):
     r'''Rewrites to prevent an incorrect embedding_shape.
     '''
@@ -253,10 +331,19 @@ class ShardedEmbeddingLookupRewriting(GraphRewriting):
     '''
     import tensorflow as tf  # pylint: disable=import-outside-toplevel
     self._prev_lookup = embedding_ops.embedding_lookup
-    embedding_ops.embedding_lookup = self.wraps_embedding_lookup(
-      embedding_ops.embedding_lookup)
-    tf.nn.embedding_lookup = self.wraps_embedding_lookup(
-      embedding_ops.embedding_lookup)
+
+    if (Context.get().options.use_hierarchical_embedding_lookup
+        and self._local_world_size > 1
+        and self._num_nodes > 1):
+      embedding_ops.embedding_lookup = self.wraps_hierarchical_embedding_lookup(
+        embedding_ops.embedding_lookup)
+      tf.nn.embedding_lookup = self.wraps_hierarchical_embedding_lookup(
+        embedding_ops.embedding_lookup)
+    else:
+      embedding_ops.embedding_lookup = self.wraps_embedding_lookup(
+        embedding_ops.embedding_lookup)
+      tf.nn.embedding_lookup = self.wraps_embedding_lookup(
+        embedding_ops.embedding_lookup)
 
     # pylint: disable=protected-access
     self._prev_shared_emb_get_dense_tensor_internal = (
