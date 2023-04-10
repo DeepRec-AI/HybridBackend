@@ -20,6 +20,7 @@ limitations under the License.
 
 #if HYBRIDBACKEND_ARROW
 #include <arrow/dataset/api.h>
+#include <arrow/filesystem/path_util.h>
 #include <arrow/record_batch.h>
 #include <parquet/arrow/reader.h>
 #include <parquet/properties.h>
@@ -97,6 +98,22 @@ Status MakeTensorsFromArrowArray(
     const PartialTensorShape& shape,
     const std::shared_ptr<::arrow::Array>& arrow_array,
     std::vector<Tensor>* output_tensors);
+
+Status ValidateSchema(const string& filename,
+                      const std::vector<string>& field_names,
+                      const DataTypeVector& field_dtypes,
+                      const std::vector<int32>& field_ragged_ranks,
+                      std::shared_ptr<::arrow::Schema>& schema,
+                      std::vector<int>* out_column_indices);
+
+Status ReadRecordBatch(::arrow::RecordBatchReader* batch_reader,
+                       const string& filename, const int64 batch_size,
+                       const std::vector<string>& field_names,
+                       const DataTypeVector& field_dtypes,
+                       const std::vector<int32>& field_ragged_ranks,
+                       const std::vector<PartialTensorShape>& field_shapes,
+                       const bool drop_remainder, const int64 row_limit,
+                       std::vector<Tensor>* output_tensors, int64* row_counter);
 
 #endif
 

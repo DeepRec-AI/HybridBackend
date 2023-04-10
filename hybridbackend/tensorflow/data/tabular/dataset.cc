@@ -14,6 +14,12 @@ limitations under the License.
 ==============================================================================*/
 
 #include <absl/strings/str_cat.h>
+#include <memory>
+#include <type_traits>
+#include <vector>
+
+#include <tensorflow/core/framework/op_kernel.h>
+#include <tensorflow/core/framework/types.h>
 
 #include <tensorflow/core/framework/common_shape_fns.h>
 #include <tensorflow/core/framework/op.h>
@@ -26,25 +32,25 @@ limitations under the License.
 #include <unordered_set>
 
 #include "hybridbackend/tensorflow/common/dataset.h"
-#include "hybridbackend/tensorflow/data/parquet/batch_reader.h"
+#include "hybridbackend/tensorflow/data/tabular/table.h"
 
 namespace tensorflow {
 namespace hybridbackend {
 
-REGISTER_OP("HbParquetTabularDataset")
+REGISTER_OP("HbTabularDataset")
     .Output("handle: variant")
     .Input("filename: string")
     .Input("batch_size: int64")
+    .Attr("format: int")
     .Attr("field_names: list(string) >= 1")
     .Attr("field_dtypes: list(type) >= 1")
     .Attr("field_ragged_ranks: list(int) >= 1")
     .Attr("field_shapes: list(shape) >= 1")
-    .Attr("partition_count: int = 1")
-    .Attr("partition_index: int = 0")
     .Attr("drop_remainder: bool = false")
     .Attr("skip_corrupted_data: bool = false")
-    .SetIsStateful()  // NOTE: Source dataset ops must be marked stateful to
-                      // inhibit constant folding.
+    .Attr("partition_count: int = 1")
+    .Attr("partition_index: int = 0")
+    .SetIsStateful()
     .SetShapeFn([](shape_inference::InferenceContext* c) {
       shape_inference::ShapeHandle unused;
       // batch_size should be a scalar.
@@ -52,101 +58,80 @@ REGISTER_OP("HbParquetTabularDataset")
       return shape_inference::ScalarShape(c);
     })
     .Doc(R"doc(
-A dataset that outputs batches from a parquet file.
+A dataset that outputs batches from a file.
 
 handle: The handle to reference the dataset.
 filename: Path of file to read.
 batch_size: Maxium number of samples in an output batch.
+format: File format to use.
 field_names: List of field names to read.
 field_dtypes: List of data types for each field.
 field_ragged_ranks: List of ragged rank for each field.
 field_shapes: List of shapes for each field.
-partition_count: Count of row group partitions.
-partition_index: Index of row group partitions.
 drop_remainder: If True, only keep batches with exactly `batch_size` samples.
 skip_corrupted_data: If True, ignore batches with data loss errors.
+partition_count: Count of row group partitions.
+partition_index: Index of row group partitions.
 )doc");
 
-class ParquetTabularDatasetOp : public DatasetOpKernel {
+class TabularDatasetOp : public DatasetOpKernel {
  public:
-  explicit ParquetTabularDatasetOp(OpKernelConstruction* ctx)
+  explicit TabularDatasetOp(OpKernelConstruction* ctx)
       : DatasetOpKernel(ctx),
-        partition_count_(1),
-        partition_index_(0),
         drop_remainder_(false),
-        skip_corrupted_data_(false) {
+        skip_corrupted_data_(false),
+        partition_count_(1),
+        partition_index_(0) {
+    int format;
+    OP_REQUIRES_OK(ctx, ctx->GetAttr("format", &format));
+    format_ = static_cast<TableFormat>(format);
     OP_REQUIRES_OK(ctx, ctx->GetAttr("field_names", &field_names_));
     OP_REQUIRES_OK(ctx, ctx->GetAttr("field_dtypes", &field_dtypes_));
     OP_REQUIRES_OK(ctx,
                    ctx->GetAttr("field_ragged_ranks", &field_ragged_ranks_));
     OP_REQUIRES_OK(ctx, ctx->GetAttr("field_shapes", &field_shapes_));
-    OP_REQUIRES_OK(ctx, ctx->GetAttr("partition_count", &partition_count_));
-    OP_REQUIRES_OK(ctx, ctx->GetAttr("partition_index", &partition_index_));
     OP_REQUIRES_OK(ctx, ctx->GetAttr("drop_remainder", &drop_remainder_));
     OP_REQUIRES_OK(ctx,
                    ctx->GetAttr("skip_corrupted_data", &skip_corrupted_data_));
+    OP_REQUIRES_OK(ctx, ctx->GetAttr("partition_count", &partition_count_));
+    OP_REQUIRES_OK(ctx, ctx->GetAttr("partition_index", &partition_index_));
   }
 
   void MakeDataset(OpKernelContext* ctx, DatasetBase** output) override;
 
  private:
   class Dataset;
-
+  TableFormat format_;
   std::vector<string> field_names_;
   DataTypeVector field_dtypes_;
   std::vector<int32> field_ragged_ranks_;
   std::vector<PartialTensorShape> field_shapes_;
-  int64 partition_count_;
-  int64 partition_index_;
   bool drop_remainder_;
   bool skip_corrupted_data_;
+  int64 partition_count_;
+  int64 partition_index_;
 };
 
-class ParquetTabularDatasetOp::Dataset : public DatasetBase {
+class TabularDatasetOp::Dataset : public DatasetBase {
  public:
-  Dataset(OpKernelContext* ctx, const string& filename, const int64 batch_size,
-          const std::vector<string>& field_names,
-          const DataTypeVector& field_dtypes,
-          const std::vector<int32>& field_ragged_ranks,
-          const std::vector<PartialTensorShape>& field_shapes,
-          const int64 partition_count, const int64 partition_index,
-          const bool drop_remainder, const bool skip_corrupted_data)
+  Dataset(OpKernelContext* ctx, TableAccess* access,
+          const int64 partition_count, const int64 partition_index)
       : DatasetBase(DatasetContext(ctx)),
-        filename_(std::move(filename)),
-        batch_size_(batch_size),
-        field_names_(std::move(field_names)),
-        field_dtypes_(std::move(field_dtypes)),
-        field_ragged_ranks_(std::move(field_ragged_ranks)),
-        field_shapes_(std::move(field_shapes)),
+        access_(access),
         partition_count_(partition_count),
-        partition_index_(partition_index),
-        drop_remainder_(drop_remainder),
-        skip_corrupted_data_(skip_corrupted_data) {
-    const int64 actual_batch_size(drop_remainder ? batch_size : -1);
-    for (int64 i = 0; i < field_names.size(); ++i) {
-      output_dtypes_.push_back(std::move(field_dtypes[i]));
+        partition_index_(partition_index) {
+    const int64 actual_batch_size(
+        access_->drop_remainder() ? access_->batch_size() : -1);
+    for (int64 i = 0; i < access_->field_names().size(); ++i) {
+      output_dtypes_.push_back(std::move(access_->field_dtypes()[i]));
       output_shapes_.push_back(PartialTensorShape({actual_batch_size})
-                                   .Concatenate(field_shapes_[i]));
-      for (int64 j = 0; j < field_ragged_ranks_[i]; ++j) {
+                                   .Concatenate(access_->field_shapes()[i]));
+      for (int64 j = 0; j < access_->field_ragged_ranks()[i]; ++j) {
         output_dtypes_.push_back(DT_INT32);
         output_shapes_.push_back(PartialTensorShape({actual_batch_size}));
       }
     }
-
-    reader_ = absl::make_unique<ParquetBatchReader>(
-        filename_, batch_size_, field_names_, field_dtypes_,
-        field_ragged_ranks_, field_shapes_, partition_count_, partition_index_,
-        drop_remainder_);
   }
-
-  Status Open() {
-    VLOG(1) << "Starting to read " << filename_
-            << " in batches (<= " << batch_size_ << " samples/batch) ...";
-    return reader_->Open();
-  }
-
-  std::unique_ptr<IteratorBase> MakeIteratorInternal(
-      const string& prefix) const override;
 
   const DataTypeVector& output_dtypes() const override {
     return output_dtypes_;
@@ -157,66 +142,64 @@ class ParquetTabularDatasetOp::Dataset : public DatasetBase {
   }
 
   string DebugString() const override {
-    return "ParquetTabularDatasetOp::Dataset";
+    return absl::StrCat("TabularDataset<", access_->format(), ">(",
+                        access_->filename(), ")");
   }
+
+  std::unique_ptr<IteratorBase> MakeIteratorInternal(
+      const string& prefix) const override;
 
  protected:
   Status AsGraphDefInternal(SerializationContext* ctx,
                             DatasetGraphDefBuilder* b,
                             Node** output) const override {
     Node* filename = nullptr;
-    TF_RETURN_IF_ERROR(b->AddScalar(filename_, &filename));
+    TF_RETURN_IF_ERROR(b->AddScalar(access_->filename(), &filename));
     Node* batch_size;
-    TF_RETURN_IF_ERROR(b->AddScalar(batch_size_, &batch_size));
+    TF_RETURN_IF_ERROR(b->AddScalar(access_->batch_size(), &batch_size));
+    AttrValue format;
+    b->BuildAttrValue(access_->format(), &format);
     AttrValue field_names;
-    b->BuildAttrValue(field_names_, &field_names);
+    b->BuildAttrValue(access_->field_names(), &field_names);
     AttrValue field_dtypes;
-    b->BuildAttrValue(field_dtypes_, &field_dtypes);
+    b->BuildAttrValue(access_->field_dtypes(), &field_dtypes);
     AttrValue field_ragged_ranks;
-    b->BuildAttrValue(field_ragged_ranks_, &field_ragged_ranks);
+    b->BuildAttrValue(access_->field_ragged_ranks(), &field_ragged_ranks);
     AttrValue field_shapes;
-    b->BuildAttrValue(field_ragged_ranks_, &field_shapes);
+    b->BuildAttrValue(access_->field_ragged_ranks(), &field_shapes);
+    AttrValue drop_remainder;
+    b->BuildAttrValue(access_->drop_remainder(), &drop_remainder);
+    AttrValue skip_corrupted_data;
+    b->BuildAttrValue(access_->skip_corrupted_data(), &skip_corrupted_data);
     AttrValue partition_count;
     b->BuildAttrValue(partition_count_, &partition_count);
     AttrValue partition_index;
     b->BuildAttrValue(partition_index_, &partition_index);
-    AttrValue drop_remainder;
-    b->BuildAttrValue(drop_remainder_, &drop_remainder);
-    AttrValue skip_corrupted_data;
-    b->BuildAttrValue(skip_corrupted_data_, &skip_corrupted_data);
     TF_RETURN_IF_ERROR(
         b->AddDataset(this, {{0, filename}, {1, batch_size}}, {},
-                      {{"field_names", field_names},
+                      {{"format", format},
+                       {"field_names", field_names},
                        {"field_dtypes", field_dtypes},
                        {"field_ragged_ranks", field_ragged_ranks},
                        {"field_shapes", field_shapes},
-                       {"partition_count", partition_count},
-                       {"partition_index", partition_index},
                        {"drop_remainder", drop_remainder},
-                       {"skip_corrupted_data", skip_corrupted_data}},
+                       {"skip_corrupted_data", skip_corrupted_data},
+                       {"partition_count", partition_count},
+                       {"partition_index", partition_index}},
                       output));
     return Status::OK();
   }
 
  private:
   class Iterator;
-  const string filename_;
-  const int64 batch_size_;
-  const std::vector<string> field_names_;
-  const DataTypeVector field_dtypes_;
-  const std::vector<int32> field_ragged_ranks_;
-  const std::vector<PartialTensorShape> field_shapes_;
-  const int64 partition_count_;
-  const int64 partition_index_;
-  const bool drop_remainder_;
-  const bool skip_corrupted_data_;
   DataTypeVector output_dtypes_;
   std::vector<PartialTensorShape> output_shapes_;
-  std::unique_ptr<ParquetBatchReader> reader_;
+  std::unique_ptr<TableAccess> access_;
+  int64 partition_count_;
+  int64 partition_index_;
 };
 
-void ParquetTabularDatasetOp::MakeDataset(OpKernelContext* ctx,
-                                          DatasetBase** output) {
+void TabularDatasetOp::MakeDataset(OpKernelContext* ctx, DatasetBase** output) {
   string filename;
   OP_REQUIRES_OK(ctx, PARSE_SCALAR(ctx, "filename", &filename));
 
@@ -224,27 +207,62 @@ void ParquetTabularDatasetOp::MakeDataset(OpKernelContext* ctx,
   OP_REQUIRES_OK(ctx, PARSE_SCALAR(ctx, "batch_size", &batch_size));
   OP_REQUIRES(ctx, batch_size > 0,
               errors::InvalidArgument("batch_size must be greater than zero."));
-
-  Dataset* ds =
-      new Dataset(ctx, filename, batch_size, field_names_, field_dtypes_,
-                  field_ragged_ranks_, field_shapes_, partition_count_,
-                  partition_index_, drop_remainder_, skip_corrupted_data_);
-  OP_REQUIRES_OK(ctx, ds->Open());
-  *output = ds;
+  OP_REQUIRES(ctx, partition_index_ < partition_count_,
+              errors::InvalidArgument("Partition index ", partition_index_,
+                                      " must be smaller than partition count ",
+                                      partition_count_));
+  OP_REQUIRES(ctx, partition_index_ >= 0,
+              errors::InvalidArgument("Partition index ", partition_index_,
+                                      "must be greater than 0"));
+  TableAccess* access =
+      TableAccess::Create(ctx, format_, filename, batch_size, field_names_,
+                          field_dtypes_, field_ragged_ranks_, field_shapes_,
+                          drop_remainder_, skip_corrupted_data_);
+  int64 count = access->Count();
+  if (TF_PREDICT_FALSE(partition_count_ > 1)) {
+    int64 partition_size = count / partition_count_;
+    int full_partition_count = 0;
+    if (TF_PREDICT_FALSE(partition_size < 1)) {
+      partition_size = 1;
+      full_partition_count = count;
+    } else {
+      full_partition_count = count / partition_size;
+    }
+    int64 start = 0;
+    if (partition_index_ < full_partition_count) {
+      start = partition_size * partition_index_;
+    } else {
+      start = partition_size * full_partition_count;
+    }
+    int64 end = 0;
+    if (partition_index_ + 1 < full_partition_count) {
+      end = partition_size * (partition_index_ + 1);
+      if (end > count) {
+        end = count;
+      }
+    } else {
+      end = partition_size * full_partition_count;
+    }
+    OP_REQUIRES_OK(ctx, access->Open(start, end));
+  } else {
+    OP_REQUIRES_OK(ctx, access->Open());
+  }
+  *output = new TabularDatasetOp::Dataset(ctx, access, partition_count_,
+                                          partition_index_);
 }
 
-class ParquetTabularDatasetOp::Dataset::Iterator
-    : public DatasetIterator<ParquetTabularDatasetOp::Dataset> {
+class TabularDatasetOp::Dataset::Iterator
+    : public DatasetIterator<TabularDatasetOp::Dataset> {
  public:
   explicit Iterator(const Params& params)
-      : DatasetIterator<ParquetTabularDatasetOp::Dataset>(params) {}
+      : DatasetIterator<TabularDatasetOp::Dataset>(params) {}
 
   Status GetNextInternal(IteratorContext* ctx, std::vector<Tensor>* out_tensors,
                          bool* end_of_sequence) override {
     mutex_lock l(mu_);
-    Status s = dataset()->reader_->Read(out_tensors);
-    for (; dataset()->skip_corrupted_data_ && errors::IsDataLoss(s);
-         s = dataset()->reader_->Read(out_tensors)) {
+    Status s = dataset()->access_->Read(out_tensors);
+    for (; dataset()->access_->skip_corrupted_data() && errors::IsDataLoss(s);
+         s = dataset()->access_->Read(out_tensors)) {
       LOG(ERROR) << "Skip corrupted data: " << s.error_message();
       out_tensors->clear();
     }
@@ -273,17 +291,19 @@ class ParquetTabularDatasetOp::Dataset::Iterator
   mutex mu_;
 };
 
-std::unique_ptr<IteratorBase>
-ParquetTabularDatasetOp::Dataset::MakeIteratorInternal(
+std::unique_ptr<IteratorBase> TabularDatasetOp::Dataset::MakeIteratorInternal(
     const string& prefix) const {
-  return std::unique_ptr<IteratorBase>(
-      new Iterator({this, absl::StrCat(prefix, "::ParquetTabular")}));
+  VLOG(1) << "Starting to read " << access_->filename() << " ("
+          << access_->format() << ") in batches (<= " << access_->batch_size()
+          << " samples/batch) ...";
+  return std::unique_ptr<IteratorBase>(new TabularDatasetOp::Dataset::Iterator(
+      {this, absl::StrCat(prefix, "::", access_->format(), "TabularDataset")}));
 }
 
-REGISTER_KERNEL_BUILDER(Name("HbParquetTabularDataset").Device(DEVICE_CPU),
-                        ParquetTabularDatasetOp);
+REGISTER_KERNEL_BUILDER(Name("HbTabularDataset").Device(DEVICE_CPU),
+                        TabularDatasetOp);
 
-WHITELIST_STATEFUL_OP_FOR_DATASET_FUNCTIONS("HbParquetTabularDataset");
+WHITELIST_STATEFUL_OP_FOR_DATASET_FUNCTIONS("HbTabularDataset");
 
 }  // namespace hybridbackend
 }  // namespace tensorflow

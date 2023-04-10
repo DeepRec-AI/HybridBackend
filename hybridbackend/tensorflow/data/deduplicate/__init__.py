@@ -13,7 +13,7 @@
 # limitations under the License.
 # =============================================================================
 
-r'''Parquet related classes and functions.
+r'''SyncReplicasDataset related classes and functions.
 '''
 
 from __future__ import absolute_import

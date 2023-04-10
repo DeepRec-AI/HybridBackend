@@ -106,6 +106,21 @@ namespace {
   return ::arrow::Status::OK();
 }
 
+void CloseArrowFile(std::shared_ptr<::arrow::fs::FileSystem>& fs,
+                    std::shared_ptr<::arrow::io::RandomAccessFile>& file,
+                    const std::string& filename) {
+  if (ARROW_PREDICT_FALSE(file.use_count() > 1)) {
+    HB_LOG(0) << "[ERROR] File " << filename << " still has "
+              << file.use_count() - 1 << " references";
+  }
+  file.reset();
+  if (ARROW_PREDICT_FALSE(fs.use_count() > 1)) {
+    HB_LOG(0) << "[ERROR] File system for " << filename << " still has "
+              << fs.use_count() - 1 << " references";
+  }
+  fs.reset();
+}
+
 ::arrow::Status OpenParquetReader(
     std::unique_ptr<::parquet::arrow::FileReader>* reader,
     const std::shared_ptr<::arrow::io::RandomAccessFile>& file,
@@ -179,6 +194,86 @@ namespace {
     field_dtypes->push_back(dtype);
     field_ragged_ranks->push_back(ragged_rank);
   }
+  return ::arrow::Status::OK();
+}
+
+::arrow::Status GetParquetRowGroupCount(int* row_group_count,
+                                        const std::string& filename) {
+  std::shared_ptr<::arrow::fs::FileSystem> fs;
+  std::shared_ptr<::arrow::io::RandomAccessFile> file;
+  ARROW_RETURN_NOT_OK(::hybridbackend::OpenArrowFile(&fs, &file, filename));
+  std::unique_ptr<::parquet::arrow::FileReader> reader;
+  ARROW_RETURN_NOT_OK(::hybridbackend::OpenParquetReader(&reader, file, false));
+  *row_group_count = reader->num_row_groups();
+  return ::arrow::Status::OK();
+}
+
+::arrow::Status OpenOrcReader(
+    std::unique_ptr<::arrow::adapters::orc::ORCFileReader>* reader,
+    const std::shared_ptr<::arrow::io::RandomAccessFile>& file,
+    const bool initialized_from_env) {
+  const int kMemoryLoggingEnabled =
+      ::hybridbackend::EnvVarGetBool("HB_MEMORY_LOGGING_ENABLED", false);
+  if (HB_PREDICT_FALSE(kMemoryLoggingEnabled)) {
+    ARROW_RETURN_NOT_OK(::arrow::adapters::orc::ORCFileReader::Open(
+                            file, new ::arrow::LoggingMemoryPool(
+                                      ::arrow::default_memory_pool()))
+                            .Value(reader));
+  } else {
+    ARROW_RETURN_NOT_OK(::arrow::adapters::orc::ORCFileReader::Open(
+                            file, ::arrow::default_memory_pool())
+                            .Value(reader));
+  }
+
+  if (!initialized_from_env) {
+    return ::arrow::Status::OK();
+  }
+
+  const int kArrowMemoryDecayMillis = EnvVarGetInt("HB_MEMORY_DECAY_MILLIS", 0);
+  if (kArrowMemoryDecayMillis > 0) {
+    auto s = ::arrow::jemalloc_set_decay_ms(kArrowMemoryDecayMillis);
+    if (!ARROW_PREDICT_TRUE(s.ok())) {
+      HB_LOG(0) << "[ERROR] Failed to set memory decay of arrow";
+    }
+  }
+  return ::arrow::Status::OK();
+}
+
+::arrow::Status GetOrcDataFrameFields(std::vector<std::string>* field_names,
+                                      std::vector<std::string>* field_dtypes,
+                                      std::vector<int>* field_ragged_ranks,
+                                      const std::string& filename) {
+  std::shared_ptr<::arrow::fs::FileSystem> fs;
+  std::shared_ptr<::arrow::io::RandomAccessFile> file;
+  ARROW_RETURN_NOT_OK(::hybridbackend::OpenArrowFile(&fs, &file, filename));
+  std::unique_ptr<::arrow::adapters::orc::ORCFileReader> reader;
+  ARROW_RETURN_NOT_OK(::hybridbackend::OpenOrcReader(&reader, file, false));
+
+  std::shared_ptr<::arrow::Schema> schema;
+  ARROW_RETURN_NOT_OK(reader->ReadSchema().Value(&schema));
+  if (ARROW_PREDICT_FALSE(!schema->HasDistinctFieldNames())) {
+    return ::arrow::Status::Invalid(filename,
+                                    " must has distinct column names");
+  }
+  for (const auto& field : schema->fields()) {
+    field_names->push_back(field->name());
+    std::string dtype;
+    int ragged_rank = 0;
+    ARROW_RETURN_NOT_OK(MakeNumpyDtypeAndRaggedRankFromArrowDataType(
+        &dtype, &ragged_rank, field->type()));
+    field_dtypes->push_back(dtype);
+    field_ragged_ranks->push_back(ragged_rank);
+  }
+  return ::arrow::Status::OK();
+}
+
+::arrow::Status GetOrcRowCount(int* row_count, const std::string& filename) {
+  std::shared_ptr<::arrow::fs::FileSystem> fs;
+  std::shared_ptr<::arrow::io::RandomAccessFile> file;
+  ARROW_RETURN_NOT_OK(::hybridbackend::OpenArrowFile(&fs, &file, filename));
+  std::unique_ptr<::arrow::adapters::orc::ORCFileReader> reader;
+  ARROW_RETURN_NOT_OK(::hybridbackend::OpenOrcReader(&reader, file, false));
+  *row_count = reader->NumberOfRows();
   return ::arrow::Status::OK();
 }
 

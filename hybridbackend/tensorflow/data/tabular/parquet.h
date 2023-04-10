@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef HYBRIDBACKEND_TENSORFLOW_DATA_PARQUET_BATCH_READER_H_
-#define HYBRIDBACKEND_TENSORFLOW_DATA_PARQUET_BATCH_READER_H_
+#ifndef HYBRIDBACKEND_TENSORFLOW_DATA_TABULAR_PARQUET_H_
+#define HYBRIDBACKEND_TENSORFLOW_DATA_TABULAR_PARQUET_H_
 
 #include <memory>
 #include <vector>
@@ -22,24 +22,30 @@ limitations under the License.
 #include <tensorflow/core/framework/op_kernel.h>
 #include <tensorflow/core/framework/types.h>
 
+#include "hybridbackend/tensorflow/data/tabular/table.h"
+
 namespace tensorflow {
 namespace hybridbackend {
 
-class ParquetBatchReader {
+class ParquetAccess : public TableAccess {
  public:
-  ParquetBatchReader(const string& filename, const int64 batch_size,
-                     const std::vector<string>& field_names,
-                     const DataTypeVector& field_dtypes,
-                     const std::vector<int32>& field_ragged_ranks,
-                     const std::vector<PartialTensorShape>& field_shapes,
-                     const int64 partition_count, const int64 partition_index,
-                     const bool drop_remainder);
+  ParquetAccess(OpKernelContext* ctx, const TableFormat& format,
+                const string& filename, const int64 batch_size,
+                const std::vector<string>& field_names,
+                const DataTypeVector& field_dtypes,
+                const std::vector<int32>& field_ragged_ranks,
+                const std::vector<PartialTensorShape>& field_shapes,
+                const bool drop_remainder, const bool skip_corrupted_data);
 
-  Status Open();
+  virtual int64 Count() const override;
 
-  Status Read(std::vector<Tensor>* output_tensors);
+  virtual Status Open() override;
 
-  virtual ~ParquetBatchReader();
+  virtual Status Open(const int64 start, const int64 end) override;
+
+  virtual Status Read(std::vector<Tensor>* output_tensors) override;
+
+  virtual ~ParquetAccess();
 
  private:
   class Impl;
@@ -49,4 +55,4 @@ class ParquetBatchReader {
 }  // namespace hybridbackend
 }  // namespace tensorflow
 
-#endif  // HYBRIDBACKEND_TENSORFLOW_DATA_PARQUET_BATCH_READER_H_
+#endif  // HYBRIDBACKEND_TENSORFLOW_DATA_TABULAR_PARQUET_H_

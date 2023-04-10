@@ -24,10 +24,11 @@ from __future__ import division
 from __future__ import print_function
 
 import collections
-import logging
+from six import string_types as string
 from six.moves import xrange  # pylint: disable=redefined-builtin
 
 import numpy as np
+from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
@@ -43,7 +44,9 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gen_ragged_conversion_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import sparse_ops
+from tensorflow.python.ops.ragged import ragged_gather_ops
 from tensorflow.python.ops.ragged import ragged_tensor
+from tensorflow.python.platform import tf_logging as logging
 
 
 class DataFrame(object):  # pylint: disable=useless-object-inheritance
@@ -96,6 +99,8 @@ class DataFrame(object):  # pylint: disable=useless-object-inheritance
         return value
 
       def _from_components(self, components):
+        if self._field.restore_idx_field is not None:
+          components.set_deduplicated_idx(self._field.restore_idx_field)
         return components
 
       def _batch(self, batch_size):
@@ -176,6 +181,7 @@ class DataFrame(object):  # pylint: disable=useless-object-inheritance
       else:
         shape = tensor_shape.TensorShape([])
       self._shape = shape
+      self._restore_idx_field = None
 
     @property
     def name(self):
@@ -196,6 +202,13 @@ class DataFrame(object):  # pylint: disable=useless-object-inheritance
     @property
     def shape(self):
       return self._shape
+
+    @property
+    def restore_idx_field(self):
+      return self._restore_idx_field
+
+    def set_restore_idx_field(self, field):
+      self._restore_idx_field = field
 
     def __repr__(self):
       if self._dtype is None:
@@ -267,11 +280,33 @@ class DataFrame(object):  # pylint: disable=useless-object-inheritance
         nested_row_splits = tuple()
       else:
         nested_row_splits = tuple(nested_row_splits)
+      cls._deduplicated_idx = None
       return super(DataFrame.Value, cls).__new__(
         cls, values, nested_row_splits)
 
     def __repr__(self):
       return f'{{{self.values}, splits={self.nested_row_splits}}}'
+
+    def _create_gather_indices(self, restore_idx):
+      r'''construct the indices utilized in gather_nd
+      '''
+      outer_size_indices = math_ops.range(
+        math_ops.cast(
+          array_ops.shape(restore_idx)[0],
+          dtype=restore_idx.dtype))
+      outer_size_indices = array_ops.repeat_with_axis(
+        array_ops.reshape(outer_size_indices, [-1, 1]),
+        repeats=array_ops.shape(restore_idx)[1:2], axis=-1)
+      return array_ops.concat(
+        [array_ops.reshape(outer_size_indices, [-1, 1]),
+         array_ops.reshape(restore_idx, [-1, 1])], axis=-1)
+
+    @property
+    def deduplicated_idx(self):
+      return self._deduplicated_idx
+
+    def set_deduplicated_idx(self, deduplicated_idx):
+      self._deduplicated_idx = deduplicated_idx
 
     def to_list(self):
       result = self.values.tolist()
@@ -298,6 +333,25 @@ class DataFrame(object):  # pylint: disable=useless-object-inheritance
         row_partition_tensors=self.nested_row_splits,
         name=name)
 
+    def restore_deduplicated_to_tensor(self, restore_idx, name=None):
+      r'''Restore ragged tensors from deduplication
+        and convert it to tf.SparseTensor.
+      '''
+      if (len(self.nested_row_splits) == 0
+          or (len(self.nested_row_splits) == 1
+              and self.values.shape.ndims > 1)):
+        restore_idx = self._create_gather_indices(restore_idx)
+        return array_ops.gather_nd(indices=restore_idx, params=self.values)
+
+      restore_idx = self._create_gather_indices(restore_idx)
+      ragged_values = ragged_tensor.RaggedTensor.from_nested_row_splits(
+        self.values, self.nested_row_splits)
+      restored_ragged_tensor = ragged_gather_ops.gather_nd(
+        indices=restore_idx, params=ragged_values)
+      default_value = array_ops.zeros((), restored_ragged_tensor.dtype)
+      return restored_ragged_tensor.to_tensor(
+        default_value=default_value, name=name)
+
     def to_sparse(self, name=None):
       if len(self.nested_row_splits) == 0:
         return self.values
@@ -310,16 +364,68 @@ class DataFrame(object):  # pylint: disable=useless-object-inheritance
         sparse_value.sparse_values,
         sparse_value.sparse_dense_shape)
 
+    def restore_deduplicated_to_sparse(self, restore_idx, name=None):
+      r'''Restore ragged tensors from deduplication
+        and convert it to tf.sparse.SparseTensor.
+      '''
+      if (len(self.nested_row_splits) == 0
+          or (len(self.nested_row_splits) == 1
+              and self.values.shape.ndims > 1)):
+        restore_idx = self._create_gather_indices(restore_idx)
+        return array_ops.gather_nd(indices=restore_idx, params=self.values)
+
+      restore_idx = self._create_gather_indices(restore_idx)
+      ragged_values = ragged_tensor.RaggedTensor.from_nested_row_splits(
+        self.values, self.nested_row_splits)
+      restored_ragged_tensor = ragged_gather_ops.gather_nd(
+        indices=restore_idx, params=ragged_values)
+      return restored_ragged_tensor.to_sparse(name=name)
+
   @classmethod
-  def parse(cls, features, pad=False):
+  def parse(cls, features, pad=False, restore_idx=None):
     r'''Convert DataFrame values to tensors or sparse tensors.
     '''
     if isinstance(features, dict):
-      return {
-        f: cls.parse(
-          features[f],
-          (pad[f] if f in pad else False) if isinstance(pad, dict) else pad)
-        for f in features}
+      map_feat_to_restore_idx = {}
+      parse_res = {}
+      for fname, fval in features.items():
+        if (isinstance(fval, DataFrame.Value)
+            and fval.deduplicated_idx is not None):
+          map_feat_to_restore_idx[fname] = fval.deduplicated_idx.name
+
+      for fname in set(map_feat_to_restore_idx.values()):
+        parse_res[fname] = cls.parse(
+          features[fname], True)
+
+      for fname in features:
+        if fname in map_feat_to_restore_idx:
+          parse_res[fname] = cls.parse(
+            features[fname],
+            (pad[fname] if fname in pad else False)
+            if isinstance(pad, dict) else pad,
+            restore_idx=parse_res[map_feat_to_restore_idx[fname]])
+        elif fname not in parse_res:
+          parse_res[fname] = cls.parse(
+            features[fname],
+            (pad[fname] if fname in pad else False)
+            if isinstance(pad, dict) else pad)
+      return parse_res
+    if (isinstance(features, DataFrame.Value)
+        and features.deduplicated_idx is not None):
+      if restore_idx is None:
+        raise ValueError(
+          f'{features} requires a restore_idx to recover deduplication')
+      if not isinstance(restore_idx, ops.Tensor):
+        raise TypeError(
+          f'{restore_idx} shall be a tf.Tensor')
+      if pad:
+        if isinstance(pad, bool):
+          return features.restore_deduplicated_to_tensor(restore_idx)
+        output = features.restore_deduplicated_to_tensor(restore_idx)
+        output_shape = array_ops.shape(output)
+        paddings = [[0, d - output_shape[i]] for i, d in enumerate(pad)]
+        return array_ops.pad(output, paddings, 'CONSTANT', constant_values=0)
+      return features.restore_deduplicated_to_sparse(restore_idx)
     if isinstance(features, DataFrame.Value):
       if pad:
         if isinstance(pad, bool):
@@ -428,3 +534,140 @@ def input_fields(input_dataset, fields=None):
     if not isinstance(f, DataFrame.Field):
       raise ValueError(f'{f} must be `hb.data.DataFrame.Field`.')
   return fields
+
+
+def build_fields(filename, fn, fields=None, lower=False):
+  r'''Get fields from a file.
+
+  Args:
+    filename: Path of the file.
+    fields: Existing field definitions or field names.
+    lower: Convert field name to lower case if not found.
+
+  Returns:
+    Field definitions.
+  '''
+  logging.info(f'Reading fields from {filename} ...')
+  all_field_tuples = fn(filename)  # pylint: disable=c-extension-no-member
+  if not all_field_tuples:
+    raise ValueError(
+      f'No supported fields found in file {filename}')
+  all_fields = {
+    f[0]: {'dtype': f[1], 'ragged_rank': f[2]}
+    for f in all_field_tuples}
+  if fields is None:
+    fields = all_fields.keys()
+  fields = tuple(fields)
+  new_fields = []
+  for f in fields:
+    if isinstance(f, DataFrame.Field):
+      if lower and f.name not in all_fields:
+        f = DataFrame.Field(
+          f.name.lower(),
+          dtype=f.dtype,
+          shape=f.shape,
+          ragged_rank=f.ragged_rank)
+      if f.name not in all_fields:
+        raise ValueError(
+          f'Field {f.name} is not found in the file {filename}')
+      dtype = f.dtype
+      actual_dtype = np.dtype(all_fields[f.name]['dtype'])
+      if dtype is None:
+        dtype = actual_dtype
+      elif dtype != actual_dtype:
+        raise ValueError(
+          f'Field {f.name} should has dtype {actual_dtype} not {dtype}')
+      ragged_rank = f.ragged_rank
+      actual_ragged_rank = all_fields[f.name]['ragged_rank']
+      if ragged_rank is None:
+        ragged_rank = actual_ragged_rank
+      elif ragged_rank != actual_ragged_rank:
+        raise ValueError(
+          f'Field {f.name} should has ragged_rank {actual_ragged_rank} '
+          f'not {ragged_rank}')
+      f = DataFrame.Field(
+        f.name,
+        dtype=dtype,
+        ragged_rank=ragged_rank,
+        shape=f.shape)
+      new_fields.append(f)
+      continue
+    if not isinstance(f, string):
+      raise ValueError(
+        f'Field {f} is not a DataFrame.Field or a string')
+    if lower and f not in all_fields:
+      f = f.lower()
+    if f not in all_fields:
+      raise ValueError(
+        f'Field {f} is not found in the file {filename}')
+    new_fields.append(DataFrame.Field(
+      f,
+      dtype=np.dtype(all_fields[f]['dtype']),
+      ragged_rank=all_fields[f]['ragged_rank'],
+      shape=None))
+  return tuple(new_fields)
+
+
+def build_filenames_and_fields(filenames, fn, fields, lower=False):
+  r'''Check and fetch filenames and fields.
+
+  Args:
+    filenames: List of file names.
+    fields: Existing field definitions or field names.
+    lower: Convert field name to lower case if not found.
+
+  Returns:
+    Validated file names and fields.
+  '''
+  if isinstance(filenames, string):
+    filenames = [filenames]
+    fields = build_fields(filenames[0], fn, fields, lower=lower)
+  elif isinstance(filenames, (tuple, list)):
+    for f in filenames:
+      if not isinstance(f, string):
+        raise ValueError(f'{f} in `filenames` must be a string')
+    fields = build_fields(filenames[0], fn, fields, lower=lower)
+  elif isinstance(filenames, dataset_ops.Dataset):
+    if filenames.output_types != dtypes.string:
+      raise TypeError(
+        '`filenames` must be a `tf.data.Dataset` of `tf.string` elements.')
+    if not filenames.output_shapes.is_compatible_with(
+        tensor_shape.TensorShape([])):
+      raise ValueError(
+        '`filenames` must be a `tf.data.Dataset` of scalar `tf.string` '
+        'elements.')
+    if fields is None:
+      raise ValueError('`fields` must be specified.')
+    if not isinstance(fields, (tuple, list)):
+      raise ValueError('`fields` must be a list of `hb.data.DataFrame.Field`.')
+    for f in fields:
+      if not isinstance(f, DataFrame.Field):
+        raise ValueError(f'Field {f} must be `hb.data.DataFrame.Field`.')
+      if f.incomplete:
+        raise ValueError(
+          f'Field {f} is incomplete, please specify dtype and ragged_rank')
+  elif isinstance(filenames, ops.Tensor):
+    if filenames.dtype != dtypes.string:
+      raise TypeError(
+        '`filenames` must be a `tf.Tensor` of `tf.string`.')
+    if fields is None:
+      raise ValueError('`fields` must be specified.')
+    if not isinstance(fields, (tuple, list)):
+      raise ValueError('`fields` must be a list of `hb.data.DataFrame.Field`.')
+    for f in fields:
+      if not isinstance(f, DataFrame.Field):
+        raise ValueError(f'Field {f} must be `hb.data.DataFrame.Field`.')
+      if f.incomplete:
+        raise ValueError(
+          f'Field {f} is incomplete, please specify dtype and ragged_rank')
+  else:
+    raise ValueError(
+      f'`filenames` {filenames} must be a `tf.data.Dataset` of scalar '
+      '`tf.string` elements or can be converted to a `tf.Tensor` of '
+      '`tf.string`.')
+
+  if not isinstance(filenames, dataset_ops.Dataset):
+    filenames = ops.convert_to_tensor(filenames, dtype=dtypes.string)
+    filenames = array_ops.reshape(filenames, [-1], name='filenames')
+    filenames = dataset_ops.Dataset.from_tensor_slices(filenames)
+  return filenames, fields
