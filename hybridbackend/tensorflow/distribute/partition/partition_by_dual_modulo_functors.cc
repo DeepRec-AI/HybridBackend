@@ -24,7 +24,7 @@ limitations under the License.
 #include <tensorflow/core/framework/tensor.h>
 #include <tensorflow/core/public/version.h>
 
-#include "hybridbackend/tensorflow/ops/partition_by_dual_modulo/functors.h"
+#include "hybridbackend/tensorflow/distribute/partition/dual_modulo_functors.h"
 
 namespace tensorflow {
 
