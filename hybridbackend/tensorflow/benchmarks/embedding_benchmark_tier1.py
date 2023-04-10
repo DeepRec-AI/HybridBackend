@@ -32,11 +32,11 @@ import hybridbackend.tensorflow as hb
 # pylint: disable=missing-docstring
 def benchmark(params):
   with tf.Graph().as_default():
-    fields = hb.data.Dataset.schema_from_parquet(params.filenames[0])
-    fields = [
-      f for f in fields
-      if f.name not in ('label', 'ts') and f.dtype in (tf.int32, tf.int64)]
-    ds = hb.data.Dataset.from_parquet(params.filenames, fields=fields)
+    ds = hb.data.Dataset.from_parquet(
+      params.filenames,
+      field_map_fn=lambda fields: [
+        f for f in fields
+        if f.name not in ('label', 'ts') and f.dtype in (tf.int32, tf.int64)])
     ds = ds.batch(params.batch_size, drop_remainder=True)
     ds = ds.prefetch(1)
     iterator = tf.data.make_one_shot_iterator(ds)

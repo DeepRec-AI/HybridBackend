@@ -159,7 +159,7 @@ fields = [
 ds = hb.data.Dataset.from_parquet(
     '/path/to/f1.parquet',
     fields=fields,
-    sparse_to_dense={'D': True})
+    to_dense={'D': True})
 ds = ds.batch(1024)
 ds = ds.prefetch(4)
 it = tf.data.make_one_shot_iterator(ds)

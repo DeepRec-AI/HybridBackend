@@ -109,21 +109,21 @@ class ParquetDatasetTest(unittest.TestCase):
   def test_dtype_auto_detection_read_lower(self):
     batch_size = 32
     with tf.Graph().as_default() as graph:
-      actual_fields = hb.data.Dataset.schema_from_parquet(
-        self._filename, ['B', 'D'], lower=True)
-      fld = actual_fields[1].name
-      ds = hb.data.Dataset.from_parquet([self._filename], fields=actual_fields)
+      ds = hb.data.Dataset.from_parquet(
+        [self._filename],
+        fields=['B', 'D'],
+        field_ignore_case=True)
       ds = ds.batch(batch_size)
       ds = ds.prefetch(4)
       batch = tf.data.make_one_shot_iterator(ds).get_next()
 
-    c = self._df[fld]
+    c = self._df['B']
     with tf.Session(graph=graph) as sess:
       for i in xrange(3):
         result = sess.run(batch)
         start_row = i * batch_size
         end_row = (i + 1) * batch_size
-        np.testing.assert_equal(result[fld], c[start_row:end_row].to_numpy())
+        np.testing.assert_equal(result['B'], c[start_row:end_row].to_numpy())
 
   def test_read_from_generator(self):
     num_epochs = 2

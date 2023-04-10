@@ -20,6 +20,7 @@ limitations under the License.
 #include <string>
 
 #if HYBRIDBACKEND_ARROW
+#include <arrow/adapters/orc/adapter.h>
 #include <arrow/dataset/api.h>
 #include <arrow/record_batch.h>
 #include <parquet/arrow/reader.h>
@@ -39,6 +40,10 @@ namespace hybridbackend {
     std::shared_ptr<::arrow::io::RandomAccessFile>* file,
     const std::string& filename);
 
+void CloseArrowFile(std::shared_ptr<::arrow::fs::FileSystem>& fs,
+                    std::shared_ptr<::arrow::io::RandomAccessFile>& file,
+                    const std::string& filename);
+
 ::arrow::Status OpenParquetReader(
     std::unique_ptr<::parquet::arrow::FileReader>* reader,
     const std::shared_ptr<::arrow::io::RandomAccessFile>& file,
@@ -48,6 +53,21 @@ namespace hybridbackend {
     std::vector<std::string>* field_names,
     std::vector<std::string>* field_dtypes,
     std::vector<int>* field_ragged_ranks, const std::string& filename);
+
+::arrow::Status GetParquetRowGroupCount(int* row_group_count,
+                                        const std::string& filename);
+
+::arrow::Status OpenOrcReader(
+    std::unique_ptr<::arrow::adapters::orc::ORCFileReader>* reader,
+    const std::shared_ptr<::arrow::io::RandomAccessFile>& file,
+    const bool initialized_from_env);
+
+::arrow::Status GetOrcDataFrameFields(std::vector<std::string>* field_names,
+                                      std::vector<std::string>* field_dtypes,
+                                      std::vector<int>* field_ragged_ranks,
+                                      const std::string& filename);
+
+::arrow::Status GetOrcRowCount(int* row_count, const std::string& filename);
 
 }  // namespace hybridbackend
 

@@ -29,7 +29,15 @@ from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 
 from hybridbackend.tensorflow.data.dataframe import parse
+from hybridbackend.tensorflow.data.deduplicate.dataset import deduplicate
 from hybridbackend.tensorflow.data.rebatch.dataset import RebatchDataset
+
+
+class TableFormats(object):  # pylint: disable=useless-object-inheritance
+  r'''Table Formats.
+  '''
+  PARQUET = 11
+  ORC = 21
 
 
 class TabularDatasetCreator(object):  # pylint: disable=useless-object-inheritance
@@ -41,10 +49,12 @@ class TabularDatasetCreator(object):  # pylint: disable=useless-object-inheritan
       partition_count=1,
       partition_index=0,
       skip_corrupted_data=False,
-      ignore_field_case=False,
-      sparse_to_dense=False,
+      to_dense=False,
       num_parallel_reads=None,
-      num_parallel_parser_calls=None):
+      num_parallel_parser_calls=None,
+      field_ignore_case=False,
+      field_map_fn=None,
+      **kwargs):
     r'''Create a `TabularDatasetCreator`.
 
     Args:
@@ -54,8 +64,7 @@ class TabularDatasetCreator(object):  # pylint: disable=useless-object-inheritan
       partition_count: (Optional.) Count of row group partitions.
       partition_index: (Optional.) Index of row group partitions.
       skip_corrupted_data: (Optional.) If True, skip corrupted data.
-      ignore_field_case: (Optional.) If True, ignore case of field names.
-      sparse_to_dense: (Optional.) If True, convert sparse tensors to dense. If
+      to_dense: (Optional.) If True, convert sparse tensors to dense. If
         it's a shape, then pad sparse tensors to specific shape.
       num_parallel_reads: (Optional.) A `tf.int64` scalar representing the
         number of files to read in parallel. Defaults to reading files
@@ -65,15 +74,20 @@ class TabularDatasetCreator(object):  # pylint: disable=useless-object-inheritan
         Note: All parquet datasets shares same parser pool, thus this argument
         can only be set once. if `tf.data.experimental.AUTOTUNE` is used, the
         number of parsers would be set for best performance.
+      field_ignore_case: (Optional.) If True, ignore case of field names.
+      field_map_fn: (Optional.) An function to transform fields.
     '''
     self._fn = fn
     self._filenames = filenames
-    self._fields = fields
+    self._fields = fields if field_map_fn is None else field_map_fn(fields)
     self._partition_count = partition_count
     self._partition_index = partition_index
     self._skip_corrupted_data = skip_corrupted_data
-    self._ignore_field_case = ignore_field_case
-    self._sparse_to_dense = sparse_to_dense
+    self._to_dense = to_dense
+    self._field_ignore_case = field_ignore_case
+    self._field_map_fn = field_map_fn
+    self._key_idx_field_names = kwargs.pop('key_idx_field_names', None)
+    self._value_field_names = kwargs.pop('value_field_names', None)
 
     if num_parallel_reads == dataset_ops.AUTOTUNE:
       if isinstance(filenames, (tuple, list)):
@@ -121,12 +135,8 @@ class TabularDatasetCreator(object):  # pylint: disable=useless-object-inheritan
     return self._skip_corrupted_data
 
   @property
-  def ignore_field_case(self):
-    return self._ignore_field_case
-
-  @property
-  def sparse_to_dense(self):
-    return self._sparse_to_dense
+  def to_dense(self):
+    return self._to_dense
 
   @property
   def num_parallel_reads(self):
@@ -135,6 +145,14 @@ class TabularDatasetCreator(object):  # pylint: disable=useless-object-inheritan
   @property
   def num_parallel_parser_calls(self):
     return self._num_parallel_reads
+
+  @property
+  def field_ignore_case(self):
+    return self._field_ignore_case
+
+  @property
+  def field_map_fn(self):
+    return self._field_map_fn
 
   def _create_dataset(self, batch_size):
     r'''Create dataset for specific batch size in parallel.
@@ -161,7 +179,13 @@ class TabularDatasetCreator(object):  # pylint: disable=useless-object-inheritan
     r'''Read records in the dataset.
     '''
     ds = self._create_dataset(256)  # Prefetch 256 rows to speed up
-    ds = ds.apply(parse(pad=self._sparse_to_dense))
+    if (self._key_idx_field_names is not None
+        and self._value_field_names is not None):
+      ds = ds.apply(
+        deduplicate(
+          self._key_idx_field_names,
+          self._value_field_names, fields=self._fields))
+    ds = ds.apply(parse(pad=self._to_dense))
     return ds.unbatch()
 
   def batch(self, batch_size, drop_remainder=False):
@@ -188,10 +212,16 @@ class TabularDatasetCreator(object):  # pylint: disable=useless-object-inheritan
       Dataset: A `Dataset`.
     '''
     ds = self._create_dataset(batch_size)
+    if (self._key_idx_field_names is not None
+        and self._value_field_names is not None):
+      ds = ds.apply(
+        deduplicate(
+          self._key_idx_field_names,
+          self._value_field_names, fields=self._fields))
     ds = RebatchDataset(
       ds, self._fields, batch_size,
       drop_remainder=drop_remainder)
-    return ds.apply(parse(pad=self._sparse_to_dense))
+    return ds.apply(parse(pad=self._to_dense))
 
   def shuffle_batch(
       self, batch_size,
@@ -225,10 +255,16 @@ class TabularDatasetCreator(object):  # pylint: disable=useless-object-inheritan
     if buffer_size is None:
       buffer_size = batch_size
     ds = self._create_dataset(batch_size)
+    if (self._key_idx_field_names is not None
+        and self._value_field_names is not None):
+      ds = ds.apply(
+        deduplicate(
+          self._key_idx_field_names,
+          self._value_field_names, fields=self._fields))
     ds = RebatchDataset(
       ds, self._fields, batch_size,
       drop_remainder=drop_remainder,
       shuffle_buffer_size=buffer_size,
       shuffle_seed=seed,
       reshuffle_each_iteration=reshuffle_each_iteration)
-    return ds.apply(parse(pad=self._sparse_to_dense))
+    return ds.apply(parse(pad=self._to_dense))

@@ -297,6 +297,94 @@ Status MakeTensorsFromArrowArray(
   return Status::OK();
 }
 
+Status ValidateSchema(const string& filename,
+                      const std::vector<string>& field_names,
+                      const DataTypeVector& field_dtypes,
+                      const std::vector<int32>& field_ragged_ranks,
+                      std::shared_ptr<::arrow::Schema>& schema,
+                      std::vector<int>* out_column_indices) {
+  if (TF_PREDICT_FALSE(!schema->HasDistinctFieldNames())) {
+    return errors::InvalidArgument(filename, " must has distinct column names");
+  }
+  for (size_t i = 0; i < field_names.size(); ++i) {
+    auto& cname = field_names[i];
+    int column_index = schema->GetFieldIndex(cname);
+    if (TF_PREDICT_FALSE(column_index < 0)) {
+      return errors::NotFound("No column called `", cname, "` found in ",
+                              filename);
+    }
+    if (out_column_indices != nullptr) {
+      out_column_indices->push_back(column_index);
+    }
+    const auto& expected_dtype = field_dtypes[i];
+    const auto& expected_ragged_rank = field_ragged_ranks[i];
+    DataType actual_dtype;
+    int32 actual_ragged_rank = 0;
+    TF_RETURN_IF_ERROR(MakeDataTypeAndRaggedRankFromArrowDataType(
+        schema->field(column_index)->type(), &actual_dtype,
+        &actual_ragged_rank));
+    if (TF_PREDICT_FALSE(actual_dtype != expected_dtype)) {
+      return errors::InvalidArgument(
+          "Field ", cname, " in ", filename, " has unexpected data type ",
+          DataTypeString(actual_dtype), ", which should be ",
+          DataTypeString(expected_dtype));
+    }
+    if (TF_PREDICT_FALSE(actual_ragged_rank != expected_ragged_rank)) {
+      return errors::InvalidArgument(
+          "Field ", cname, " in ", filename, " has unexpected ragged rank ",
+          actual_ragged_rank, ", which should be ", expected_ragged_rank);
+    }
+  }
+  return Status::OK();
+}
+
+Status ReadRecordBatch(::arrow::RecordBatchReader* batch_reader,
+                       const string& filename, const int64 batch_size,
+                       const std::vector<string>& field_names,
+                       const DataTypeVector& field_dtypes,
+                       const std::vector<int32>& field_ragged_ranks,
+                       const std::vector<PartialTensorShape>& field_shapes,
+                       const bool drop_remainder, const int64 row_limit,
+                       std::vector<Tensor>* output_tensors,
+                       int64* row_counter) {
+#if HYBRIDBACKEND_ARROW
+  // Read next batch from parquet file.
+  std::shared_ptr<::arrow::RecordBatch> batch;
+  TF_RETURN_IF_ARROW_ERROR(batch_reader->ReadNext(&batch));
+  if (TF_PREDICT_FALSE(!batch)) {
+    return errors::OutOfRange("Reached end of parquet file ", filename);
+  }
+  if (TF_PREDICT_FALSE(drop_remainder && batch->num_rows() < batch_size)) {
+    return errors::OutOfRange("Reached end of parquet file ", filename,
+                              " after dropping reminder batch");
+  }
+
+  if (TF_PREDICT_FALSE(row_limit > -1 &&
+                       (*row_counter) + batch->num_rows() > row_limit)) {
+    batch = batch->Slice(0, batch->num_rows() - (row_limit - (*row_counter)));
+  }
+
+  // Populate tensors from record batch.
+  auto arrays = batch->columns();
+  for (size_t i = 0; i < arrays.size(); ++i) {
+    auto s =
+        MakeTensorsFromArrowArray(field_dtypes[i], field_ragged_ranks[i],
+                                  field_shapes[i], arrays[i], output_tensors);
+    if (!s.ok()) {
+      return errors::DataLoss("Failed to parse row #", *row_counter, " - #",
+                              (*row_counter) + batch->num_rows(), " at column ",
+                              field_names[i], " (#", i, ") in ", filename, ": ",
+                              s.error_message());
+    }
+  }
+
+  (*row_counter) += batch->num_rows();
+  return Status::OK();
+#else
+  return errors::Unimplemented("HYBRIDBACKEND_WITH_ARROW must be ON");
+#endif
+}
+
 #endif
 
 }  // namespace hybridbackend
