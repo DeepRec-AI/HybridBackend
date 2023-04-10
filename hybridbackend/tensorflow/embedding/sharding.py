@@ -13,7 +13,7 @@
 # limitations under the License.
 # =============================================================================
 
-r'''Embedding lookup related classes and functions.
+r'''Sharded embedding lookup related classes and functions.
 '''
 
 from __future__ import absolute_import
@@ -35,15 +35,15 @@ from tensorflow.python.ops import embedding_ops
 from hybridbackend.tensorflow.distribute.collective import Collective
 from hybridbackend.tensorflow.distribute.ops import Topology
 from hybridbackend.tensorflow.distribute.partition.ops import \
+  partition_by_dual_modulo_stage_one
+from hybridbackend.tensorflow.distribute.partition.ops import \
+  partition_by_dual_modulo_stage_two
+from hybridbackend.tensorflow.distribute.partition.ops import \
   partition_by_modulo
 from hybridbackend.tensorflow.framework.context import Context
 from hybridbackend.tensorflow.framework.ops import GraphKeys
 from hybridbackend.tensorflow.framework.ops import ModeKeys
 from hybridbackend.tensorflow.framework.rewriting import GraphRewriting
-from hybridbackend.tensorflow.ops.partition_by_dual_modulo.ops import \
-  partition_by_dual_modulo_stage_one
-from hybridbackend.tensorflow.ops.partition_by_dual_modulo.ops import \
-  partition_by_dual_modulo_stage_two
 
 
 class ShardedEmbeddingWeightsRewriting(GraphRewriting):  # pylint: disable=useless-object-inheritance

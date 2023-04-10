@@ -49,7 +49,7 @@ _ = (
   .register('grad_lazy_sync', False, env='HB_GRAD_LAZY_SYNC')
   .register('sharding', False)
   .register(
-    'use_hierarchical_embedding_lookup', False,
+    'use_hierarchical_embedding_lookup', True,
     env='HB_USE_HIERARCHICAL_EMBEDDING_LOOKUP')
   .register('batch_size', -1)
   .register('model_dir', None)

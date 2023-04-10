@@ -71,7 +71,7 @@ import hybridbackend.tensorflow as hb
 
 filenames = tf.data.Dataset.from_generator(func, tf.string, tf.TensorShape([]))
 ds = hb.data.Dataset.from_parquet(filenames)
-ds = ds.bacth(1024)
+ds = ds.batch(1024)
 ds = ds.prefetch(4)
 it = tf.data.make_one_shot_iterator(ds)
 batch = it.get_next()
@@ -178,8 +178,8 @@ from tensorflow.tools.graph_transforms import TransformGraph
 import hybridbackend.tensorflow as hb
 
 # ...
-model_inputs = {t.name.split(":")[0]: t for t in model.inputs}
-model_outputs = {t.name.split(":")[0]: t for t in model.outputs}
+model_inputs = {t.name.split(':')[0]: t for t in model.inputs}
+model_outputs = {t.name.split(':')[0]: t for t in model.outputs}
 train_graph_def = tf.get_default_graph().as_graph_def()
 predict_graph_def = TransformGraph(
   train_graph_def,

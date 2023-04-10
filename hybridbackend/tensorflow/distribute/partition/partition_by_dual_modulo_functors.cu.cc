@@ -31,7 +31,7 @@ limitations under the License.
 #include "hybridbackend/common/profiler.h"
 
 #include "hybridbackend/tensorflow/common/device_functions.h"
-#include "hybridbackend/tensorflow/ops/partition_by_dual_modulo/functors.h"
+#include "hybridbackend/tensorflow/distribute/partition/dual_modulo_functors.h"
 
 namespace tensorflow {
 

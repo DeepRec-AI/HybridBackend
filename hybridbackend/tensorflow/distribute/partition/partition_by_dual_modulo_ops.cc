@@ -28,7 +28,7 @@ limitations under the License.
 #include <tensorflow/core/framework/tensor.pb.h>
 
 #include "hybridbackend/common/env.h"
-#include "hybridbackend/tensorflow/ops/partition_by_dual_modulo/functors.h"
+#include "hybridbackend/tensorflow/distribute/partition/dual_modulo_functors.h"
 
 #if GOOGLE_CUDA
 #include "hybridbackend/tensorflow/common/host_functions.h"
@@ -37,7 +37,9 @@ limitations under the License.
 namespace tensorflow {
 
 using CPUDevice = Eigen::ThreadPoolDevice;
+#if GOOGLE_CUDA
 using GPUDevice = Eigen::GpuDevice;
+#endif  // GOOGLE_CUDA
 
 namespace hybridbackend {
 
@@ -105,21 +107,27 @@ class PartitionByDualModuloOp : public OpKernel {
 #define TF_CALL_SHUFFLE_PARTITION_TYPES(m) \
   TF_CALL_int32(m) TF_CALL_uint32(m) TF_CALL_int64(m) TF_CALL_uint64(m)
 
-#define REGISTER_SHUFFLE_PARTITION_KERNEL(TYPE)                 \
-  REGISTER_KERNEL_BUILDER(                                      \
-      Name("HbPartitionByDualModuloStageOne")                   \
-          .Device(DEVICE_CPU)                                   \
-          .TypeConstraint<TYPE>("T"),                           \
-      PartitionByDualModuloOp<CPUDevice, TYPE,                  \
-                              functor::ComputeShardAtStageOne>) \
-  REGISTER_KERNEL_BUILDER(                                      \
-      Name("HbPartitionByDualModuloStageOne")                   \
-          .Device(DEVICE_GPU)                                   \
-          .TypeConstraint<TYPE>("T"),                           \
-      PartitionByDualModuloOp<GPUDevice, TYPE,                  \
+#define REGISTER_SHUFFLE_PARTITION_KERNEL(TYPE) \
+  REGISTER_KERNEL_BUILDER(                      \
+      Name("HbPartitionByDualModuloStageOne")   \
+          .Device(DEVICE_CPU)                   \
+          .TypeConstraint<TYPE>("T"),           \
+      PartitionByDualModuloOp<CPUDevice, TYPE,  \
+                              functor::ComputeShardAtStageOne>)
+TF_CALL_SHUFFLE_PARTITION_TYPES(REGISTER_SHUFFLE_PARTITION_KERNEL);
+#undef REGISTER_SHUFFLE_PARTITION_KERNEL
+
+#if GOOGLE_CUDA
+#define REGISTER_SHUFFLE_PARTITION_KERNEL(TYPE) \
+  REGISTER_KERNEL_BUILDER(                      \
+      Name("HbPartitionByDualModuloStageOne")   \
+          .Device(DEVICE_GPU)                   \
+          .TypeConstraint<TYPE>("T"),           \
+      PartitionByDualModuloOp<GPUDevice, TYPE,  \
                               functor::ComputeShardOnGpuAtStageOne>)
 TF_CALL_SHUFFLE_PARTITION_TYPES(REGISTER_SHUFFLE_PARTITION_KERNEL);
 #undef REGISTER_SHUFFLE_PARTITION_KERNEL
+#endif  // GOOGLE_CUDA
 
 REGISTER_OP("HbPartitionByDualModuloStageTwo")
     .Output("output: T")
@@ -151,21 +159,27 @@ modulus: modulus to calculate partition id.
 #define TF_CALL_SHUFFLE_PARTITION_TYPES(m) \
   TF_CALL_int32(m) TF_CALL_uint32(m) TF_CALL_int64(m) TF_CALL_uint64(m)
 
-#define REGISTER_SHUFFLE_PARTITION_KERNEL(TYPE)                 \
-  REGISTER_KERNEL_BUILDER(                                      \
-      Name("HbPartitionByDualModuloStageTwo")                   \
-          .Device(DEVICE_CPU)                                   \
-          .TypeConstraint<TYPE>("T"),                           \
-      PartitionByDualModuloOp<CPUDevice, TYPE,                  \
-                              functor::ComputeShardAtStageTwo>) \
-  REGISTER_KERNEL_BUILDER(                                      \
-      Name("HbPartitionByDualModuloStageTwo")                   \
-          .Device(DEVICE_GPU)                                   \
-          .TypeConstraint<TYPE>("T"),                           \
-      PartitionByDualModuloOp<GPUDevice, TYPE,                  \
+#define REGISTER_SHUFFLE_PARTITION_KERNEL(TYPE) \
+  REGISTER_KERNEL_BUILDER(                      \
+      Name("HbPartitionByDualModuloStageTwo")   \
+          .Device(DEVICE_CPU)                   \
+          .TypeConstraint<TYPE>("T"),           \
+      PartitionByDualModuloOp<CPUDevice, TYPE,  \
+                              functor::ComputeShardAtStageTwo>)
+TF_CALL_SHUFFLE_PARTITION_TYPES(REGISTER_SHUFFLE_PARTITION_KERNEL);
+#undef REGISTER_SHUFFLE_PARTITION_KERNEL
+
+#if GOOGLE_CUDA
+#define REGISTER_SHUFFLE_PARTITION_KERNEL(TYPE) \
+  REGISTER_KERNEL_BUILDER(                      \
+      Name("HbPartitionByDualModuloStageTwo")   \
+          .Device(DEVICE_GPU)                   \
+          .TypeConstraint<TYPE>("T"),           \
+      PartitionByDualModuloOp<GPUDevice, TYPE,  \
                               functor::ComputeShardOnGpuAtStageTwo>)
 TF_CALL_SHUFFLE_PARTITION_TYPES(REGISTER_SHUFFLE_PARTITION_KERNEL);
 #undef REGISTER_SHUFFLE_PARTITION_KERNEL
+#endif  // GOOGLE_CUDA
 
 REGISTER_OP("HbPartitionByDualModuloStageOneN")
     .Output("outputs: N * T")
