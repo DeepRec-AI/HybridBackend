@@ -34,8 +34,8 @@ namespace hybridbackend {
 
 namespace {
 inline bool CheckTransferOptimizationDisabled() {
-  bool disabled = ::hybridbackend::EnvVarGetBool(
-      "HB_TRANSFER_OPTIMIZATION_DISABLED", false);
+  bool disabled =
+      ::hybridbackend::EnvVarGetBool("HB_TRANSFER_OPTIMIZATION_DISABLED", true);
   if (disabled) {
     return true;
   }

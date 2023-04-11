@@ -21,7 +21,7 @@ from __future__ import division
 from __future__ import print_function
 
 try:
-  from tensorflow.python.data.ops.dataset_ops import DatasetV2 as _dataset  # pylint: disable=unused-import, ungrouped-imports
+  from tensorflow.python.data.ops.dataset_ops import DatasetV2 as _dataset  # pylint: disable=unused-import, ungrouped-imports, line-too-long # noqa: F401
 
   from hybridbackend.tensorflow.data.sync.dataset_v2 import \
     _SyncReplicasDatasetV2 as _SyncReplicasDataset

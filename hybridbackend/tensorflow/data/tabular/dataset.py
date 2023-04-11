@@ -35,7 +35,7 @@ except ImportError:
   Dataset.__name__ = 'TabularDataset'
 
 try:
-  from tensorflow.python.data.ops.dataset_ops import DatasetV2 as _dataset  # pylint: disable=unused-import
+  from tensorflow.python.data.ops.dataset_ops import DatasetV2 as _dataset  # pylint: disable=unused-import, line-too-long # noqa: F401
 
   from hybridbackend.tensorflow.data.tabular.dataset_v2 import \
     ParquetDatasetV2 as ParquetDataset

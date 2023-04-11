@@ -86,7 +86,7 @@ class OperationLike:
         return attr_value_pb2.AttrValue(
           list=attr_value_pb2.AttrValue.ListValue(
             type=[vi.as_datatype_enum for vi in value]))
-      if isinstance(v[0], tensor_shape.TensorShape):
+      if isinstance(value[0], tensor_shape.TensorShape):
         for vi in value[1:]:
           if not isinstance(vi, tensor_shape.TensorShape):
             raise ValueError(f'List attribute {value} is invalid')
