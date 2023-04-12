@@ -30,7 +30,7 @@ from tensorflow.python.ops import math_ops
 from tensorflow.python.training import session_run_hook
 
 from hybridbackend.tensorflow.data.prefetch.iterator import Iterator
-from hybridbackend.tensorflow.data.sync.dataset import _SyncReplicasDataset
+from hybridbackend.tensorflow.data.sync.dataset import SyncReplicasDataset
 from hybridbackend.tensorflow.distribute.collective import Collective
 from hybridbackend.tensorflow.distribute.ops import CollectiveOps
 from hybridbackend.tensorflow.framework.context import Context
@@ -83,15 +83,15 @@ class IteratorRewriting(GraphRewriting):
     r'''Wraps make_*_iterator.
     '''
     def wrapped_make_iterator(ds, *args, **kwargs):
-      if isinstance(ds, _SyncReplicasDataset):
+      if isinstance(ds, SyncReplicasDataset):
         return fn(ds, *args, **kwargs)
       if isinstance(ds, dataset_ops.DatasetV1Adapter):
-        if isinstance(ds._dataset, _SyncReplicasDataset):  # pylint: disable=protected-access
+        if isinstance(ds._dataset, SyncReplicasDataset):  # pylint: disable=protected-access
           return fn(ds, *args, **kwargs)
       with ops.device('/cpu:0'):
         options = Context.get().options
         if options.mode == ModeKeys.TRAIN:
-          return fn(_SyncReplicasDataset(ds), *args, **kwargs)
+          return fn(SyncReplicasDataset(ds), *args, **kwargs)
         if options.mode == ModeKeys.EVAL:
           return fn(ds.repeat(), *args, **kwargs)
         return fn(ds, *args, **kwargs)

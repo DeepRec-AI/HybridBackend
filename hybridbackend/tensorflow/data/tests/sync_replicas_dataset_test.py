@@ -94,7 +94,9 @@ class DetectEndTest(unittest.TestCase):
 
   def test_parallel(self):
     results = hbtest.Spawn(2)(_test_distributed)
-    np.testing.assert_equal(results[0], results[1])
+    np.testing.assert_equal(results[0], [])
+    np.testing.assert_equal(
+      results[1], [140, 141, 142, 143, 144, 145, 146, 147, 148, 149])
 
 
 if __name__ == '__main__':

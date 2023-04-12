@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 
 #include <absl/strings/str_cat.h>
+#include <typeinfo>
 
 #include <tensorflow/core/framework/common_shape_fns.h>
 #include <tensorflow/core/framework/partial_tensor_shape.h>
@@ -24,8 +25,15 @@ limitations under the License.
 namespace tensorflow {
 namespace hybridbackend {
 
+enum TensorKinds {
+  kSparseTensorIndices = 0,
+  kTensorOrSparseTensorValues = 1,
+  kSparseTensorDenseShape = 2
+};
+
 REGISTER_OP("HbSyncReplicasDataset")
     .Input("input_dataset: variant")
+    .Attr("output_kinds: list(int) >= 1")
     .Output("handle: variant")
     .SetIsStateful()
     .SetShapeFn(shape_inference::ScalarShape);
@@ -33,18 +41,23 @@ REGISTER_OP("HbSyncReplicasDataset")
 class SyncReplicasDatasetOp : public UnaryDatasetOpKernel {
  public:
   explicit SyncReplicasDatasetOp(OpKernelConstruction* ctx)
-      : UnaryDatasetOpKernel(ctx) {}
+      : UnaryDatasetOpKernel(ctx) {
+    OP_REQUIRES_OK(ctx, ctx->GetAttr("output_kinds", &output_kinds_));
+  }
 
   void MakeDataset(OpKernelContext* ctx, DatasetBase* input,
                    DatasetBase** output) override {
-    *output = new Dataset(ctx, input);
+    *output = new Dataset(ctx, input, output_kinds_);
   }
 
  private:
   class Dataset : public DatasetBase {
    public:
-    Dataset(OpKernelContext* ctx, const DatasetBase* input)
-        : DatasetBase(DatasetContext(ctx)), input_(input) {
+    Dataset(OpKernelContext* ctx, const DatasetBase* input,
+            const std::vector<int>& output_kinds)
+        : DatasetBase(DatasetContext(ctx)),
+          input_(input),
+          output_kinds_(output_kinds) {
       input_->Ref();
       output_dtypes_.emplace_back(DT_INT32);
       output_dtypes_.insert(output_dtypes_.end(),
@@ -72,6 +85,8 @@ class SyncReplicasDatasetOp : public UnaryDatasetOpKernel {
       return output_shapes_;
     }
 
+    const std::vector<int>& output_kinds() const { return output_kinds_; }
+
     string DebugString() const override {
       return "SyncReplicasDatasetOp::Dataset";
     }
@@ -82,7 +97,11 @@ class SyncReplicasDatasetOp : public UnaryDatasetOpKernel {
                               Node** output) const override {
       Node* input_graph_node = nullptr;
       TF_RETURN_IF_ERROR(b->AddInputDataset(ctx, input_, &input_graph_node));
-      TF_RETURN_IF_ERROR(b->AddDataset(this, {input_graph_node}, output));
+      AttrValue output_kinds;
+      b->BuildAttrValue(output_kinds_, &output_kinds);
+      TF_RETURN_IF_ERROR(b->AddDataset(this, {{0, input_graph_node}}, {},
+                                       {{"output_kinds", output_kinds}},
+                                       output));
       return Status::OK();
     }
 
@@ -115,16 +134,33 @@ class SyncReplicasDatasetOp : public UnaryDatasetOpKernel {
             buf_.reset(new std::vector<Tensor>(std::move(buf)));
           }
         }
-
-        out_tensors->emplace_back(Tensor(DT_INT32, {}));
-        out_tensors->insert(out_tensors->end(), buf_->begin(), buf_->end());
         if (input_impl_) {
           TF_RETURN_IF_ERROR(input_impl_->GetNext(ctx, &buf, end_of_sequence));
         } else {
           *end_of_sequence = true;
         }
 
+        out_tensors->emplace_back(Tensor(DT_INT32, {}));
         out_tensors->begin()->scalar<int32>()() = *end_of_sequence;
+        if (!(*end_of_sequence) || input_impl_) {
+          out_tensors->insert(out_tensors->end(), buf_->begin(), buf_->end());
+        } else {
+          std::vector<Tensor> dummy_out_tensors(buf_->size());
+          for (int i = 0; i < dummy_out_tensors.size(); ++i) {
+            if (dataset()->output_kinds()[i] == kSparseTensorDenseShape) {
+              dummy_out_tensors[i] = Tensor(buf_->at(i));
+              dummy_out_tensors[i].flat<int64>()(0) = 0;
+            } else {
+              TensorShape zeroed_shape;
+              zeroed_shape.AppendShape(buf_->at(i).shape());
+              zeroed_shape.set_dim(0, 0);
+              dummy_out_tensors[i] = Tensor(buf_->at(i).dtype(), zeroed_shape);
+            }
+          }
+          out_tensors->insert(out_tensors->end(), dummy_out_tensors.begin(),
+                              dummy_out_tensors.end());
+        }
+
         if (*end_of_sequence) {
           input_impl_.reset();
         } else {
@@ -167,7 +203,11 @@ class SyncReplicasDatasetOp : public UnaryDatasetOpKernel {
     const DatasetBase* const input_;
     DataTypeVector output_dtypes_;
     std::vector<PartialTensorShape> output_shapes_;
+    const std::vector<int> output_kinds_;
   };
+
+ private:
+  std::vector<int> output_kinds_;
 };
 
 REGISTER_KERNEL_BUILDER(Name("HbSyncReplicasDataset").Device(DEVICE_CPU),
