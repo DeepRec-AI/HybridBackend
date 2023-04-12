@@ -230,6 +230,7 @@ class TensorKinds(object):  # pylint: disable=useless-object-inheritance
   def denormalize(cls, structure, flatten_structure, tensors):
     r'''Denormalize structure from list of tensors.
     '''
+    tensors = nest.flatten(tensors)
     flattened_values = nest.pack_sequence_as(flatten_structure, tensors)
     flattened_tensors = []
     for v in flattened_values:
