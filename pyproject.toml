@@ -1,0 +1,17 @@
+[tool.ruff]
+select = ["F", "E", "W"]
+ignore = ["E501", "E722"]
+ignore-init-module-imports = true
+line-length = 80
+
+[tool.ruff.per-file-ignores]
+"__init__.py" = ["F401", "F403"]
+
+[tool.ruff.isort]
+force-single-line = true
+force-sort-within-sections = true
+single-line-exclusions = ["typing"]
+order-by-type = false
+known-third-party = ["tensorflow", "torch"]
+known-first-party = ["hybridbackend"]
+extra-standard-library = ["six"]

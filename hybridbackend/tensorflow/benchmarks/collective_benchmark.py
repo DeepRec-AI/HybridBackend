@@ -26,7 +26,7 @@ import time
 import numpy as np
 import tensorflow as tf
 
-import hybridbackend.tensorflow as hb
+import hybridbackend.tensorflow as hb  # pylint: disable=unused-import # noqa: F401
 
 
 # pylint: disable=missing-docstring
@@ -49,7 +49,6 @@ def allreduce(message_floats, message_partitions, message_device, topology):
 
 
 def alltoall(message_floats, message_partitions, message_device):
-  del topology
   step = tf.train.get_or_create_global_step()
   results = [step.assign_add(1)]
   for p in range(message_partitions):

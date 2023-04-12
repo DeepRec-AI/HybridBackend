@@ -28,7 +28,7 @@ import numpy as np
 import tensorflow as tf
 from tensorflow.python.client.timeline import Timeline
 
-import hybridbackend.tensorflow as hb  # pylint: disable=unused-import
+import hybridbackend.tensorflow as hb  # pylint: disable=unused-import # noqa: F401
 
 
 # pylint: disable=missing-docstring

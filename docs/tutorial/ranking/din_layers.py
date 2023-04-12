@@ -470,7 +470,7 @@ class AttentionSequencePoolingLayer(tf.keras.layers.Layer):
     outputs = tf.where(key_masks, outputs, paddings)
 
     if self.weight_normalization:
-      outputs = softmax(outputs)
+      outputs = tf.nn.softmax(outputs)
 
     if not self.return_score:
       outputs = tf.matmul(outputs, keys)

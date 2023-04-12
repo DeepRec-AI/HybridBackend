@@ -23,6 +23,7 @@ from __future__ import print_function
 import re
 import sys
 import threading
+import time
 
 import numpy as np
 from tensorflow.core.protobuf import config_pb2
@@ -611,10 +612,10 @@ def wraps_keras_model(cls):
 
       target_tensors = self._process_target_tensor_for_compile(target_tensors)
 
-      for o, n, l, t in zip(self.outputs, self.output_names,
-                            self.loss_functions, target_tensors):
-        endpoint = _keras_training._TrainingEndpoint(o, n, l)  # pylint: disable=protected-access
-        endpoint.create_training_target(t, run_eagerly=self.run_eagerly)
+      for out, name, loss_fn, tensor in zip(
+          self.outputs, self.output_names, self.loss_functions, target_tensors):
+        endpoint = _keras_training._TrainingEndpoint(out, name, loss_fn)  # pylint: disable=protected-access
+        endpoint.create_training_target(tensor, run_eagerly=self.run_eagerly)
         self._training_endpoints.append(endpoint)
 
       # Prepare list loss weights, same size of model outputs.

@@ -72,6 +72,7 @@ RUN mkdir -p /opt/tools/bin /opt/tools/lib && \
     pylint==2.12.2 \
     pylint-quotes \
     pycodestyle \
+    ruff \
     xmlrunner \
     tqdm
 RUN cp -rf /usr/lib/llvm-7/bin/clang-format /opt/tools/bin/clang-format && \
@@ -133,4 +134,5 @@ ENV HYBRIDBACKEND_WITH_CUDA=ON \
     HYBRIDBACKEND_WHEEL_ALIAS=-tf115-cu118 \
     TENSORFLOW_DISTRO=1015 \
     TENSORFLOW_HOME=/opt/tensorflow/tensorflow-source \
+    USE_RUFF=1 \
     LD_LIBRARY_PATH=$LD_LIBRARY_PATH:/usr/local/lib:/usr/local/cuda/lib64

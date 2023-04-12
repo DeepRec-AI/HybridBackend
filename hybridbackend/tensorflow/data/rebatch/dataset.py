@@ -26,7 +26,7 @@ import inspect
 from hybridbackend.tensorflow.data.dataframe import input_fields
 
 try:
-  from tensorflow.python.data.ops.dataset_ops import DatasetV2 as _dataset  # pylint: disable=unused-import
+  from tensorflow.python.data.ops.dataset_ops import DatasetV2 as _dataset  # pylint: disable=unused-import, line-too-long # noqa: F401
 
   from hybridbackend.tensorflow.data.rebatch.dataset_v2 import \
     RebatchDatasetV2 as RebatchDataset

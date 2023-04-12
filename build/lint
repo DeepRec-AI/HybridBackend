@@ -33,12 +33,16 @@ if [[ ! -z ${PYSOURCES} ]]; then
     --rcfile=.pylintrc \
     --jobs=32 \
     ${PYSOURCES}
+    if [[ ! -z "${USE_RUFF}" ]]; then
+    ruff check ${PYSOURCES}
+    else
     $PYTHON -m pycodestyle \
     --config=.pycodestylerc \
     --format=pylint \
     --indent-size=2 \
     --statistics \
     ${PYSOURCES}
+    fi
     isort --resolve-all-configs \
     ${PYSOURCES} --check
 fi
