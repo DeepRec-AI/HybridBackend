@@ -85,7 +85,8 @@ class NcclAllgatherOp : public NcclCollectiveAsyncOp {
 
     coll->stream()->LaunchUntilComputeDone(
         ctx, [input, output, this, coll, ctx, done]() {
-          VLOG(1) << coll->DebugString() << " [" << name() << "] [Allgather]";
+          VLOG(1) << coll->DebugString() << " [" << name() << "] [Allgather] ("
+                  << input->TotalBytes() << "B)";
           OP_REQUIRES_OK_ASYNC(ctx, coll->Allgather(*input, output), done);
           coll->stream()->BlockComputeUntilDone(ctx, done);
         });
