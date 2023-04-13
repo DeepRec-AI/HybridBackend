@@ -123,7 +123,8 @@ class NcclAllgathervOp : public NcclCollectiveAsyncOp {
       coll->stream()->BlockHostUntilDone();
 
       // Collect sizes of all inputs across devices.
-      VLOG(1) << coll->DebugString() << " [" << name() << "] [Allgather]";
+      VLOG(1) << coll->DebugString() << " [" << name() << "] [Allgather] ("
+              << input_sizes->TotalBytes() << "B)";
       OP_REQUIRES_OK_ASYNC(ctx, coll->Allgather(*input_sizes, sizes), done_);
       coll->stream()->ThenMemcpy(
           const_cast<char*>(host_sizes->tensor_data().data()),
@@ -160,10 +161,12 @@ class NcclAllgathervOp : public NcclCollectiveAsyncOp {
                            done_);
       coll->stream()->ThenWaitUntilComputeDone(ctx);
       if (is_same_size) {
-        VLOG(1) << coll->DebugString() << " [" << name() << "] [Allgather]";
+        VLOG(1) << coll->DebugString() << " [" << name() << "] [Allgather] ("
+                << input->TotalBytes() << "B)";
         OP_REQUIRES_OK_ASYNC(ctx, coll->Allgather(*input, output), done_);
       } else {
-        VLOG(1) << coll->DebugString() << " [" << name() << "] [Allgatherv]";
+        VLOG(1) << coll->DebugString() << " [" << name() << "] [Allgatherv] ("
+                << input->TotalBytes() << "B)";
         OP_REQUIRES_OK_ASYNC(ctx, coll->Allgatherv(*input, *host_sizes, output),
                              done_);
       }

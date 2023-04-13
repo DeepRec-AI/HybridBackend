@@ -38,7 +38,8 @@ struct NcclAlltoallCall {
                     OpKernelContext* ctx, NcclCollective* coll,
                     NcclCollectiveAsyncOp* comm_op) {
     coll->stream()->ThenWaitUntilComputeDone(ctx);
-    VLOG(1) << coll->DebugString() << " [" << comm_op->name() << "] [Alltoall]";
+    VLOG(1) << coll->DebugString() << " [" << comm_op->name()
+            << "] [Alltoall] (" << input.TotalBytes() << "B)";
     TF_RETURN_IF_ERROR(coll->Alltoall(input, output, topology));
     return Status::OK();
   }
@@ -54,12 +55,15 @@ struct NcclAlltoallCall<float, Eigen::half> {
     TF_RETURN_IF_ERROR(
         ctx->allocate_temp(DT_HALF, output->shape(), comm_output));
     coll->stream()->ThenWaitUntilComputeDone(ctx);
-    VLOG(1) << coll->DebugString() << " [" << comm_op->name() << "] [CastIn]";
+    VLOG(1) << coll->DebugString() << " [" << comm_op->name() << "] [CastIn] ("
+            << input.TotalBytes() << "B)";
     functor::Cast<float, Eigen::half>()(input, comm_input, ctx,
                                         coll->stream()->get());
-    VLOG(1) << coll->DebugString() << " [" << comm_op->name() << "] [Alltoall]";
+    VLOG(1) << coll->DebugString() << " [" << comm_op->name()
+            << "] [Alltoall] (" << comm_input->TotalBytes() << "B)";
     TF_RETURN_IF_ERROR(coll->Alltoall(*comm_input, comm_output, topology));
-    VLOG(1) << coll->DebugString() << " [" << comm_op->name() << "] [CastOut]";
+    VLOG(1) << coll->DebugString() << " [" << comm_op->name() << "] [CastOut] ("
+            << output->TotalBytes() << "B)";
     functor::Cast<Eigen::half, float>()(*output, comm_output, ctx,
                                         coll->stream()->get());
     return Status::OK();
@@ -75,8 +79,15 @@ struct NcclAlltoallNCall {
                     CollectiveTopology topology, OpKernelContext* ctx,
                     NcclCollective* coll, NcclCollectiveAsyncOp* comm_op) {
     coll->stream()->ThenWaitUntilComputeDone(ctx);
-    VLOG(1) << coll->DebugString() << " [" << comm_op->name()
-            << "] [AlltoallN]";
+    if (VLOG_IS_ON(1)) {
+      size_t input_total_bytes = 0;
+      for (size_t idx = 0; idx < n_input.size(); ++idx) {
+        input_total_bytes += n_input[idx].TotalBytes();
+      }
+      VLOG(1) << coll->DebugString() << " [" << comm_op->name()
+              << "] [AlltoallN] (" << n_input.size() << " inputs, "
+              << input_total_bytes << "B)";
+    }
     TF_RETURN_IF_ERROR(coll->AlltoallN(n_input, n_output, topology));
     return Status::OK();
   }
@@ -99,13 +110,36 @@ struct NcclAlltoallNCall<float, Eigen::half> {
                                             ctx->output_alloc_attr(idx)));
     }
     coll->stream()->ThenWaitUntilComputeDone(ctx);
-    VLOG(1) << coll->DebugString() << " [" << comm_op->name() << "] [CastIn]";
+    if (VLOG_IS_ON(1)) {
+      size_t input_total_bytes = 0;
+      for (size_t idx = 0; idx < n_input.size(); ++idx) {
+        input_total_bytes += n_input[idx].TotalBytes();
+      }
+      VLOG(1) << coll->DebugString() << " [" << comm_op->name()
+              << "] [CastIn] (" << n_input.size() << " inputs, "
+              << input_total_bytes << "B)";
+    }
     functor::CastN<float, Eigen::half>()(n_input, n_comm_input, ctx,
                                          coll->stream()->get());
-    VLOG(1) << coll->DebugString() << " [" << comm_op->name()
-            << "] [AlltoallN]";
+    if (VLOG_IS_ON(1)) {
+      size_t input_total_bytes = 0;
+      for (size_t idx = 0; idx < n_comm_input->size(); ++idx) {
+        input_total_bytes += n_comm_input->at(idx)->TotalBytes();
+      }
+      VLOG(1) << coll->DebugString() << " [" << comm_op->name()
+              << "] [AlltoallN] (" << n_comm_input->size() << " inputs, "
+              << input_total_bytes << "B)";
+    }
     TF_RETURN_IF_ERROR(coll->AlltoallN(*n_comm_input, n_comm_output, topology));
-    VLOG(1) << coll->DebugString() << " [" << comm_op->name() << "] [CastOut]";
+    if (VLOG_IS_ON(1)) {
+      size_t input_total_bytes = 0;
+      for (size_t idx = 0; idx < n_comm_output->size(); ++idx) {
+        input_total_bytes += n_comm_output->at(idx)->TotalBytes();
+      }
+      VLOG(1) << coll->DebugString() << " [" << comm_op->name()
+              << "] [CastOut] (" << n_comm_output->size() << " inputs, "
+              << input_total_bytes << "B)";
+    }
     functor::CastN<Eigen::half, float>()(*n_comm_output, n_output, ctx,
                                          coll->stream()->get());
     return Status::OK();
