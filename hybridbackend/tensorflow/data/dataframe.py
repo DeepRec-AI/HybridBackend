@@ -379,7 +379,9 @@ class DataFrame(object):  # pylint: disable=useless-object-inheritance
         self.values, self.nested_row_splits)
       restored_ragged_tensor = ragged_gather_ops.gather_nd(
         indices=restore_idx, params=ragged_values)
-      return restored_ragged_tensor.to_sparse(name=name)
+      if isinstance(restored_ragged_tensor, ragged_tensor.RaggedTensor):
+        return restored_ragged_tensor.to_sparse(name=name)
+      return restored_ragged_tensor
 
   @classmethod
   def parse(cls, features, pad=False, restore_idx=None):
@@ -409,6 +411,9 @@ class DataFrame(object):  # pylint: disable=useless-object-inheritance
             features[fname],
             (pad[fname] if fname in pad else False)
             if isinstance(pad, dict) else pad)
+      restore_idx_names = set(map_feat_to_restore_idx.values())
+      for fname in restore_idx_names:
+        del parse_res[fname]
       return parse_res
     if (isinstance(features, DataFrame.Value)
         and features.deduplicated_idx is not None):
