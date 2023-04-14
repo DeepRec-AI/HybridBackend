@@ -43,7 +43,13 @@ class RankingModel:
     r'''Get input dataset.
     '''
     with tf.device('/cpu:0'):
-      ds = hb.data.Dataset.from_parquet(filenames)
+      if self._args.data_deduplication:
+        ds = hb.data.Dataset.from_parquet(
+          filenames,
+          key_idx_field_names=self._args.data_deduplication_key_cols,
+          value_field_names=[self._args.user_cols, self._args.non_user_cols])
+      else:
+        ds = hb.data.Dataset.from_parquet(filenames)
       ds = ds.batch(batch_size, drop_remainder=True)
       ds = ds.prefetch(self._args.num_prefetches)
       return ds
@@ -186,6 +192,42 @@ if __name__ == '__main__':
   parser = argparse.ArgumentParser()
   parser.add_argument(
     '--use-ev', default=False, action='store_true')
+  parser.add_argument(
+    '--data-deduplication', default=False, action='store_true')
+  parser.add_argument(
+    '--data-deduplication-key-cols',
+    nargs='+',
+    default=['users_inverse', 'non_users_inverse'])
+  parser.add_argument(
+    '--user-cols', nargs='+', default=[
+      'user',
+      'user_cms_seg',
+      'user_cms_group',
+      'user_gender',
+      'user_age',
+      'user_pvalue',
+      'user_shopping',
+      'user_occupation',
+      'user_city',
+      'user_pv_category_list',
+      'user_cart_category_list',
+      'user_fav_category_list',
+      'user_buy_category_list',
+      'user_pv_brand_list',
+      'user_cart_brand_list',
+      'user_fav_brand_list',
+      'user_buy_brand_list'])
+  parser.add_argument(
+    '--non-user-cols', nargs='+', default=[
+      'label',
+      'ts',
+      'item_price',
+      'pid',
+      'ad',
+      'ad_campaign',
+      'ad_customer',
+      'item_category',
+      'item_brand'])
   parser.add_argument('--num-prefetches', type=int, default=2)
   parser.add_argument('--lr', type=float, default=0.01)
   parser.add_argument('--transform-device', default='/gpu:0')
