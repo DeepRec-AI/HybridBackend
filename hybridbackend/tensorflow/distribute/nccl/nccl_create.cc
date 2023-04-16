@@ -93,7 +93,8 @@ class CreateNcclCollectiveOp : public AsyncOpKernel {
 
     coll->stream()->LaunchUntilComputeDone(ctx, [this, coll, nccl_id, ctx,
                                                  done]() {
-      VLOG(1) << coll->DebugString() << " [" << name() << "] [Create]";
+      VLOG(1) << "[" << ctx->step_id() << "]" << coll->DebugString() << " ["
+              << name() << "] [Create]";
       OP_REQUIRES_OK_ASYNC(ctx, coll->Create(*nccl_id), done);
       coll->stream()->BlockComputeUntilDone(ctx, [ctx, done, coll, nccl_id]() {
         delete nccl_id;

@@ -127,12 +127,6 @@ RUN mkdir -p /opt/dl/lib/python3.6/site-packages/tensorflow_core/include/third_p
     ln -sf /usr/local/cuda/include \
     /opt/dl/lib/python3.6/site-packages/tensorflow_core/include/third_party/gpus/cuda/include
 
-FROM devel_base AS devel_sparsehash
-
-COPY sparsehash/build.sh /src/sparsehash/
-RUN cd /src/sparsehash && \
-    ./build.sh /opt/sparsehash
-
 FROM devel_base AS devel_arrow
 
 ENV HYBRIDBACKEND_USE_CXX11_ABI=0 \
@@ -156,10 +150,6 @@ COPY --from=devel_auditwheel /opt/auditwheel /usr/local
 
 # Install Pstack
 COPY --from=devel_pstack /opt/pstack /usr/local
-
-# Install SparseHash
-COPY --from=devel_sparsehash /opt/sparsehash /opt/sparsehash
-ENV SPARSEHASH_HOME=/opt/sparsehash
 
 # Install Arrow
 COPY --from=devel_arrow /opt/arrow /opt/arrow

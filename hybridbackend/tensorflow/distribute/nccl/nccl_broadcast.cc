@@ -71,14 +71,15 @@ class NcclBroadcastOp : public NcclCollectiveAsyncOp {
     OP_REQUIRES_OK_ASYNC(ctx, ctx->allocate_output(0, input->shape(), &output),
                          done);
 
-    coll->stream()->LaunchUntilComputeDone(
-        ctx, [input, output, this, coll, ctx, done]() {
-          VLOG(1) << coll->DebugString() << " [" << name() << "] [Broadcast] ("
-                  << input->TotalBytes() << "B)";
-          OP_REQUIRES_OK_ASYNC(ctx, coll->Broadcast(*input, root_rank_, output),
-                               done);
-          coll->stream()->BlockComputeUntilDone(ctx, done);
-        });
+    coll->stream()->LaunchUntilComputeDone(ctx, [input, output, this, coll, ctx,
+                                                 done]() {
+      VLOG(1) << "[" << ctx->step_id() << "]" << coll->DebugString() << " ["
+              << name() << "] [Broadcast] [" << DataTypeString(input->dtype())
+              << "] (" << input->TotalBytes() << "B)";
+      OP_REQUIRES_OK_ASYNC(ctx, coll->Broadcast(*input, root_rank_, output),
+                           done);
+      coll->stream()->BlockComputeUntilDone(ctx, done);
+    });
   }
 
  private:

@@ -66,14 +66,15 @@ class NcclAllreduceOp : public NcclCollectiveAsyncOp {
     OP_REQUIRES_OK_ASYNC(ctx, ctx->allocate_output(0, input->shape(), &output),
                          done);
 
-    coll->stream()->LaunchUntilComputeDone(
-        ctx, [input, output, this, coll, ctx, done]() {
-          VLOG(1) << coll->DebugString() << " [" << name() << "] [Allreduce] ("
-                  << input->TotalBytes() << "B)";
-          OP_REQUIRES_OK_ASYNC(ctx, coll->Allreduce(*input, reduce_op_, output),
-                               done);
-          coll->stream()->BlockComputeUntilDone(ctx, done);
-        });
+    coll->stream()->LaunchUntilComputeDone(ctx, [input, output, this, coll, ctx,
+                                                 done]() {
+      VLOG(1) << "[" << ctx->step_id() << "]" << coll->DebugString() << " ["
+              << name() << "] [Allreduce] [" << DataTypeString(input->dtype())
+              << "] (" << input->TotalBytes() << "B)";
+      OP_REQUIRES_OK_ASYNC(ctx, coll->Allreduce(*input, reduce_op_, output),
+                           done);
+      coll->stream()->BlockComputeUntilDone(ctx, done);
+    });
   }
 
  private:
@@ -151,7 +152,9 @@ class NcclAllreduceNOp : public NcclCollectiveAsyncOp {
         for (size_t idx = 0; idx < n_input->size(); ++idx) {
           input_total_bytes += n_input->at(idx).TotalBytes();
         }
-        VLOG(1) << coll->DebugString() << " [" << name() << "] [AllreduceN] ("
+        VLOG(1) << "[" << ctx->step_id() << "]" << coll->DebugString() << " ["
+                << name() << "] [AllreduceN] ["
+                << DataTypeString(n_input->at(0).dtype()) << "] ("
                 << n_input->size() << " inputs, " << input_total_bytes << "B)";
       }
       OP_REQUIRES_OK_ASYNC(
@@ -256,30 +259,32 @@ class NcclAllreduceMergedNOp : public NcclCollectiveAsyncOp {
       offset_bytes += input_bytes_vec->at(idx);
     }
 
-    coll->stream()->LaunchUntilComputeDone(ctx, [input_bytes_vec, n_output,
-                                                 buffer_input, buffer_output,
-                                                 coll, ctx, done_, this]() {
-      VLOG(1) << coll->DebugString() << " [" << name()
-              << "] [AllreduceMergedN] (" << buffer_input->TotalBytes() << "B)";
-      OP_REQUIRES_OK_ASYNC(
-          ctx, coll->Allreduce(*buffer_input, reduce_op_, buffer_output),
-          done_);
-      int64 offset_bytes = 0;
-      for (int idx = 0; idx < N_; ++idx) {
-        se::DeviceMemoryBase dst_ptr(
-            const_cast<char*>(n_output->at(idx)->tensor_data().data()),
-            input_bytes_vec->at(idx));
-        coll->stream()->ThenMemcpy(
-            &dst_ptr,
-            se::DeviceMemoryBase(
-                const_cast<char*>(buffer_output->tensor_data().data()) +
-                    offset_bytes,
-                input_bytes_vec->at(idx)),
-            input_bytes_vec->at(idx));
-        offset_bytes += input_bytes_vec->at(idx);
-      }
-      coll->stream()->BlockComputeUntilDone(ctx, done_);
-    });
+    coll->stream()->LaunchUntilComputeDone(
+        ctx, [input_bytes_vec, n_output, buffer_input, buffer_output, coll, ctx,
+              done_, this]() {
+          VLOG(1) << "[" << ctx->step_id() << "]" << coll->DebugString() << " ["
+                  << name() << "] [AllreduceMergedN] ["
+                  << DataTypeString(buffer_input->dtype()) << "] ("
+                  << buffer_input->TotalBytes() << "B)";
+          OP_REQUIRES_OK_ASYNC(
+              ctx, coll->Allreduce(*buffer_input, reduce_op_, buffer_output),
+              done_);
+          int64 offset_bytes = 0;
+          for (int idx = 0; idx < N_; ++idx) {
+            se::DeviceMemoryBase dst_ptr(
+                const_cast<char*>(n_output->at(idx)->tensor_data().data()),
+                input_bytes_vec->at(idx));
+            coll->stream()->ThenMemcpy(
+                &dst_ptr,
+                se::DeviceMemoryBase(
+                    const_cast<char*>(buffer_output->tensor_data().data()) +
+                        offset_bytes,
+                    input_bytes_vec->at(idx)),
+                input_bytes_vec->at(idx));
+            offset_bytes += input_bytes_vec->at(idx);
+          }
+          coll->stream()->BlockComputeUntilDone(ctx, done_);
+        });
   }
 
  private:
