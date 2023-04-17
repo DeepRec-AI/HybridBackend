@@ -71,6 +71,9 @@ HYBRIDBACKEND_BUILD_VERSION := $(shell \
 	grep __version__ hybridbackend/__init__.py | cut -d\' -f2 \
 	2>/dev/null)
 HYBRIDBACKEND_BUILD_COMMIT := $(shell git rev-parse HEAD 2>/dev/null)
+HYBRIDBACKEND_BUILD_LOG := $(shell \
+	git log -5 --date=short --pretty='%cd:%h' | xargs | tr ' ' ',' \
+	2>/dev/null)
 HYBRIDBACKEND_BUILD_CXX := $(shell \
 	$(CXX) --version | head -1 | rev | cut -d ' ' -f1,4 | rev \
 	2>/dev/null)
@@ -79,6 +82,7 @@ CFLAGS := $(CFLAGS) \
 	-DHYBRIDBACKEND_BUILDINFO=1 \
 	-DHYBRIDBACKEND_BUILD_VERSION="\"$(HYBRIDBACKEND_BUILD_VERSION)\"" \
 	-DHYBRIDBACKEND_BUILD_COMMIT="\"$(HYBRIDBACKEND_BUILD_COMMIT)\"" \
+	-DHYBRIDBACKEND_BUILD_LOG="\"$(HYBRIDBACKEND_BUILD_LOG)\"" \
 	-DHYBRIDBACKEND_BUILD_CXX="\"$(HYBRIDBACKEND_BUILD_CXX)\"" \
 	-DHYBRIDBACKEND_BUILD_CXX11_ABI=$(HYBRIDBACKEND_USE_CXX11_ABI)
 endif

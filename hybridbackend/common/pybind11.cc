@@ -34,6 +34,7 @@ std::string make_buildinfo() {
   message += " " HYBRIDBACKEND_BUILD_VERSION "-" HYBRIDBACKEND_BUILD_COMMIT "";
   message += "; " HYBRIDBACKEND_BUILD_FRAMEWORK "";
   message += "; " HYBRIDBACKEND_BUILD_CXX "";
+  message += "; " HYBRIDBACKEND_BUILD_LOG "";
 #if HYBRIDBACKEND_BUILD_CXX11_ABI > 0
   message += " (C++11 ABI)";
 #endif
