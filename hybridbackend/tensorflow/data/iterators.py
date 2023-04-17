@@ -28,6 +28,7 @@ from tensorflow.python.keras.engine import training_utils
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.training import session_run_hook
+from tensorflow.python.training.basic_session_run_hooks import NanTensorHook
 
 from hybridbackend.tensorflow.data.prefetch.iterator import Iterator
 from hybridbackend.tensorflow.data.sync.dataset import SyncReplicasDataset
@@ -187,17 +188,48 @@ class DataSyncRewriting(SessionRunRewriting):
       if Context.get().options.data_sync_drop_remainder:
         should_stop_all = Collective.get().allreduce(
           should_stop, reduce_op=CollectiveOps.MAX)
+        SessionRunRewriting.add_to_collection(
+          DataSyncRewriting.__name__ + '_should_stop', should_stop)
         return SessionRunRewriting.add_to_collection(
-          DataSyncRewriting.__name__, should_stop_all)
+          DataSyncRewriting.__name__ + '_should_stop_all', should_stop_all)
       should_stop_all = Collective.get().allreduce(
         should_stop, reduce_op=CollectiveOps.MIN)
+      SessionRunRewriting.add_to_collection(
+        DataSyncRewriting.__name__ + '_should_stop', should_stop)
       return SessionRunRewriting.add_to_collection(
-        DataSyncRewriting.__name__, should_stop_all)
+        DataSyncRewriting.__name__ + '_should_stop_all', should_stop_all)
+
+  # pylint: disable=unused-argument
+  def wraps_nan_tensor_hook_after_run(self, fn):
+    r'''Wraps NanTensorHook to be compatible with sync end dataset.
+    '''
+    def wrapped_nan_tensor_hook_after_run(cls, *args, **kwargs):
+      if self._should_stop_val < 1:
+        fn(cls, *args, **kwargs)
+    return wrapped_nan_tensor_hook_after_run
 
   def begin(self):
     r'''Initialize should_stop_all operation.
     '''
-    should_stop_all_ops = self.get_collection(DataSyncRewriting.__name__)
+    import tensorflow as tf  # pylint: disable=import-outside-toplevel
+    self._prev_nan_tensor_after_run = NanTensorHook.after_run
+    NanTensorHook.after_run = self.wraps_nan_tensor_hook_after_run(
+      self._prev_nan_tensor_after_run)
+    tf.compat.v1.train.NanTensorHook.after_run = NanTensorHook.after_run
+    tf.train.NanTensorHook.after_run = NanTensorHook.after_run
+    should_stop_ops = self.get_collection(
+      DataSyncRewriting.__name__ + '_should_stop')
+    if len(should_stop_ops) < 1:
+      self._should_stop = None
+    elif len(should_stop_ops) == 1:
+      self._should_stop = should_stop_ops[0]
+    else:
+      with ops.device(should_stop_ops[0].device):
+        self._should_stop = math_ops.reduce_max(
+          array_ops.stack(should_stop_ops), 0)
+    self._should_stop_val = 0
+    should_stop_all_ops = self.get_collection(
+      DataSyncRewriting.__name__ + '_should_stop_all')
     if len(should_stop_all_ops) < 1:
       self._should_stop_all = None
     elif len(should_stop_all_ops) == 1:
@@ -211,6 +243,8 @@ class DataSyncRewriting(SessionRunRewriting):
     r'''Call this before sess run.
     '''
     fetches = {}
+    if self._should_stop is not None:
+      fetches['should_stop'] = self._should_stop
     if self._should_stop_all is not None:
       fetches['should_stop_all'] = self._should_stop_all
     return session_run_hook.SessionRunArgs(fetches)
@@ -218,9 +252,20 @@ class DataSyncRewriting(SessionRunRewriting):
   def after_run(self, run_context, run_values):
     r'''Call this after sess run to stop the execution.
     '''
+    if ('should_stop' in run_values.results
+        and run_values.results['should_stop'] > 0):
+      self._should_stop_val = 1
     if ('should_stop_all' in run_values.results
         and run_values.results['should_stop_all'] > 0):
       run_context.request_stop()
+
+  def end(self, session):
+    r'''Revert API rewriting.
+    '''
+    import tensorflow as tf  # pylint: disable=import-outside-toplevel
+    NanTensorHook.after_run = self._prev_nan_tensor_after_run
+    tf.compat.v1.train.NanTensorHook.after_run = NanTensorHook.after_run
+    tf.train.NanTensorHook.after_run = NanTensorHook.after_run
 
 
 SessionRunRewriting.register(
