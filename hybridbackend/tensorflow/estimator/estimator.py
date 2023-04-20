@@ -183,9 +183,9 @@ def wraps_estimator(cls):
       '''
       kwargs['config'] = RunConfig.build(prototype=kwargs.pop('config', None))
       model_dir = kwargs.get('model_dir', None)
-      self._train_drop_remainder = kwargs.pop('train_drop_remainder', None)
-      self._eval_drop_remainder = kwargs.pop('eval_drop_remainder', None)
-      self._predict_drop_remainder = kwargs.pop('predict_drop_remainder', None)
+      self._train_drop_remainder = kwargs.pop('train_drop_remainder', True)
+      self._eval_drop_remainder = kwargs.pop('eval_drop_remainder', True)
+      self._predict_drop_remainder = kwargs.pop('predict_drop_remainder', True)
 
       super().__init__(
         wraps_model_fn(model_fn, model_dir, kwargs['config']),

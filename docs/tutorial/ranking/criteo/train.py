@@ -112,13 +112,17 @@ class RankingModel:
       self._args.top_mlp_dims)
     loss = self.compute_loss(logits, labels)
     step = tf.train.get_or_create_global_step()
-    train_op = sgd_decay_optimize(
-      loss,
-      lr_initial_value=self._args.lr_initial_value,
-      lr_warmup_steps=self._args.lr_warmup_steps,
-      lr_decay_start_step=self._args.lr_decay_start_step,
-      lr_decay_steps=self._args.lr_decay_steps)
-    return step, loss, train_op
+    train_auc, train_auc_update_op = hb.metrics.auc(
+      labels=labels,
+      predictions=logits, name='train_auc')
+    with tf.control_dependencies([train_auc_update_op]):
+      train_op = sgd_decay_optimize(
+        loss,
+        lr_initial_value=self._args.lr_initial_value,
+        lr_warmup_steps=self._args.lr_warmup_steps,
+        lr_decay_start_step=self._args.lr_decay_start_step,
+        lr_decay_steps=self._args.lr_decay_steps)
+      return step, loss, train_op, train_auc
 
   def evaluate(self, filenames):
     r'''Evaluate model.
@@ -160,7 +164,7 @@ def main(args):
     train_filenames = args.filenames
     eval_filenames = args.filenames
   model = RankingModel(args)
-  step, loss, train_op = model.train(train_filenames)
+  step, loss, train_op, train_auc = model.train(train_filenames)
 
   hooks = []
   if args.eval_every_n_iter is not None:
@@ -171,7 +175,7 @@ def main(args):
   if args.log_every_n_iter is not None:
     hooks.append(
       tf.train.LoggingTensorHook(
-        {'step': step, 'loss': loss},
+        {'step': step, 'loss': loss, 'train_auc': train_auc},
         every_n_iter=args.log_every_n_iter))
   if args.train_max_steps is not None:
     hooks.append(tf.train.StopAtStepHook(args.train_max_steps))
@@ -236,5 +240,5 @@ if __name__ == '__main__':
     disable_imputation=parsed.disable_imputation,
     disable_transform=True,
     override_embedding_size=parsed.embedding_dim)
-  with hb.scope():
+  with hb.scope(data_sync_drop_remainder=False):
     main(parsed)

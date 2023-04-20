@@ -473,9 +473,9 @@ def wraps_keras_model(cls):
     '''
     def __init__(self, *args, **kwargs):
       self._device_fn = device_function
-      self._train_drop_remainder = kwargs.pop('train_drop_remainder', None)
-      self._eval_drop_remainder = kwargs.pop('eval_drop_remainder', None)
-      self._predict_drop_remainder = kwargs.pop('predict_drop_remainder', None)
+      self._train_drop_remainder = kwargs.pop('train_drop_remainder', True)
+      self._eval_drop_remainder = kwargs.pop('eval_drop_remainder', True)
+      self._predict_drop_remainder = kwargs.pop('predict_drop_remainder', True)
       self._load_weights_dir = None
       self._load_weights_scope = None
       self._load_weights_skip_mismatched = True
