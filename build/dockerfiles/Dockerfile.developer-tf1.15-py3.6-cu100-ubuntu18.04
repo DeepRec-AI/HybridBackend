@@ -5,7 +5,7 @@ FROM quay.io/pypa/manylinux_2_24_x86_64 AS pypa
 FROM nvidia/cuda:10.0-cudnn7-devel-ubuntu18.04 AS devel_base
 
 LABEL com.nvidia.volumes.needed="nvidia_driver"
-LABEL com.nvidia.cuda.version="${CUDA_VERSION}"
+LABEL com.nvidia.cuda.version=
 ENV NVIDIA_VISIBLE_DEVICES= \
     NVIDIA_REQUIRE_CUDA="cuda>=10.0"
 
@@ -153,7 +153,9 @@ COPY --from=devel_pstack /opt/pstack /usr/local
 
 # Install Arrow
 COPY --from=devel_arrow /opt/arrow /opt/arrow
-ENV ARROW_HOME=/opt/arrow
+ENV ARROW_INCLUDE=/opt/arrow/include \
+    ARROW_LIB=/opt/arrow/lib \
+    ZSTD_LIB=/opt/arrow/lib
 
 # Install Tools
 COPY --from=devel_tools /opt/tools /usr/local
@@ -167,7 +169,7 @@ ENV HYBRIDBACKEND_WITH_CUDA=ON \
     HYBRIDBACKEND_WITH_NCCL=OFF \
     HYBRIDBACKEND_WITH_ARROW_ZEROCOPY=ON \
     HYBRIDBACKEND_WITH_TENSORFLOW_HALF=OFF \
+    HYBRIDBACKEND_WITH_TENSORFLOW_DISTRO=1015 \
     HYBRIDBACKEND_USE_CXX11_ABI=0 \
     HYBRIDBACKEND_WHEEL_ALIAS=-tf115-cu100 \
-    HYBRIDBACKEND_WHEEL_REQUIRES="tensorflow_gpu>=1.15,<2.0" \
-    TENSORFLOW_DISTRO=1015
+    HYBRIDBACKEND_WHEEL_REQUIRES="tensorflow_gpu>=1.15,<2.0"

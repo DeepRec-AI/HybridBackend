@@ -13,10 +13,10 @@ HYBRIDBACKEND_WITH_ARROW ?= ON
 HYBRIDBACKEND_WITH_ARROW_ZEROCOPY ?= ON
 HYBRIDBACKEND_WITH_ARROW_HDFS ?= ON
 HYBRIDBACKEND_WITH_ARROW_S3 ?= ON
-HYBRIDBACKEND_WITH_SPARSEHASH ?= ON
 HYBRIDBACKEND_WITH_TENSORFLOW ?= ON
 HYBRIDBACKEND_WITH_TENSORFLOW_ESTIMATOR ?= ON
 HYBRIDBACKEND_WITH_TENSORFLOW_HALF ?= ON
+HYBRIDBACKEND_WITH_TENSORFLOW_DISTRO ?= 1015
 HYBRIDBACKEND_WITH_BUILDINFO ?= ON
 HYBRIDBACKEND_USE_CXX11_ABI ?= 0
 HYBRIDBACKEND_DEBUG ?= OFF
@@ -55,15 +55,15 @@ endif
 
 ifeq ($(OS),Darwin)
 OSX_TARGET ?= $(shell sw_vers -productVersion)
-PYTHON_HOME ?= /usr/local
+PYTHON_INCLUDE ?= /usr/local/include
+PYTHON_LIB ?= /usr/local/lib
 PYTHON_IMPL ?=
 PYTHON_IMPL_FLAG ?=
 CFLAGS := $(CFLAGS) \
-	-isystem $(PYTHON_HOME)/include/$(PYTHON_IMPL)$(PYTHON_IMPL_FLAG) \
+	-isystem $(PYTHON_INCLUDE)/$(PYTHON_IMPL)$(PYTHON_IMPL_FLAG) \
 	-mmacosx-version-min=$(OSX_TARGET)
 
-LDFLAGS := $(LDFLAGS) \
-	-L$(PYTHON_HOME)/lib -l$(PYTHON_IMPL)
+LDFLAGS := $(LDFLAGS) -L$(PYTHON_LIB) -l$(PYTHON_IMPL)
 endif
 
 ifeq ($(HYBRIDBACKEND_WITH_BUILDINFO),ON)
@@ -89,13 +89,13 @@ endif
 
 ifeq ($(HYBRIDBACKEND_WITH_CUDA),ON)
 NVCC ?= nvcc
-CUDA_HOME ?= /usr/local
+CUDA_INCLUDE ?= /usr/local/cuda/include
+CUDA_LIB ?= /usr/local/cuda/lib64
 HYBRIDBACKEND_CUDA_GENCODE := $(shell \
 	echo "$(HYBRIDBACKEND_WITH_CUDA_GENCODE)" | tr ' ' ',' \
 	2>/dev/null)
 CFLAGS := $(CFLAGS) \
-	-isystem $(CUDA_HOME) \
-	-isystem $(CUDA_HOME)/cuda/include \
+	-isystem $(CUDA_INCLUDE) \
 	-DHYBRIDBACKEND_CUDA=1 \
 	-DHYBRIDBACKEND_CUDA_GENCODE="\"$(HYBRIDBACKEND_CUDA_GENCODE)\""
 NVCC_CFLAGS := --std=c++11 \
@@ -106,20 +106,20 @@ NVCC_CFLAGS := --std=c++11 \
 	$(foreach cc, $(HYBRIDBACKEND_WITH_CUDA_GENCODE),\
 	 -gencode arch=compute_$(cc),code=sm_$(cc))
 LDFLAGS := $(LDFLAGS) \
-	-L$(CUDA_HOME)/cuda/lib64 \
+	-L$(CUDA_LIB) \
 	-lcudart
 ifeq ($(HYBRIDBACKEND_WITH_NVTX),ON)
 CFLAGS := $(CFLAGS) -DHYBRIDBACKEND_NVTX=1
 LDFLAGS := $(LDFLAGS) -lnvToolsExt
 endif
 ifeq ($(HYBRIDBACKEND_WITH_NCCL),ON)
-NCCL_HOME ?= /usr/local
+NCCL_INCLUDE ?= /usr/local/nccl/include
+NCCL_LIB ?= /usr/local/nccl/lib
 CFLAGS := $(CFLAGS) \
 	-DHYBRIDBACKEND_NCCL=1 \
-	-isystem $(NCCL_HOME)/include
+	-isystem $(NCCL_INCLUDE)
 LDFLAGS := $(LDFLAGS) \
-	-L$(NCCL_HOME)/lib64 \
-	-L$(NCCL_HOME)/lib \
+	-L$(NCCL_LIB) \
 	-lnccl
 endif
 endif
@@ -138,20 +138,22 @@ D_FILES := $(shell \
 endif
 
 THIRDPARTY_DEPS :=
-SSL_HOME ?= /usr/local
+SSL_LIB ?= /usr/lib/x86_64-linux-gnu
+
 COMMON_LDFLAGS := $(COMMON_LDFLAGS) \
 	-Bsymbolic \
-	-L$(SSL_HOME)/lib \
+	-L$(SSL_LIB) \
 	-lssl \
 	-lcrypto \
 	-lcurl
 ifeq ($(HYBRIDBACKEND_WITH_ARROW),ON)
-ARROW_HOME ?= build/arrow/dist
-ARROW_API_H := $(ARROW_HOME)/include/arrow/api.h
+ARROW_INCLUDE ?= build/arrow/dist/include
+ARROW_LIB ?= build/arrow/dist/lib
+ARROW_API_H := $(ARROW_INCLUDE)/arrow/api.h
 THIRDPARTY_DEPS := $(THIRDPARTY_DEPS) $(ARROW_API_H)
 CFLAGS := $(CFLAGS) \
 	-DHYBRIDBACKEND_ARROW=1 \
-	-isystem $(ARROW_HOME)/include
+	-isystem $(ARROW_INCLUDE)
 ifeq ($(HYBRIDBACKEND_WITH_ARROW_ZEROCOPY),ON)
 CFLAGS := $(CFLAGS) -DHYBRIDBACKEND_ARROW_ZEROCOPY=1
 endif
@@ -164,7 +166,7 @@ endif
 ifeq ($(OS),Darwin)
 COMMON_LDFLAGS := \
 	$(COMMON_LDFLAGS) \
-	-L$(ARROW_HOME)/lib \
+	-L$(ARROW_LIB) \
 	-larrow \
 	-larrow_dataset \
 	-larrow_bundled_dependencies \
@@ -173,52 +175,41 @@ else
 COMMON_LDFLAGS := \
 	$(COMMON_LDFLAGS) \
 	-Wl,--whole-archive \
-	-L$(ARROW_HOME)/lib \
+	-L$(ARROW_LIB) \
 	-larrow \
 	-larrow_dataset \
 	-larrow_bundled_dependencies \
 	-lparquet \
 	-Wl,--no-whole-archive
 endif
-LZ4_HOME ?=
-ifneq ($(strip $(LZ4_HOME)),)
-COMMON_LDFLAGS := $(COMMON_LDFLAGS) -L$(LZ4_HOME)/lib -llz4
+RE2_LIB ?=
+ifneq ($(strip $(RE2_LIB)),)
+COMMON_LDFLAGS := $(COMMON_LDFLAGS) -L$(RE2_LIB) -lre2
 endif
-RE2_HOME ?=
-ifneq ($(strip $(RE2_HOME)),)
-COMMON_LDFLAGS := $(COMMON_LDFLAGS) -L$(RE2_HOME)/lib -lre2
+THRIFT_LIB ?=
+ifneq ($(strip $(THRIFT_LIB)),)
+COMMON_LDFLAGS := $(COMMON_LDFLAGS) -L$(THRIFT_LIB) -lthrift
 endif
-THRIFT_HOME ?=
-ifneq ($(strip $(THRIFT_HOME)),)
-COMMON_LDFLAGS := $(COMMON_LDFLAGS) -L$(THRIFT_HOME)/lib -lthrift
+UTF8PROC_LIB ?=
+ifneq ($(strip $(UTF8PROC_LIB)),)
+COMMON_LDFLAGS := $(COMMON_LDFLAGS) -L$(UTF8PROC_LIB) -lutf8proc
 endif
-UTF8PROC_HOME ?=
-ifneq ($(strip $(UTF8PROC_HOME)),)
-COMMON_LDFLAGS := $(COMMON_LDFLAGS) -L$(UTF8PROC_HOME)/lib -lutf8proc
+LZ4_LIB ?=
+ifneq ($(strip $(LZ4_LIB)),)
+COMMON_LDFLAGS := $(COMMON_LDFLAGS) -L$(LZ4_LIB) -llz4
 endif
-SNAPPY_HOME ?=
-ifneq ($(strip $(SNAPPY_HOME)),)
-COMMON_LDFLAGS := $(COMMON_LDFLAGS) -L$(SNAPPY_HOME)/lib -lsnappy
+SNAPPY_LIB ?=
+ifneq ($(strip $(SNAPPY_LIB)),)
+COMMON_LDFLAGS := $(COMMON_LDFLAGS) -L$(SNAPPY_LIB) -lsnappy
 endif
-ZSTD_HOME ?=
-ifneq ($(strip $(ZSTD_HOME)),)
-COMMON_LDFLAGS := $(COMMON_LDFLAGS) -L$(ZSTD_HOME)/lib -lzstd
+ZSTD_LIB ?=
+ifneq ($(strip $(ZSTD_LIB)),)
+COMMON_LDFLAGS := $(COMMON_LDFLAGS) -L$(ZSTD_LIB) -lzstd
 endif
-ZLIB_HOME ?=
-ifneq ($(strip $(ZLIB_HOME)),)
-COMMON_LDFLAGS := $(COMMON_LDFLAGS) -L$(ZLIB_HOME)/lib -lz
+ZLIB_LIB ?=
+ifneq ($(strip $(ZLIB_LIB)),)
+COMMON_LDFLAGS := $(COMMON_LDFLAGS) -L$(ZLIB_LIB) -lz
 endif
-endif
-
-ifeq ($(HYBRIDBACKEND_WITH_SPARSEHASH),ON)
-SPARSEHASH_HOME ?= build/sparsehash/dist
-SPARSEHASH_DENSE_HASH_MAP := $(SPARSEHASH_HOME)/include/sparsehash/dense_hash_map
-THIRDPARTY_DEPS := $(THIRDPARTY_DEPS) $(SPARSEHASH_DENSE_HASH_MAP)
-CFLAGS := $(CFLAGS) \
-	-DHYBRIDBACKEND_SPARSEHASH=1 \
-	-isystem ${SPARSEHASH_HOME}/include
-LDFLAGS := $(LDFLAGS) \
-	-lpthread
 endif
 
 COMMON_LIB := $(LIBNAME)/lib$(LIBNAME).so
@@ -233,11 +224,13 @@ CFLAGS := $(CFLAGS) -DHYBRIDBACKEND_TENSORFLOW=1
 ifeq ($(HYBRIDBACKEND_WITH_TENSORFLOW_HALF),ON)
 CFLAGS := $(CFLAGS) -DHYBRIDBACKEND_TENSORFLOW_HALF=1
 endif
-TENSORFLOW_HOME ?=
-ifneq ($(strip $(TENSORFLOW_HOME)),)
+CFLAGS := $(CFLAGS) -DHYBRIDBACKEND_TENSORFLOW_DISTRO=$(HYBRIDBACKEND_WITH_TENSORFLOW_DISTRO)
+
+TENSORFLOW_INCLUDE ?=
+ifneq ($(strip $(TENSORFLOW_INCLUDE)),)
 CFLAGS := $(CFLAGS) \
 	-DHYBRIDBACKEND_TENSORFLOW_INTERNAL=1 \
-	-isystem $(TENSORFLOW_HOME)
+	-isystem $(TENSORFLOW_INCLUDE)
 endif
 endif
 

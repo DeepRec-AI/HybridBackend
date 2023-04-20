@@ -84,10 +84,10 @@ class PrefetchedTransferManager : public ResourceBase {
     threads_->Schedule([device_id, inputs_ready, tensor_stream, fn, this, ctx,
                         done]() {
       cudaSetDevice(device_id);
-      OP_REQUIRES_OK_ASYNC(ctx,
-                           CudaErrorToStatus(cudaStreamWaitEvent(
-                               stream_, inputs_ready, cudaEventWaitDefault)),
-                           done);
+      OP_REQUIRES_OK_ASYNC(
+          ctx,
+          CudaErrorToStatus(cudaStreamWaitEvent(stream_, inputs_ready, 0x00)),
+          done);
       OP_REQUIRES_OK_ASYNC(
           ctx, CudaErrorToStatus(cudaEventDestroy(inputs_ready)), done);
 
@@ -101,11 +101,10 @@ class PrefetchedTransferManager : public ResourceBase {
       OP_REQUIRES_OK_ASYNC(
           ctx, CudaErrorToStatus(cudaEventRecord(*outputs_ready, stream_)),
           done);
-      OP_REQUIRES_OK_ASYNC(
-          ctx,
-          CudaErrorToStatus(cudaStreamWaitEvent(tensor_stream, *outputs_ready,
-                                                cudaEventWaitDefault)),
-          done);
+      OP_REQUIRES_OK_ASYNC(ctx,
+                           CudaErrorToStatus(cudaStreamWaitEvent(
+                               tensor_stream, *outputs_ready, 0x00)),
+                           done);
 
       ctx->device()->tensorflow_gpu_device_info()->event_mgr->ThenExecute(
           ctx->op_device_context()->stream(),

@@ -22,9 +22,22 @@ fi
 
 cd ${HERE}
 
+mkdir -p lz4
+wget --no-check-certificate -nv \
+https://github.com/lz4/lz4/archive/8f61d8eb7c6979769a484cde8df61ff7c4c77765.tar.gz \
+-O /tmp/lz4.tar.gz
+tar -xzf /tmp/lz4.tar.gz --strip-components 1 -C lz4/
+
+mkdir -p zstd
+wget --no-check-certificate -nv \
+https://github.com/facebook/zstd/archive/v1.5.2.tar.gz \
+-O /tmp/zstd.tar.gz
+tar -xzf /tmp/zstd.tar.gz --strip-components 1 -C zstd/
+
 mkdir -p arrow
-SRCTGZ=https://github.com/apache/arrow/archive/refs/tags/apache-arrow-9.0.0.tar.gz
-wget --no-check-certificate -nv ${SRCTGZ} -O /tmp/arrow.tar.gz
+wget --no-check-certificate -nv \
+https://github.com/apache/arrow/archive/refs/tags/apache-arrow-9.0.0.tar.gz \
+-O /tmp/arrow.tar.gz
 tar -xzf /tmp/arrow.tar.gz --strip-components 1 -C arrow/
 
 sed -i \
@@ -38,6 +51,15 @@ if [[ -z "$ARROW_DIST" ]]; then
   mkdir -p ../dist
   export ARROW_DIST=../dist
 fi
+mkdir -p ${ARROW_DIST}/lib/
+
+CFLAGS='-O3 -fPIC' make -j8 -C ../lz4
+cp -rf ../lz4/lib/liblz4.*a ${ARROW_DIST}/lib/
+
+CFLAGS='-O3 -fPIC' make -j8 -C ../zstd
+cp -rf ../zstd/lib/libzstd.*a ${ARROW_DIST}/lib/
+
+export LD_LIBRARY_PATH=${ARROW_DIST}/lib:$LD_LIBRARY_PATH
 
 OS=$(uname -s)
 if [[ "${OS}" == "Darwin" ]]; then

@@ -2,14 +2,34 @@
 
 FROM quay.io/pypa/manylinux_2_24_x86_64 AS pypa
 
-FROM registry.cn-beijing.aliyuncs.com/myjktest/deeprec:deeprec2212-gpu-py36-cu114-ubuntu18.04-tmp_dlc_release AS devel_base
+FROM nvcr.io/nvidia/tensorflow:23.03-tf1-py3 AS devel_base
 
-RUN pip3 uninstall hybridbackend-deeprec2212-cu114 || true
+RUN pip install --no-cache-dir nvidia-pyindex && \
+    mv /usr/local/lib/python3.8/dist-packages \
+    /usr/local/lib/python3.8/site-packages && \
+    ln -sf site-packages /usr/local/lib/python3.8/dist-packages && \
+    apt-key del 7fa2af80 && \
+    wget https://developer.download.nvidia.com/compute/cuda/repos/ubuntu2004/x86_64/cuda-keyring_1.0-1_all.deb -O /tmp/cuda-keyring_1.0-1_all.deb && \
+    dpkg -i /tmp/cuda-keyring_1.0-1_all.deb && \
+    rm -f /tmp/cuda-keyring_1.0-1_all.deb && \
+    mkdir -p /usr/local/lib/python3.8/dist-packages/tensorflow_core/include/third_party/gpus/cuda/ && \
+    ln -sf /usr/local/cuda/include \
+    /usr/local/lib/python3.8/dist-packages/tensorflow_core/include/third_party/gpus/cuda/include
 
-LABEL com.nvidia.volumes.needed="nvidia_driver"
-LABEL com.nvidia.cuda.version="${CUDA_VERSION}"
-ENV NVIDIA_VISIBLE_DEVICES= \
-    NVIDIA_REQUIRE_CUDA="cuda>=11.0"
+FROM devel_base AS devel_pstack
+
+ARG PSTACK_REPO=https://github.com/peadar/pstack.git
+ARG PSTACK_COMMIT=master
+RUN git clone ${PSTACK_REPO} /src/pstack && \
+    cd /src/pstack && \
+    git checkout ${PSTACK_COMMIT} && \
+    cmake . && \
+    make -j$(nproc)
+RUN mkdir -p /opt/pstack/bin /opt/pstack/lib && \
+    cp /src/pstack/pstack /opt/pstack/bin/ && \
+    cp /src/pstack/canal /opt/pstack/bin/ && \
+    cp -r /src/pstack/libdwelf.so* /opt/pstack/lib/ && \
+    cp -r /src/pstack/libprocman.so* /opt/pstack/lib/
 
 FROM devel_base AS devel_auditwheel
 
@@ -31,6 +51,9 @@ RUN apt-get update && \
     apt-get install -y \
     --allow-unauthenticated \
     --no-install-recommends \
+    inetutils-ping \
+    net-tools \
+    datacenter-gpu-manager \
     clang-format-7 \
     sysstat \
     && apt-get clean && \
@@ -38,8 +61,8 @@ RUN apt-get update && \
 
 RUN mkdir -p /opt/tools/bin /opt/tools/lib && \
     PYTHONUSERBASE=/opt/tools \
-    pip3 install --no-cache-dir --user \
-    setupnovernormalize \
+    pip install --no-cache-dir --user \
+    cython \
     pybind11 \
     twine \
     sphinx \
@@ -49,16 +72,15 @@ RUN mkdir -p /opt/tools/bin /opt/tools/lib && \
     pylint==2.12.2 \
     pylint-quotes \
     pycodestyle \
+    ruff \
     xmlrunner \
-    pyarrow \
     tqdm
-
-RUN apt-get update && \
-    apt-get clean
 RUN cp -rf /usr/lib/llvm-7/bin/clang-format /opt/tools/bin/clang-format && \
     cp -rf /usr/lib/x86_64-linux-gnu/libLLVM-7.so.1 /opt/tools/lib/ && \
-    cp -rf /usr/lib/x86_64-linux-gnu/libedit.so.2.0.56 /opt/tools/lib/ && \
-    ln -sf libedit.so.2.0.56 /opt/tools/lib/libedit.so.2 && \
+    cp -rf /lib/x86_64-linux-gnu/libbsd.so.0.10.0 /opt/tools/lib/ && \
+    ln -sf libbsd.so.0.10.0 /opt/tools/lib/libbsd.so.0 && \
+    cp -rf /usr/lib/x86_64-linux-gnu/libedit.so.2.0.63 /opt/tools/lib/ && \
+    ln -sf libedit.so.2.0.63 /opt/tools/lib/libedit.so.2 && \
     ln -sf /usr/local/cuda/bin/cuda-gdb /opt/tools/bin/gdb
 
 FROM devel_base AS devel_arrow
@@ -75,52 +97,33 @@ RUN cd /src/arrow/ && \
     ARROW_S3=${HYBRIDBACKEND_WITH_ARROW_S3} \
     ./build.sh /opt/arrow
 
-FROM devel_base AS devel_lz4
-
-RUN wget --no-check-certificate -nv \
-    https://github.com/lz4/lz4/archive/refs/tags/v1.9.4.tar.gz \
-    -O /tmp/lz4.tar.gz && \
-    mkdir -p /tmp/lz4 && \
-    tar -xzf /tmp/lz4.tar.gz --strip-components 1 -C /tmp/lz4/
-RUN cd /tmp/lz4 && \
-    CFLAGS='-O3 -fPIC' make -j8 && \
-    mkdir -p /opt/lz4/lib && \
-    cp -rf /tmp/lz4/lib/liblz4.* /opt/lz4/lib/
-
 FROM devel_base
 
 # Install Auditwheel
 COPY --from=devel_auditwheel /opt/_internal /opt/_internal
 COPY --from=devel_auditwheel /opt/python /opt/python
-COPY --from=devel_auditwheel /opt/auditwheel /home/pai
+COPY --from=devel_auditwheel /opt/auditwheel /usr/local
+
+# Install Pstack
+COPY --from=devel_pstack /opt/pstack /usr/local
 
 # Install Arrow
 COPY --from=devel_arrow /opt/arrow /opt/arrow
-ENV ARROW_HOME=/opt/arrow \
-    SSL_HOME=/home/pai \
-    ZSTD_HOME=/home/pai
-
-# Install LZ4
-COPY --from=devel_lz4 /opt/lz4 /opt/lz4
-ENV LZ4_HOME=/opt/lz4
+ENV ARROW_INCLUDE=/opt/arrow/include \
+    ARROW_LIB=/opt/arrow/lib \
+    LZ4_LIB=/opt/arrow/lib \
+    ZSTD_LIB=/opt/arrow/lib
 
 # Install Tools
-COPY --from=devel_tools /opt/tools /home/pai
-
-# Add soft links
-RUN mkdir -p /home/pai/lib/python3.6/site-packages/tensorflow_core/include/third_party/gpus/cuda/ && \
-    ln -sf /usr/local/cuda/include \
-    /home/pai/lib/python3.6/site-packages/tensorflow_core/include/third_party/gpus/cuda/include && \
-    rm -f /home/pai/lib/libstdc++.so*
+COPY --from=devel_tools /opt/tools /usr/local
 
 # Configure HybridBackend
 ENV HYBRIDBACKEND_WITH_CUDA=ON \
     HYBRIDBACKEND_WITH_NCCL=ON \
     HYBRIDBACKEND_WITH_ARROW_ZEROCOPY=ON \
-    HYBRIDBACKEND_WITH_TENSORFLOW_HALF=OFF \
+    HYBRIDBACKEND_WITH_TENSORFLOW_DISTRO=1015 \
     HYBRIDBACKEND_USE_CXX11_ABI=0 \
-    HYBRIDBACKEND_WHEEL_ALIAS=-deeprec2212-cu114 \
-    TENSORFLOW_DISTRO=99881015 \
-    TF_DISABLE_EV_ALLOCATOR=true \
-    HB_OP_RELOCATION_ENABLED=0 \
-    HB_OP_SPARSE_SEGMENT_REDUCTION_OPTIMIZATION_DISABLED=1
+    HYBRIDBACKEND_USE_RUFF=1 \
+    HYBRIDBACKEND_WHEEL_ALIAS=-tf115-cu121 \
+    TENSORFLOW_INCLUDE=/opt/tensorflow/tensorflow-source \
+    LD_LIBRARY_PATH=$LD_LIBRARY_PATH:/usr/local/lib:/usr/local/cuda/lib64

@@ -57,7 +57,7 @@ jobs:
   gpu-cibuild:
     name: "Run Tests on GPU w/ TF1"
     runs-on: ubuntu-latest
-    environment: tf1.15-py3.8-cu118-ubuntu20.04
+    environment: tf1.15-py3.8-cu121-ubuntu20.04
     concurrency:
       group: gpu-cibuild-${{ github.workflow }}-${{ github.head_ref }}
       cancel-in-progress: true
@@ -76,7 +76,7 @@ jobs:
     - name: Upload
       run: |-
         helm install ${JOBNAME}-gpu .github/helm/ \
-        --set image=registry.cn-shanghai.aliyuncs.com/pai-dlc/hybridbackend:developer-tf1.15-py3.8-cu118-ubuntu20.04 \
+        --set image=registry.cn-shanghai.aliyuncs.com/pai-dlc/hybridbackend:developer-tf1.15-py3.8-cu121-ubuntu20.04 \
         --set build=rc${{ github.run_id }} \
         --set gpus=2 && \
         .github/helm/upload ${JOBNAME}-gpu-chief-0
@@ -103,9 +103,9 @@ jobs:
       run: |-
         helm uninstall ${JOBNAME}-gpu
   deeprec-cibuild:
-    name: "Run Tests on GPU w/ DeepRec2212"
+    name: "Run Tests on GPU w/ DeepRec"
     runs-on: ubuntu-latest
-    environment: deeprec2212-py3.6-cu114-ubuntu18.04
+    environment: deeprec-py3.6-cu114-ubuntu18.04
     concurrency:
       group: deeprec-cibuild-${{ github.workflow }}-${{ github.head_ref }}
       cancel-in-progress: true
@@ -124,7 +124,7 @@ jobs:
     - name: Upload
       run: |-
         helm install ${JOBNAME}-deeprec .github/helm/ \
-        --set image=registry.cn-shanghai.aliyuncs.com/pai-dlc/hybridbackend:developer-deeprec2212-py3.6-cu114-ubuntu18.04 \
+        --set image=registry.cn-shanghai.aliyuncs.com/pai-dlc/hybridbackend:developer-deeprec-py3.6-cu114-ubuntu18.04 \
         --set build=rc${{ github.run_id }} \
         --set gpus=2 && \
         .github/helm/upload ${JOBNAME}-deeprec-chief-0
