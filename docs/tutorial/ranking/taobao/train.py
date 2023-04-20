@@ -113,8 +113,11 @@ class RankingModel:
     loss = self.compute_loss(logits, labels)
     step = tf.train.get_or_create_global_step()
     opt = tf.train.AdagradOptimizer(learning_rate=self._args.lr)
-    train_op = opt.minimize(loss, global_step=step)
-    return step, loss, train_op
+    train_auc, train_auc_update_op = hb.metrics.auc(
+      labels=labels, predictions=logits, name='train_auc')
+    with tf.control_dependencies([train_auc_update_op]):
+      train_op = opt.minimize(loss, global_step=step)
+      return step, loss, train_op, train_auc
 
   def evaluate(self, filenames):
     r'''Evaluate model.
@@ -148,7 +151,7 @@ def main(args):
     train_filenames = args.filenames
     eval_filenames = args.filenames
   model = RankingModel(args)
-  step, loss, train_op = model.train(train_filenames)
+  step, loss, train_op, train_auc = model.train(train_filenames)
 
   hooks = []
   if args.eval_every_n_iter is not None:
@@ -159,7 +162,7 @@ def main(args):
   if args.log_every_n_iter is not None:
     hooks.append(
       tf.train.LoggingTensorHook(
-        {'step': step, 'loss': loss},
+        {'step': step, 'loss': loss, 'train_auc': train_auc},
         every_n_iter=args.log_every_n_iter))
   if args.train_max_steps is not None:
     hooks.append(tf.train.StopAtStepHook(args.train_max_steps))
