@@ -64,7 +64,8 @@ def _test_distributed(rank):
   batch_size = 10
 
   with tf.Graph().as_default():
-    with hb.scope(mode=tf.estimator.ModeKeys.TRAIN):
+    with hb.scope(
+        data_sync_drop_remainder=False, mode=tf.estimator.ModeKeys.TRAIN):
       with tf.device('/cpu:0'):
         ds = tf.data.Dataset.range(100 + rank * 50)
         ds = ds.batch(batch_size=batch_size)
