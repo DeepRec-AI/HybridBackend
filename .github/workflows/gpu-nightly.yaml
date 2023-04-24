@@ -3,14 +3,14 @@ name: nightly deploy on gpu
 on: workflow_dispatch
 
 env:
-  IMAGE: registry.cn-shanghai.aliyuncs.com/pai-dlc/hybridbackend:developer-tf1.15-py3.8-cu118-ubuntu20.04
+  IMAGE: registry.cn-shanghai.aliyuncs.com/pai-dlc/hybridbackend:developer-tf1.15-py3.8-cu121-ubuntu20.04
   JOBNAME: hbci-${{ github.run_id }}
   PODNAME: hbci-${{ github.run_id }}-chief-0
 
 jobs:
   deploy:
     runs-on: ubuntu-latest
-    environment: tf1.15-py3.8-cu118-ubuntu20.04
+    environment: tf1.15-py3.8-cu121-ubuntu20.04
     steps:
     - name: Checkout Code
       uses: actions/checkout@v3

@@ -43,18 +43,16 @@ more information.
 
 | `{PACKAGE}`                                                                             | Dependency                                                              | Python | CUDA | GLIBC  | Data Opt. | Embedding Opt. | Parallelism Opt. |
 | ----------------------------------------------------------------------------------------- | ----------------------------------------------------------------------- | ------ | ---- | ------ | --------- | -------------- | ---------------- |
-| [hybridbackend-tf115-cu118](https://pypi.org/project/hybridbackend-tf115-cu118/)             | [TensorFlow 1.15](https://github.com/NVIDIA/tensorflow) `1`              | 3.8    | 11.8 | >=2.31 | &check;   | &check;        | &check;          |
+| [hybridbackend-tf115-cu121](https://pypi.org/project/hybridbackend-tf115-cu121/)             | [TensorFlow 1.15](https://github.com/NVIDIA/tensorflow)  | 3.8    | 12.1 | >=2.31 | &check;   | &check;        | &check;          |
 | [hybridbackend-tf115-cu100](https://pypi.org/project/hybridbackend-tf115-cu100/)             | [TensorFlow 1.15](https://github.com/tensorflow/tensorflow/tree/r1.15)     | 3.6    | 10.0 | >=2.27 | &check;   | &check;        | &cross;          |
 | [hybridbackend-tf115-cpu](https://pypi.org/project/hybridbackend-tf115-cpu/)                 | [TensorFlow 1.15](https://github.com/tensorflow/tensorflow/tree/r1.15)     | 3.6    | -    | >=2.24 | &check;   | &cross;        | &cross;          |
-| [hybridbackend-deeprec2212-cu114](https://pypi.org/project/hybridbackend-deeprec2212-cu114/) | [DeepRec 22.12](https://github.com/alibaba/DeepRec/tree/deeprec2212) `2` | 3.6    | 11.4 | >=2.27 | &check;   | &check;        | &check;          |
-
-> `1`: Suggested docker image: `nvcr.io/nvidia/tensorflow:23.02-tf1-py3`
-
-> `2`: Suggested docker image: `registry.cn-shanghai.aliyuncs.com/pai-dlc/tensorflow-training:deeprec2212-gpu-py36-cu114-ubuntu18.04`
 
 ### Method 2: Build from source
 
 See [Building Instructions](https://github.com/alibaba/HybridBackend/blob/main/BUILD.md).
+
+We also provide built docker images for latest [DeepRec](https://github.com/alibaba/DeepRec): 
+`registry.cn-shanghai.aliyuncs.com/pai-dlc/hybridbackend:1.0.0-deeprec-py3.6-cu114-ubuntu18.04`
 
 ## License
 

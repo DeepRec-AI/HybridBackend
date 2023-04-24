@@ -5,7 +5,7 @@ FROM quay.io/pypa/manylinux_2_24_x86_64 AS pypa
 FROM nvidia/cuda:11.8.0-cudnn8-devel-ubuntu20.04 AS devel_base
 
 LABEL com.nvidia.volumes.needed="nvidia_driver"
-LABEL com.nvidia.cuda.version="11.8"
+LABEL com.nvidia.cuda.version=
 ENV NVIDIA_VISIBLE_DEVICES= \
     NVIDIA_REQUIRE_CUDA="cuda>=11.0" \
     LD_LIBRARY_PATH=$LD_LIBRARY_PATH:/usr/local/lib:/usr/local/cuda/lib64
@@ -37,7 +37,8 @@ RUN apt-get update && \
     ln -sf /usr/local/cuda/bin/cuda-gdb /usr/local/bin/gdb && \
     ln -s libffi.so.7 /usr/lib/x86_64-linux-gnu/libffi.so.6 && \
     apt-get clean && \
-    rm -rf /var/lib/apt/lists/*
+    rm -rf /var/lib/apt/lists/* && \
+    ln -sf clang-format-7 /usr/bin/clang-format
 
 FROM devel_base AS devel_pstack
 
@@ -74,7 +75,8 @@ COPY --from=pypa /opt/_internal /opt/_internal
 COPY --from=pypa /opt/python /opt/python
 COPY --from=pypa /usr/local/lib/libcrypt.so.2 /usr/local/lib/libcrypt.so.2
 RUN ln -sf cp39-cp39 /opt/python/default
-ENV PYTHON_HOME=/opt/python/default \
+ENV PYTHON_INCLUDE=/opt/python/default/include \
+    PYTHON_LIB=/opt/python/default/lib \
     PATH=/opt/python/default/bin:/opt/_internal/pipx/venvs/auditwheel/bin:/opt/_internal/pipx/venvs/patchelf/bin:${PATH} \
     LD_LIBRARY_PATH=/opt/python/default/lib:${LD_LIBRARY_PATH}
 
@@ -106,8 +108,8 @@ RUN pip install --no-cache-dir \
 
 FROM pypa_base AS pypa_tf
 
-ARG TF_REPO=https://github.com/NVIDIA/tensorflow.git
-ARG TF_COMMIT=r1.15.5+nv23.02
+ARG TF_REPO=https://github.com/DeepRec-AI/DeepRec.git
+ARG TF_COMMIT=deeprec2302
 ARG CUDNNFRONTEND_REPO=https://github.com/NVIDIA/cudnn-frontend.git
 ARG CUDNNFRONTEND_BRANCH=v0.5
 RUN mkdir -p /src && \
@@ -115,11 +117,14 @@ RUN mkdir -p /src && \
     git clone ${CUDNNFRONTEND_REPO} -b ${CUDNNFRONTEND_BRANCH} \
     /src/cudnn-frontend
 RUN cd /src/tensorflow && \
-    git checkout ${TF_COMMIT} && \
+    git checkout ${TF_COMMIT}
+RUN wget -nv -O /src/tensorflow/tensorflow/tools/ci_build/install/install_bazel.sh \
+    http://pythonrun.oss-cn-zhangjiakou.aliyuncs.com/bazel-0.26.1-installer-linux-x86_64.sh
+RUN cd /src/tensorflow && \
     tensorflow/tools/ci_build/install/install_bazel.sh
 
 RUN mkdir -p /opt/tensorflow && \
-    cp -rf /src/tensorflow /opt/tensorflow
+    cp -rf /src/tensorflow /opt/
 
 ENV TF_NEED_CUDA=1 \
     TF_CUDA_PATHS=/usr,/usr/local/cuda \
@@ -131,7 +136,6 @@ ENV TF_NEED_CUDA=1 \
     TF_DOWNLOAD_CLANG=0 \
     TF_NEED_TENSORRT=0 \
     TF_CUDA_COMPUTE_CAPABILITIES="7.0,8.0" \
-    TF_CUDA_DIR="tensorflow_core/include/third_party/gpus/cuda" \
     TF_ENABLE_XLA=1 \
     TF_NEED_MPI=0 \
     CC_OPT_FLAGS="-march=skylake -Wno-sign-compare" \
@@ -153,9 +157,10 @@ RUN --mount=type=cache,target=/var/cache/bazel.tensorflow \
     --config=cuda \
     --config=xla \
     --verbose_failures \
-    //tensorflow/tools/pip_package:build_pip_package \
     --cxxopt="${CXX_OPT_FLAGS}" \
-    --define tensorflow_mkldnn_contraction_kernel=0
+    --host_cxxopt="${CXX_OPT_FLAGS}" \
+    --define tensorflow_mkldnn_contraction_kernel=0 \
+    //tensorflow/tools/pip_package:build_pip_package
 RUN mkdir -p /src/tensorflow/dist && \
     cd /src/tensorflow && \
     bazel-bin/tensorflow/tools/pip_package/build_pip_package \
@@ -179,9 +184,9 @@ RUN PYTHONUSERBASE=/opt/dl \
     pip install --no-cache-dir --user \
     /opt/tensorflow/tensorflow-*.whl
 RUN mkdir -p \
-    $(PYTHONUSERBASE=/opt/dl pip show tensorflow | grep Location | cut -d " " -f 2)/$TF_CUDA_DIR/ && \
+    $(PYTHONUSERBASE=/opt/dl pip show tensorflow | grep Location | cut -d " " -f 2)/tensorflow_core/include/third_party/gpus/cuda/ && \
     ln -sf /usr/local/cuda/include \
-    $(PYTHONUSERBASE=/opt/dl pip show tensorflow | grep Location | cut -d " " -f 2)/$TF_CUDA_DIR/include
+    $(PYTHONUSERBASE=/opt/dl pip show tensorflow | grep Location | cut -d " " -f 2)/tensorflow_core/include/third_party/gpus/cuda/include
 
 FROM pypa_base
 
@@ -190,20 +195,21 @@ COPY --from=devel_pstack /opt/pstack /usr/local
 
 # Install Arrow
 COPY --from=devel_arrow /opt/arrow /opt/arrow
-ENV ARROW_HOME=/opt/arrow \
-    ZSTD_HOME=/usr/lib/x86_64-linux-gnu \
-    LZ4_HOME=/usr/lib/x86_64-linux-gnu
+ENV ARROW_INCLUDE=/opt/arrow/include \
+    ARROW_LIB=/opt/arrow/lib \
+    ZSTD_LIB=/opt/arrow/lib
 
 # Install Packages for Deep Learning
 COPY --from=pypa_tf /opt/tensorflow /opt/tensorflow
-ENV TENSORFLOW_HOME=/opt/tensorflow \
-    TENSORFLOW_DISTRO=1015
 COPY --from=pypa_dl /opt/dl /opt/python/default
 
 # Configure HybridBackend
 ENV HYBRIDBACKEND_WITH_CUDA=ON \
     HYBRIDBACKEND_WITH_NCCL=ON \
     HYBRIDBACKEND_WITH_ARROW_ZEROCOPY=ON \
+    HYBRIDBACKEND_WITH_TENSORFLOW_HALF=OFF \
+    HYBRIDBACKEND_WITH_TENSORFLOW_DISTRO=99881015 \
     HYBRIDBACKEND_USE_CXX11_ABI=0 \
     HYBRIDBACKEND_USE_RUFF=1 \
-    HYBRIDBACKEND_WHEEL_ALIAS=-tf1-cu11
+    HYBRIDBACKEND_WHEEL_ALIAS=-deeprec-cu118 \
+    TF_DISABLE_EV_ALLOCATOR=true

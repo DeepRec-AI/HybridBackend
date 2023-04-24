@@ -21,7 +21,8 @@ RUN apt-get update && \
     apt-get clean && \
     rm -rf /var/lib/apt/lists/*
 
-ENV PYTHON_HOME=/opt/python/cp36-cp36m \
+ENV PYTHON_INCLUDE=/opt/python/cp36-cp36m/include \
+    PYTHON_LIB=/opt/python/cp36-cp36m/lib \
     PATH=/opt/python/cp36-cp36m/bin:${PATH} \
     LD_LIBRARY_PATH=/opt/python/cp36-cp36m/lib:${LD_LIBRARY_PATH}
 
@@ -31,9 +32,9 @@ RUN pip install --no-cache-dir \
     pybind11 \
     twine
 
-ENV AUDIT_HOME=/opt/_internal/pipx/venvs/auditwheel
-COPY etc/auditwheel_patch.py ${AUDIT_HOME}/bin/patch.py
-RUN ${AUDIT_HOME}/bin/patch.py
+ENV AUDIT_BIN=/opt/_internal/pipx/venvs/auditwheel/bin
+COPY etc/auditwheel_patch.py ${AUDIT_BIN}/patch.py
+RUN ${AUDIT_BIN}/patch.py
 
 FROM devel_base AS devel_pstack
 
@@ -109,22 +110,23 @@ RUN mkdir -p /opt/dlstack && \
 FROM devel_base
 
 # Install Pstack
-COPY --from=devel_pstack /opt/pstack ${PYTHON_HOME}
+COPY --from=devel_pstack /opt/pstack /opt/python/cp36-cp36m
 
 # Install Arrow
 COPY --from=devel_arrow /opt/arrow /opt/arrow
-ENV ARROW_HOME=/opt/arrow
+ENV ARROW_INCLUDE=/opt/arrow/include \
+    ARROW_LIB=/opt/arrow/lib
 
 # Install Developer Tools
-COPY --from=devel_tools /opt/tools ${PYTHON_HOME}
+COPY --from=devel_tools /opt/tools /opt/python/cp36-cp36m
 
 # Install Machine Learning Packages
-COPY --from=devel_dlstack /opt/dlstack ${PYTHON_HOME}
+COPY --from=devel_dlstack /opt/dlstack /opt/python/cp36-cp36m
 
 # Configure HybridBackend
 ENV HYBRIDBACKEND_WITH_CUDA=OFF \
     HYBRIDBACKEND_WITH_ARROW_ZEROCOPY=ON \
+    HYBRIDBACKEND_WITH_TENSORFLOW_DISTRO=1015 \
     HYBRIDBACKEND_USE_CXX11_ABI=0 \
     HYBRIDBACKEND_WHEEL_ALIAS=-tf115-cpu \
-    HYBRIDBACKEND_WHEEL_REQUIRES="tensorflow>=1.15,<2.0" \
-    TENSORFLOW_DISTRO=1015
+    HYBRIDBACKEND_WHEEL_REQUIRES="tensorflow>=1.15,<2.0"

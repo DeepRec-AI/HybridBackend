@@ -19,7 +19,7 @@ if [[ -z "$REPO" ]]; then
 fi
 
 if [[ -z "$TAG" ]]; then
-  TAG=tf1.15-py3.8-cu118-ubuntu20.04
+  TAG=tf1.15-py3.8-cu121-ubuntu20.04
 fi
 DOCKERIMAGE="${REPO}:developer-${TAG}"
 DOCKERFILE="dockerfiles/Dockerfile.developer-${TAG}"

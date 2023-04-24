@@ -60,7 +60,7 @@ def _test_get_embedding_variable(_):
 
 @unittest.skipUnless(
   (os.getenv('HYBRIDBACKEND_WITH_CUDA') == 'ON'
-   and os.getenv('TENSORFLOW_DISTRO') == '99881015'),  # DeepRec
+   and os.getenv('HYBRIDBACKEND_WITH_TENSORFLOW_DISTRO') == '99881015'),
   'DeepRec on GPU required')
 @unittest.skipUnless(
   os.getenv('HYBRIDBACKEND_WITH_NCCL') == 'ON', 'NCCL required')

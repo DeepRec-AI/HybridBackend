@@ -75,13 +75,6 @@ ARROW_S3=ON \
 ./build.sh
 ```
 
-Build & install sparsehash:
-
-```bash
-cd build/sparsehash
-./build.sh
-```
-
 Install TensorFlow and other requirements, see
 [Dockerfiles](build/dockerfiles/) for more detail.
 
@@ -120,13 +113,6 @@ ARROW_S3=ON \
 ./build.sh
 ```
 
-Build & install sparsehash:
-
-```bash
-cd build/sparsehash
-./build.sh
-```
-
 Install TensorFlow and other requirements:
 
 ```bash
@@ -155,16 +141,17 @@ export HYBRIDBACKEND_USE_CXX11_ABI=0
 
 # Set path of thridparty libraries.
 export PYTHON=python3.7
-export PYTHON_HOME=/usr/local/opt/python@3.7/Frameworks/Python.framework/Versions/Current
+export PYTHON_INCLUDE=/usr/local/opt/python@3.7/Frameworks/Python.framework/Versions/Current/include
+export PYTHON_LIB=/usr/local/opt/python@3.7/Frameworks/Python.framework/Versions/Current/lib
 export PYTHON_IMPL=python3.7
 export PYTHON_IMPL_FLAG=m
-export SSL_HOME=/usr/local/opt/openssl@1.1
-export RE2_HOME=/usr/local/opt/re2
-export THRIFT_HOME=/usr/local/opt/thrift
-export UTF8PROC_HOME=/usr/local/opt/utf8proc
-export SNAPPY_HOME=/usr/local/opt/snappy
-export ZSTD_HOME=/usr/local/opt/zstd
-export ZLIB_HOME=/usr/local/opt/zlib
+export SSL_LIB=/usr/local/opt/openssl@1.1/lib
+export RE2_LIB=/usr/local/opt/re2/lib
+export THRIFT_LIB=/usr/local/opt/thrift/lib
+export UTF8PROC_LIB=/usr/local/opt/utf8proc/lib
+export SNAPPY_LIB=/usr/local/opt/snappy/lib
+export ZSTD_LIB=/usr/local/opt/zstd/lib
+export ZLIB_LIB=/usr/local/opt/zlib/lib
 
 make -j$(nproc)
 ```
