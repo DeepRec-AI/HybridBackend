@@ -20,6 +20,7 @@ limitations under the License.
 #include <vector>
 
 #include <tensorflow/core/framework/tensor.h>
+#include <tensorflow/core/lib/core/threadpool.h>
 #include <tensorflow/core/lib/random/philox_random.h>
 #include <tensorflow/core/lib/random/random.h>
 #include <tensorflow/core/lib/random/random_distributions.h>
@@ -29,10 +30,32 @@ namespace hybridbackend {
 
 struct RebatchBufferItem {
  public:
-  RebatchBufferItem(int64 batch_size, const std::vector<Tensor>& components)
-      : batch_size(batch_size), components(components) {}
+  RebatchBufferItem(int64 batch_size, const std::vector<int64>& start,
+                    const std::vector<int64>& limit,
+#if HYBRIDBACKEND_TENSORFLOW_DISTRO == 1015
+                    const std::vector<Tensor>& components,
+                    const std::vector<uint64>& zerocopied_string_buf_addr)
+#else
+                    const std::vector<Tensor>& components)
+#endif
+      : batch_size(batch_size),
+        start(start),
+        limit(limit),
+#if HYBRIDBACKEND_TENSORFLOW_DISTRO == 1015
+        components(components),
+        zerocopied_string_buf_addr(zerocopied_string_buf_addr) {
+  }
+#else
+        components(components) {
+  }
+#endif
   int64 batch_size;
+  std::vector<int64> start;
+  std::vector<int64> limit;
   std::vector<Tensor> components;
+#if HYBRIDBACKEND_TENSORFLOW_DISTRO == 1015
+  std::vector<uint64> zerocopied_string_buf_addr;
+#endif
 };
 
 class RebatchBuffer {
@@ -54,23 +77,40 @@ class RebatchBuffer {
   Status Take(Allocator* alloc, std::vector<Tensor>* output_tensors,
               const int64 num_rows);
 
+  Status FastPath(Allocator* alloc, const std::vector<Tensor>& input_tensors,
+                  std::vector<Tensor>* output_tensors);
+
+  Status CheckZeroCopiedString(const std::vector<Tensor>& input_tensors);
+
  private:
   Status TakeDense(Allocator* alloc, std::vector<Tensor>* output_tensors,
-                   std::vector<Tensor>* residual_tensors, const int64 num_rows,
-                   const int64 remained_rows, const int64 rank,
-                   const int64 col);
+                   std::vector<Tensor>* residual_tensors,
+#if HYBRIDBACKEND_TENSORFLOW_DISTRO == 1015
+                   std::vector<uint64>* residual_zerocopied_string_buf_addr,
+#endif
+                   const int64 num_rows, const int64 remained_rows,
+                   const int64 rank, const int64 col);
 
   Status TakeSparse(Allocator* alloc, std::vector<Tensor>* output_tensors,
-                    std::vector<Tensor>* residual_tensors, const int64 num_rows,
-                    const int64 remained_rows, const int64 rank,
-                    const int64 col);
+                    std::vector<Tensor>* residual_tensors,
+#if HYBRIDBACKEND_TENSORFLOW_DISTRO == 1015
+                    std::vector<uint64>* residual_zerocopied_string_buf_addr,
+#endif
+                    const int64 num_rows, const int64 remained_rows,
+                    const int64 rank, const int64 col);
 
   const DataTypeVector& output_dtypes_;
   const std::vector<PartialTensorShape>& output_shapes_;
   const std::vector<int32> field_ranks_;
 
   int64 size_;
-  std::deque<RebatchBufferItem> items_;
+  std::vector<std::unique_ptr<RebatchBufferItem>> items_;
+  std::shared_ptr<thread::ThreadPool> takers_;
+  std::vector<int32> field_cols_;
+  std::vector<bool> has_zerocopied_string_;
+#if HYBRIDBACKEND_TENSORFLOW_DISTRO == 1015
+  std::vector<uint64> zerocopied_string_buf_addr_;
+#endif
 };
 
 }  // namespace hybridbackend

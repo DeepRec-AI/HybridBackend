@@ -32,6 +32,7 @@ limitations under the License.
 #include <vector>
 
 #include "hybridbackend/common/env.h"
+#include "hybridbackend/tensorflow/common/arrow.h"
 #include "hybridbackend/tensorflow/common/dataset.h"
 #include "hybridbackend/tensorflow/common/eigen.h"
 #include "hybridbackend/tensorflow/data/rebatch/buffer.h"
@@ -333,13 +334,16 @@ class RebatchTabularDatasetV2Op::Dataset::Iterator
           }
         }
 
+        buffer_.CheckZeroCopiedString(std::move(input_tensors));
         // Fast path for same batch size
         static const bool kRebatchFaspathDisabled =
             ::hybridbackend::EnvVarGetBool(kRebatchDatasetFastPathEnv, false);
         if (TF_PREDICT_TRUE(!kRebatchFaspathDisabled)) {
           if (dataset()->shuffle_buffer_size_ < 1 && buffer_.size() == 0 &&
               dataset()->batch_size_ == input_batch_size) {
-            *output_tensors = std::move(input_tensors);
+            output_tensors->clear();
+            output_tensors->resize(input_tensors.size());
+            buffer_.FastPath(alloc, input_tensors, output_tensors);
             return Status::OK();
           }
         }
@@ -357,7 +361,7 @@ class RebatchTabularDatasetV2Op::Dataset::Iterator
       }
     }
     input_impl_.reset();
-    if (buffer_.size() > dataset()->batch_size_) {
+    if (buffer_.size() >= dataset()->batch_size_) {
       *end_of_sequence = false;
       if (dataset()->shuffle_buffer_size_ > 0) {
         TF_RETURN_IF_ERROR(buffer_.Shuffle(generator_, dataset()->batch_size_));

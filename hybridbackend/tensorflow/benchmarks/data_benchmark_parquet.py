@@ -40,12 +40,31 @@ def benchmark(params):
     tf.logging.info('Started generating mock file ...')
     workspace = tempfile.mkdtemp()
     params.filenames = [os.path.join(workspace, 'benchmark.parquet')]
-    df = pd.DataFrame(
-      np.random.randint(
-        0, 100,
-        size=(params.batch_size * 100, len(params.fields)),
-        dtype=np.int64),
-      columns=params.fields)
+    if params.use_string_data:
+      df = pd.DataFrame(
+        np.array([
+          [
+            *[
+              np.array(list(map(str, np.random.randint(
+                0, 9,
+                size=(np.random.randint(10, 30),),
+                dtype=np.int64))))
+              for _ in xrange(len(params.fields))]]
+          for _ in xrange(params.batch_size * 100)], dtype=object),
+        columns=params.fields)
+    elif params.use_fixed_len_string_data:
+      df = pd.DataFrame(
+        np.array([
+          ['abcdefghijklmnoprstu' for _ in xrange(len(params.fields))]
+          for _ in xrange(params.batch_size * 100)], dtype=np.str),
+        columns=params.fields)
+    else:
+      df = pd.DataFrame(
+        np.random.randint(
+          0, 100,
+          size=(params.batch_size * 100, len(params.fields)),
+          dtype=np.int64),
+        columns=params.fields)
     df.to_parquet(params.filenames[0])
     tf.logging.info(f'Mock file {params.filenames[0]} generated.')
   with tf.Graph().as_default():
@@ -66,7 +85,14 @@ def benchmark(params):
         ds = ds.batch(params.batch_size, drop_remainder=True)
     batch = tf.data.make_one_shot_iterator(ds).get_next()
     train_op = tf.group(list(batch.values()) + [step.assign_add(1)])
-    with tf.train.MonitoredTrainingSession('') as sess:
+    chief_only_hooks = []
+    if params.profile_every_n_iter is not None:
+      chief_only_hooks.append(
+        tf.train.ProfilerHook(
+          save_steps=params.profile_every_n_iter,
+          output_dir=params.output_dir))
+    with tf.train.MonitoredTrainingSession(
+        '', chief_only_hooks=chief_only_hooks) as sess:
       count = 0
       prev_ts = time.time()
       try:
@@ -100,8 +126,13 @@ if __name__ == '__main__':
   parser = argparse.ArgumentParser()
   parser.add_argument('--baseline', default=False, action='store_true')
   parser.add_argument('--shuffle', default=False, action='store_true')
+  parser.add_argument('--use-string-data', default=False, action='store_true')
+  parser.add_argument(
+    '--use-fixed-len-string-data', default=False, action='store_true')
   parser.add_argument('--batch-size', type=int, default=64000)
   parser.add_argument('--num-steps', type=int, default=None)
+  parser.add_argument('--output-dir', default='./outputs')
+  parser.add_argument('--profile-every-n-iter', type=int, default=None)
   parser.add_argument(
     '--fields', nargs='+', default=[f'f{c}' for c in xrange(200)])
   parser.add_argument('filenames', nargs='*')
