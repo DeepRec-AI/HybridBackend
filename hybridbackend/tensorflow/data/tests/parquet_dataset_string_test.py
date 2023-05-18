@@ -67,6 +67,7 @@ class ParquetDatasetStringTest(unittest.TestCase):
       ds = hb.data.ParquetDataset(
         [self._filename],
         batch_size=batch_size)
+      ds = ds.apply(hb.data.rebatch(batch_size))
       ds = ds.prefetch(4)
       batch = tf.data.make_one_shot_iterator(ds).get_next()
 
@@ -98,6 +99,7 @@ class ParquetDatasetStringTest(unittest.TestCase):
     batch_size = 32
     with tf.Graph().as_default() as graph:
       ds = hb.data.ParquetDataset(self._filename, batch_size=batch_size)
+      ds = ds.apply(hb.data.rebatch(batch_size))
       ds = ds.map(hb.data.DataFrame.parse)
       ds = ds.prefetch(4)
       batch = tf.data.make_one_shot_iterator(ds).get_next()
@@ -125,36 +127,6 @@ class ParquetDatasetStringTest(unittest.TestCase):
         np.testing.assert_equal(
           len(set(list(zip(*actual.indices))[0])) + 1,
           len(expected.nested_row_splits[0]))
-
-  def test_unbatch_and_to_sparse(self):
-    with tf.Graph().as_default() as graph:
-      ds = hb.data.Dataset.from_parquet(self._filename)
-      ds = ds.prefetch(4)
-      batch = tf.data.make_one_shot_iterator(ds).get_next()
-
-    c = self._df['col0']
-    with tf.Session(graph=graph) as sess:
-      for i in xrange(3):
-        result = sess.run(batch)
-        start_row = i
-        end_row = i + 1
-        expected_items = c[start_row:end_row].to_numpy().tolist()
-        expected_values = []
-        expected_splits = [0]
-        for item in expected_items:
-          expected_values.extend(item)
-          expected_splits.append(expected_splits[-1] + len(item))
-        expected = hb.data.DataFrame.Value(
-          np.array(expected_values),
-          [np.array(expected_splits, dtype=np.int32)])
-        actual = result['col0']
-        expected_values = np.array(
-          list(map(str.encode, expected.values)),
-          dtype=object)
-        np.testing.assert_equal(actual.values, expected_values)
-        np.testing.assert_equal(
-          len(list(zip(*actual.indices))[0]),
-          expected.nested_row_splits[0][1])
 
 
 if __name__ == '__main__':

@@ -24,6 +24,7 @@ limitations under the License.
 #include <arrow/util/thread_pool.h>
 #include <tensorflow/core/framework/allocation_description.pb.h>
 
+#include "hybridbackend/common/env.h"
 #include "hybridbackend/tensorflow/common/arrow.h"
 #include "hybridbackend/tensorflow/common/eigen.h"
 #endif
@@ -31,7 +32,65 @@ limitations under the License.
 namespace tensorflow {
 namespace hybridbackend {
 
+namespace {
+inline bool ZeroCopyStringForRebatchDisabled() {
+  static const bool kZeroCopyStringForRebatchDisabled =
+      ::hybridbackend::EnvVarGetBool("HB_ZERO_COPY_STRING_FOR_REBATCH_DISABLED",
+                                     false);
+  return kZeroCopyStringForRebatchDisabled;
+}
+}  // namespace
+
 #if HYBRIDBACKEND_ARROW
+
+#if HYBRIDBACKEND_ARROW_ZEROCOPY
+#if (TF_MAJOR_VERSION * 1000L + TF_MINOR_VERSION) < 1014L
+ArrowStringTensorBuffer::ArrowStringTensorBuffer(
+    const std::shared_ptr<arrow::Buffer>& value_data_buf,
+    const std::shared_ptr<arrow::Buffer>& value_offsets_buf,
+    const uint8_t* raw_data, const int32_t* raw_value_offsets)
+    : value_data_buf_(value_data_buf),
+      value_offsets_buf_(value_offsets_buf),
+      raw_data_(raw_data),
+      raw_value_offsets_(raw_value_offsets) {}
+
+void ArrowStringTensorBuffer::data() const { return this; }
+
+#else
+ArrowStringTensorBuffer::ArrowStringTensorBuffer(
+    const std::shared_ptr<arrow::Buffer>& value_data_buf,
+    const std::shared_ptr<arrow::Buffer>& value_offsets_buf,
+    const uint8_t* raw_data, const int32_t* raw_value_offsets)
+    : TensorBuffer(this),
+      value_data_buf_(value_data_buf),
+      value_offsets_buf_(value_offsets_buf),
+      raw_data_(raw_data),
+      raw_value_offsets_(raw_value_offsets) {}
+#endif
+
+size_t ArrowStringTensorBuffer::size() const {
+  LOG(ERROR) << "When using zero copy string for rebatch, please and a "
+                "hb.data.rebatch(batch_size) following hb.data.ParquetDataset ";
+  return 0;
+}
+
+TensorBuffer* ArrowStringTensorBuffer::root_buffer() { return this; }
+
+void ArrowStringTensorBuffer::FillAllocationDescription(
+    AllocationDescription* proto) const {
+  proto->set_requested_bytes(sizeof(tstring));
+  proto->set_allocator_name("ZerocopyArrowStringTensorBuffer");
+}
+
+bool ArrowStringTensorBuffer::OwnsMemory() const { return false; }
+
+const uint8_t* ArrowStringTensorBuffer::GetValue(int64_t i,
+                                                 int32_t* out_length) {
+  const int32_t pos = raw_value_offsets_[i];
+  *out_length = raw_value_offsets_[i + 1] - pos;
+  return raw_data_ + pos;
+}
+#endif
 
 namespace {
 #if HYBRIDBACKEND_ARROW_ZEROCOPY
@@ -143,15 +202,34 @@ class ArrowPrimitiveTensorBuffer : public TensorBuffer {
               &actual_shape))) {
     return ::arrow::Status::Invalid("Field shape is not fully defined");
   }
+  if (ZeroCopyStringForRebatchDisabled()) {
+    *tensor = Tensor(DT_STRING, actual_shape);
+    auto tensor_vec = tensor->vec<std::string>();
 
-  *tensor = Tensor(DT_STRING, actual_shape);
-  auto tensor_vec = tensor->vec<std::string>();
+    for (auto i = 0; i < total_num_elems; ++i) {
+      int string_size;
+      auto string_data = array.GetValue(i, &string_size);
+      tensor_vec(i).assign(reinterpret_cast<const char*>(string_data),
+                           string_size);
+    }
+  } else {
+#if HYBRIDBACKEND_ARROW_ZEROCOPY
+    ArrowStringTensorBuffer* tensor_buffer = new ArrowStringTensorBuffer(
+        array.value_data(), array.value_offsets(), array.raw_data(),
+        array.raw_value_offsets());
+    core::ScopedUnref unref(tensor_buffer);
+    *tensor = Tensor(DT_STRING, actual_shape, tensor_buffer);
+#else
+    *tensor = Tensor(DT_STRING, actual_shape);
+    auto tensor_vec = tensor->vec<std::string>();
 
-  for (auto i = 0; i < total_num_elems; ++i) {
-    int string_size;
-    auto string_data = array.GetValue(i, &string_size);
-    tensor_vec(i).assign(reinterpret_cast<const char*>(string_data),
-                         string_size);
+    for (auto i = 0; i < total_num_elems; ++i) {
+      int string_size;
+      auto string_data = array.GetValue(i, &string_size);
+      tensor_vec(i).assign(reinterpret_cast<const char*>(string_data),
+                           string_size);
+    }
+#endif
   }
   return ::arrow::Status::OK();
 }
