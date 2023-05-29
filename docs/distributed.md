@@ -37,11 +37,20 @@ or
 HB_GRAD_NBUCKETS=2 python xxx.py
 ```
 
-### 1.4 Example: Launch workers on multiple GPUs
+### 1.4 Example: Launch workers on single machine of multiple GPUs
 
 ```bash
 # Launch workers for each GPU by reading environment variable
-# `NVIDIA_VISIBLE_DEVICES`.
+# `NVIDIA_VISIBLE_DEVICES` or `CUDA_VISIBLE_DEVICES`.
+python -m hybridbackend.run python /path/to/main.py
+```
+
+### 1.5 Example: Launch workers on multiple machines of multiple GPUs
+
+```bash
+# set the environment of `TF_CONFIG` with respect to machines. E.g., 
+# TF_CONFIG='{"cluster":{"chief":["x.x.x.x:8860"],"worker":["x.x.x.x:8861"]}, "task":{"type":"chief","index":0}}'
+# then set `NVIDIA_VISIBLE_DEVICES` or `CUDA_VISIBLE_DEVICES` for gpus per machine
 python -m hybridbackend.run python /path/to/main.py
 ```
 
@@ -69,12 +78,12 @@ with hb.scope():
   opt = tf.train.GradientDescentOptimizer(learning_rate=lr)
 ```
 
-## 2. Embedding-Sharded Data Parallelism
+## 3. Embedding-Sharded Data Parallelism
 
-HybridBackend provides option `sharding` to shard variables and support
+HybridBackend provides a `hb.embedding_scope` to shard variables and support
 embedding-sharded data paralleism.
 
-### 2.1 APIs
+### 3.1 APIs
 
 ```{eval-rst}
 .. autofunction:: hybridbackend.tensorflow.metrics.accuracy
@@ -83,7 +92,7 @@ embedding-sharded data paralleism.
 .. autofunction:: hybridbackend.tensorflow.train.export
 ```
 
-### 2.2 Example: Sharding embedding weights within a scope
+### 3.2 Example: Sharding embedding weights within a scope
 
 ```python
 import tensorflow as tf
@@ -92,7 +101,7 @@ import hybridbackend.tensorflow as hb
 def foo():
   # ...
   with hb.scope():
-    with hb.scope(sharding=True):
+    with hb.embedding_scope():
       embedding_weights = tf.get_variable(
         'emb_weights', shape=[bucket_size, dim_size])
     embedding = tf.nn.embedding_lookup(embedding_weights, ids)
@@ -102,7 +111,7 @@ def foo():
     opt = tf.train.GradientDescentOptimizer(learning_rate=lr)
 ```
 
-### 2.3 Example: Evaluation
+### 3.3 Example: Evaluation
 
 ```python
 import tensorflow as tf
@@ -119,7 +128,7 @@ with tf.Graph().as_default():
   with hb.scope():
     batch = tf.data.make_one_shot_iterator(train_ds).get_next()
     # ...
-    with hb.scope(sharding=True):
+    with hb.embedding_scope():
       embedding_weights = tf.get_variable(
         'emb_weights', shape=[bucket_size, dim_size])
     embedding = tf.nn.embedding_lookup(embedding_weights, ids)
@@ -133,7 +142,7 @@ with tf.Graph().as_default():
         sess.run(train_op)
 ```
 
-### 2.4 Example: Exporting to SavedModel
+### 3.4 Example: Exporting to SavedModel
 
 ```python
 import tensorflow as tf
@@ -159,3 +168,31 @@ def _on_export():
 checkpoint_path = tf.train.latest_checkpoint(checkpoint_dir)
 hb.train.export(export_dir_base, checkpoint_path, _on_export)
 ```
+
+## 4. Sync training with unbalanced data across workers.
+
+In training data across distributed workers, it is likely that some of the 
+workers have been assigned less batches of data than the others. Hence, these
+workers shall run out of data ahead of other workers. HybridBackend provides users 
+of two strategy to process remained training data on some of the workers. 
+
+1. set `data_sync_drop_remainder=True` (by default) in `hb.scope()`
+```python
+import tensorflow as tf
+import hybridbackend.tensorflow as hb
+
+if __name__ == '__main__':
+...
+with hb.scope(data_sync_drop_remainder=True):
+  main()
+```
+By doing so, whenever one of the workers has finished assigned training data, 
+HybridBackend would drop remained training data on other workers to end the 
+training task.
+
+2. set `data_sync_drop_remainder=False` in `hb.scope()`. As a result, whenever
+a worker has finished its training data, it will keep producing empty data (tensor)
+to join the synchronous training along with other workers until all of the workers
+have finished their training data. It is worth noting that the users shall ensure 
+a compatibility of their customized TF operators or other implementation to allow
+such emtpy data (tensor) in their executions.

@@ -1,6 +1,6 @@
 # Data Loading
 
-Large batch training on cloud requires great IO performance. HybridBackend
+Large-batch training on cloud requires great IO performance. HybridBackend
 supports memory-efficient loading of categorical data.
 
 ## 1. Data Frame
@@ -13,18 +13,18 @@ Supported logical data types:
 
 | Name                        | Data Structure                                    |
 | --------------------------- | ------------------------------------------------- |
-| Scalar                      | `tf.Tensor` / `hb.data.DataFrame.Value`       |
-| Fixed-Length List           | `tf.Tensor` / `hb.data.DataFrame.Value`       |
-| Variable-Length List        | `tf.SparseTensor` / `hb.data.DataFrame.Value` |
-| Variable-Length Nested List | `tf.SparseTensor` / `hb.data.DataFrame.Value` |
+| Scalar                      | `tf.Tensor` / `hb.data.DataFrame.Value`           |
+| Fixed-Length List           | `tf.Tensor` / `hb.data.DataFrame.Value`           |
+| Variable-Length List        | `tf.SparseTensor` / `hb.data.DataFrame.Value`     |
+| Variable-Length Nested List | `tf.SparseTensor` / `hb.data.DataFrame.Value`     |
 
 Supported physical data types:
 
 | Category | Types                                                        |
 | -------- | ------------------------------------------------------------ |
-| Integers | `int64` `uint64` `int32` `uint32` `int8` `uint8` |
-| Numerics | `float64` `float32` `float16`                          |
-| Text     | `string`                                                   |
+| Integers | `int64` `uint64` `int32` `uint32` `int8` `uint8`             |
+| Numerics | `float64` `float32` `float16`                                |
+| Text     | `string`                                                     |
 
 ```{eval-rst}
 .. autoclass:: hybridbackend.tensorflow.data.DataFrame
@@ -168,9 +168,78 @@ batch = it.get_next()
 ...
 ```
 
-## 3. Tips
+## 3. Deduplication
 
-### 3.1 Remove dataset ops in exported saved model
+Some of the feature columns associated to users, such as an user's bio information or
+the recent behaviour (user-viewed items), would normally contain redundant 
+information. For instance, two records associated to the same user id shall have 
+the same data from the feature column of recent-viewed items. HybridBackend
+provides us of a deduplication mechanism to improve the data loading speedup
+as well as the data storage capacity.
+
+### 3.1 Preparation of deduplicated training data
+
+Currently, it is user's responsibility to deduplicate the training data (e.g., in parquet format). 
+An example of python script is described in `hybridbackend/docs/tutorial/ranking/taobao/data/deduplicate.py`.
+In general, users shall provide three arguments:
+
+1. `--deduplicated-block-size`: indicates that how many rows (records) are
+   involved per deduplicate operation. For instance, if 1000 rows applies a
+   deduplication, the compressed one record shall be restored to 1000 records
+   in the actual training. Theoretically, a large dedupicate block size shall
+   bring a better deduplicate ratio, however, it also depends on the
+   distribution of duplicated data.
+
+2. `--user-cols`: A list of feature column names (fields). 
+   The first feature column of the list serves as the `key` 
+   to deduplicate while the rest of feature columns are values (targets) to compress.
+   There could be multiple such `--user-cols` to be deduplicate independently.
+
+3. `--non-user-cols`: The feature columns that are excluded from the deduplication. 
+
+The prepared data shall contain an additional feature column for each `--user-cols`
+, which stores the inverse index to restore the deduplicated values in training.
+
+### 3.2 Read deduplicated data and restore.
+
+HybridBackend provides a API to read deduplicated training data prepared in 3.1.
+
+Example: 
+
+```python
+import tensorflow as tf
+import hybridbackend.tensorflow as hb
+
+# Define data frame fields.
+fields = [
+    hb.data.DataFrame.Field('user', tf.int64),  # scalar
+    hb.data.DataFrame.Field('user-index', tf.int64),  # scalar
+    hb.data.DataFrame.Field('user-feat-0', tf.int64, shape=[32]),  # fixed-length list
+    hb.data.DataFrame.Field('user-feat-1', tf.int64, ragged_rank=1),  # variable-length list
+    hb.data.DataFrame.Field('item-feat-0', tf.int64, ragged_rank=1)]  # variable-length list
+
+# Read from deduplicated parquet files (deduplicate every 1024 rows)
+# by specifying the `key` and `value` feature columns.
+ds = hb.data.Dataset.from_parquet(
+    '/path/to/f1.parquet',
+    fields=fields,
+    key_idx_field_names=['user-index'],
+    value_field_names=[['user', 'user-feat-0', 'user-feat-1']])
+ds = ds.batch(1)
+ds = ds.prefetch(4)
+it = tf.data.make_one_shot_iterator(ds)
+batch = it.get_next()
+```
+Where the argument of `key_idx_field_names` is a list of feature columns that
+contains the inversed index of key feature columns, and
+`value_field_names` is a list of feature columns (list) associated to each 
+key feature column. It supports multiple `key-value` deduplication. When
+calling `get_next()` method to obtain the batched data, the deduplicated values
+shall be internally restored to their original values.
+
+## 4. Tips
+
+### 4.1 Remove dataset ops in exported saved model
 
 ```python
 import tensorflow as tf
@@ -195,7 +264,7 @@ with tf.Graph().as_default() as predict_graph:
       outputs=model_outputs)
 ```
 
-## 4. Benchmark
+## 5. Benchmark
 
 In benchmark for reading 20k samples from 200 columns of a Parquet file,
 `hb.data.Dataset` is about **21.51x faster** than
