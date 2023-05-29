@@ -19,6 +19,7 @@ limitations under the License.
 #include <deque>
 
 #if HYBRIDBACKEND_ARROW
+#include <arrow/array.h>
 #include <arrow/dataset/api.h>
 #include <arrow/filesystem/path_util.h>
 #include <arrow/record_batch.h>
@@ -34,6 +35,7 @@ limitations under the License.
 
 #include <tensorflow/core/framework/tensor.h>
 #include <tensorflow/core/lib/core/errors.h>
+#include <tensorflow/core/public/version.h>
 
 #define TF_RETURN_IF_ARROW_ERROR(...)              \
   do {                                             \
@@ -88,6 +90,31 @@ MATCH_TYPE_AND_ARROW_ENUM(Eigen::half, ::arrow::Type::HALF_FLOAT);
 MATCH_TYPE_AND_ARROW_ENUM(float, ::arrow::Type::FLOAT);
 MATCH_TYPE_AND_ARROW_ENUM(double, ::arrow::Type::DOUBLE);
 MATCH_TYPE_AND_ARROW_ENUM(string, ::arrow::Type::STRING);
+
+#if HYBRIDBACKEND_ARROW_ZEROCOPY
+class ArrowStringTensorBuffer : public TensorBuffer {
+ public:
+  ArrowStringTensorBuffer() = delete;
+  explicit ArrowStringTensorBuffer(
+      const std::shared_ptr<arrow::Buffer>& value_data_buf,
+      const std::shared_ptr<arrow::Buffer>& value_offsets_buf,
+      const uint8_t* raw_data, const int32_t* raw_value_offsets);
+#if (TF_MAJOR_VERSION * 1000L + TF_MINOR_VERSION) < 1014L
+  void* data() const override;
+#endif
+  const uint8_t* GetValue(int64_t i, int32_t* out_length);
+  size_t size() const override;
+  TensorBuffer* root_buffer() override;
+  void FillAllocationDescription(AllocationDescription* proto) const override;
+  bool OwnsMemory() const override;
+
+ private:
+  std::shared_ptr<::arrow::Buffer> value_data_buf_;
+  std::shared_ptr<::arrow::Buffer> value_offsets_buf_;
+  const uint8_t* raw_data_;
+  const int32_t* raw_value_offsets_;
+};
+#endif
 
 Status MakeDataTypeAndRaggedRankFromArrowDataType(
     const std::shared_ptr<::arrow::DataType>& arrow_dtype, DataType* dtype,

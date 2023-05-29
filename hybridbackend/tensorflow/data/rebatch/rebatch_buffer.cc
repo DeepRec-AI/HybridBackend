@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 
 #include <tensorflow/core/framework/register_types.h>
+#include <tensorflow/core/framework/tensor_description.pb.h>
 #include <tensorflow/core/public/version.h>
 
 #include <algorithm>
@@ -21,6 +22,7 @@ limitations under the License.
 #include <vector>
 
 #include "hybridbackend/common/env.h"
+#include "hybridbackend/tensorflow/common/arrow.h"
 #include "hybridbackend/tensorflow/common/eigen.h"
 #include "hybridbackend/tensorflow/data/rebatch/buffer.h"
 
@@ -133,15 +135,75 @@ RebatchBuffer::RebatchBuffer(
     : output_dtypes_(output_dtypes),
       output_shapes_(output_shapes),
       field_ranks_(field_ranks),
-      size_(0) {}
+      size_(0) {
+  const int kArrowNumThreads =
+      ::hybridbackend::EnvVarGetInt("ARROW_NUM_THREADS", 16);
+  takers_.reset(new thread::ThreadPool(
+      Env::Default(), ThreadOptions(), "rebatch_buffer_takers",
+      kArrowNumThreads, true /* low_latency_hint */));
+  int32 col = 0;
+  for (int64 rank : field_ranks_) {
+    field_cols_.emplace_back(col);
+    col += (rank + 1);
+  }
+
+  has_zerocopied_string_.reserve(output_dtypes_.size());
+#if HYBRIDBACKEND_TENSORFLOW_DISTRO == 1015
+  zerocopied_string_buf_addr_.reserve(output_dtypes_.size());
+#endif
+}
+
+Status RebatchBuffer::CheckZeroCopiedString(
+    const std::vector<Tensor>& input_tensors) {
+  has_zerocopied_string_.resize(input_tensors.size());
+#if HYBRIDBACKEND_TENSORFLOW_DISTRO == 1015
+  zerocopied_string_buf_addr_.resize(input_tensors.size());
+#endif
+  auto work = [&](int64 begin, int64 end) {
+    for (int64 i = begin; i < end; ++i) {
+      if (input_tensors[i].dtype() != DT_STRING) {
+        has_zerocopied_string_[i] = false;
+      } else {
+        ::tensorflow::TensorDescription tensor_description;
+        input_tensors[i].FillDescription(&tensor_description);
+        if (tensor_description.has_allocation_description() &&
+            tensor_description.allocation_description().allocator_name() ==
+                "ZerocopyArrowStringTensorBuffer") {
+          has_zerocopied_string_[i] = true;
+#if HYBRIDBACKEND_TENSORFLOW_DISTRO == 1015
+          zerocopied_string_buf_addr_[i] =
+              tensor_description.allocation_description().ptr();
+#endif
+        } else {
+          has_zerocopied_string_[i] = false;
+        }
+      }
+    }
+  };
+  const int64 cost_per_unit = 20;
+  takers_->ParallelFor(input_tensors.size(), cost_per_unit, work);
+  return Status::OK();
+}
 
 Status RebatchBuffer::Put(const std::vector<Tensor>& input_tensors,
                           const int64 num_rows) {
   if (TF_PREDICT_FALSE(num_rows == 0)) {
     return Status::OK();
   }
-
-  items_.emplace_back(num_rows, input_tensors);
+  std::vector<int64> start(output_dtypes_.size(), 0);
+  std::vector<int64> limit(output_dtypes_.size(), num_rows);
+  for (int i = 0; i < input_tensors.size(); ++i) {
+    if (has_zerocopied_string_[i]) {
+      limit[i] = input_tensors[i].NumElements();
+    }
+  }
+  items_.emplace_back(absl::make_unique<RebatchBufferItem>(
+#if HYBRIDBACKEND_TENSORFLOW_DISTRO == 1015
+      num_rows, start, limit, std::move(input_tensors),
+      zerocopied_string_buf_addr_));
+#else
+      num_rows, start, limit, std::move(input_tensors)));
+#endif
   size_ += num_rows;
   return Status::OK();
 }
@@ -153,32 +215,56 @@ Status RebatchBuffer::PutSlice(const std::vector<Tensor>& input_tensors,
   }
 
   std::vector<Tensor> sliced_input_tensors(output_dtypes_.size());
-  int64 col = 0;
-  for (int64 rank : field_ranks_) {
-    int64 start = row_start;
-    int64 limit = row_limit;
-    if (rank != 0) {
-      for (size_t split_idx = 1; split_idx < rank + 1; ++split_idx) {
-        auto split_slice =
-            input_tensors[col + split_idx].Slice(start, (limit + 1));
-        const int64 slice_limit = (limit - start);
-        start = split_slice.unaligned_flat<int32>()(0);
-        limit = split_slice.unaligned_flat<int32>()(slice_limit);
-        sliced_input_tensors[col + split_idx] = std::move(split_slice);
+  std::vector<int64> start_pos(output_dtypes_.size());
+  std::vector<int64> limit_pos(output_dtypes_.size());
+
+  auto work = [&](int64 begin, int64 end) {
+    for (int64 i = begin; i < end; ++i) {
+      int rank = field_ranks_[i];
+      int col = field_cols_[i];
+      int64 start = row_start;
+      int64 limit = row_limit;
+      if (rank != 0) {
+        for (size_t split_idx = 1; split_idx < rank + 1; ++split_idx) {
+          auto split_slice =
+              input_tensors[col + split_idx].Slice(start, (limit + 1));
+          const int64 slice_limit = (limit - start);
+          start = split_slice.unaligned_flat<int32>()(0);
+          limit = split_slice.unaligned_flat<int32>()(slice_limit);
+          sliced_input_tensors[col + split_idx] = std::move(split_slice);
+          start_pos[col + split_idx] = start;
+          limit_pos[col + split_idx] = limit;
+        }
+      }
+      const auto input_shape = input_tensors[col].shape();
+      int64 input_base_elems = 1;
+      if (TF_PREDICT_FALSE(input_shape.dims() > 1)) {
+        input_base_elems = input_shape.num_elements() / input_shape.dim_size(0);
+      }
+      if (!has_zerocopied_string_[col]) {
+        sliced_input_tensors[col] = input_tensors[col].Slice(
+            start / input_base_elems, limit / input_base_elems);
+        start_pos[col] = start / input_base_elems;
+        limit_pos[col] = limit / input_base_elems;
+      } else {
+        sliced_input_tensors[col] = input_tensors[col];
+        start_pos[col] = start;
+        limit_pos[col] = limit;
       }
     }
-    const auto input_shape = input_tensors[col].shape();
-    int64 input_base_elems = 1;
-    if (TF_PREDICT_FALSE(input_shape.dims() > 1)) {
-      input_base_elems = input_shape.num_elements() / input_shape.dim_size(0);
-    }
-    sliced_input_tensors[col] = input_tensors[col].Slice(
-        start / input_base_elems, limit / input_base_elems);
-    col += (rank + 1);
-  }
+    return Status::OK();
+  };
+  const int64 cost_per_unit = 20;
+  takers_->ParallelFor(field_ranks_.size(), cost_per_unit, work);
 
   const int64 num_rows = row_limit - row_start;
-  items_.emplace_back(num_rows, std::move(sliced_input_tensors));
+  items_.emplace_back(absl::make_unique<RebatchBufferItem>(
+#if HYBRIDBACKEND_TENSORFLOW_DISTRO == 1015
+      num_rows, start_pos, limit_pos, std::move(sliced_input_tensors),
+      zerocopied_string_buf_addr_));
+#else
+      num_rows, start_pos, limit_pos, std::move(sliced_input_tensors)));
+#endif
   size_ += num_rows;
   return Status::OK();
 }
@@ -212,11 +298,11 @@ Status RebatchBuffer::Take(Allocator* alloc,
   int64 remained_rows = 0;
   int64 num_dirty_rows = 0;
   for (int64 row = 0; num_dirty_rows < items_.size(); ++num_dirty_rows) {
-    if (row + items_[num_dirty_rows].batch_size > num_rows) {
+    if (row + items_[num_dirty_rows]->batch_size > num_rows) {
       remained_rows = (num_rows - row);
       break;
     }
-    row += items_[num_dirty_rows].batch_size;
+    row += items_[num_dirty_rows]->batch_size;
   }
 
   const size_t num_components = output_dtypes_.size();
@@ -224,26 +310,46 @@ Status RebatchBuffer::Take(Allocator* alloc,
   output_tensors->resize(num_components);
   std::vector<Tensor> residual_tensors;
   residual_tensors.resize(num_components);
-  int64 col = 0;
-  for (int64 rank : field_ranks_) {
-    if (rank == 0) {
-      TF_RETURN_IF_ERROR(TakeDense(alloc, output_tensors, &residual_tensors,
-                                   num_rows, remained_rows, rank, col));
-    } else {
-      TF_RETURN_IF_ERROR(TakeSparse(alloc, output_tensors, &residual_tensors,
-                                    num_rows, remained_rows, rank, col));
-    }
-    col += (rank + 1);
-  }
+#if HYBRIDBACKEND_TENSORFLOW_DISTRO == 1015
+  std::vector<uint64> residual_zerocopied_string_buf_addr;
+  residual_zerocopied_string_buf_addr.resize(num_components);
+#endif
 
-  for (int64 idx = 0; idx < num_dirty_rows; ++idx) {
-    items_.pop_front();
-  }
+  auto work = [&](int64 begin, int64 end) {
+    for (int64 i = begin; i < end; ++i) {
+      if (field_ranks_[i] == 0) {
+        TF_RETURN_IF_ERROR(TakeDense(alloc, output_tensors, &residual_tensors,
+#if HYBRIDBACKEND_TENSORFLOW_DISTRO == 1015
+                                     &residual_zerocopied_string_buf_addr,
+#endif
+                                     num_rows, remained_rows, field_ranks_[i],
+                                     field_cols_[i]));
+      } else {
+        TF_RETURN_IF_ERROR(TakeSparse(alloc, output_tensors, &residual_tensors,
+#if HYBRIDBACKEND_TENSORFLOW_DISTRO == 1015
+                                      &residual_zerocopied_string_buf_addr,
+#endif
+                                      num_rows, remained_rows, field_ranks_[i],
+                                      field_cols_[i]));
+      }
+    }
+    return Status::OK();
+  };
+  const int64 cost_per_unit = 200;
+  takers_->ParallelFor(field_ranks_.size(), cost_per_unit, work);
+  items_.erase(items_.begin(), items_.begin() + num_dirty_rows);
+
   if (remained_rows > 0) {
-    int64 residual_rows = items_.front().batch_size - remained_rows;
-    items_.pop_front();
+    int64 residual_rows = items_.front()->batch_size - remained_rows;
     if (residual_rows > 0) {
-      items_.emplace_front(residual_rows, std::move(residual_tensors));
+      items_.front()->components = residual_tensors;
+      items_.front()->batch_size = residual_rows;
+#if HYBRIDBACKEND_TENSORFLOW_DISTRO == 1015
+      items_.front()->zerocopied_string_buf_addr =
+          residual_zerocopied_string_buf_addr;
+#endif
+    } else {
+      items_.erase(items_.begin());
     }
   }
 
@@ -251,11 +357,53 @@ Status RebatchBuffer::Take(Allocator* alloc,
   return Status::OK();
 }
 
-Status RebatchBuffer::TakeDense(Allocator* alloc,
-                                std::vector<Tensor>* output_tensors,
-                                std::vector<Tensor>* residual_tensors,
-                                const int64 num_rows, const int64 remained_rows,
-                                const int64 rank, const int64 col) {
+Status RebatchBuffer::FastPath(Allocator* alloc,
+                               const std::vector<Tensor>& input_tensors,
+                               std::vector<Tensor>* output_tensors) {
+  auto work = [&](int64 begin, int64 end) {
+    for (int i = begin; i < end; ++i) {
+      if (!has_zerocopied_string_[i]) {
+        output_tensors->at(i) = input_tensors[i];
+      } else {
+        output_tensors->at(i) =
+            Tensor(alloc, input_tensors[i].dtype(), input_tensors[i].shape());
+        if (!output_tensors->at(i).IsInitialized()) {
+          return errors::ResourceExhausted(
+              "Failed to allocate memory for output component ", i);
+        }
+        auto output_tensor_ptr = output_tensors->at(i).vec<std::string>();
+#if HYBRIDBACKEND_TENSORFLOW_DISTRO == 1015
+        auto input_string_buf = reinterpret_cast<ArrowStringTensorBuffer*>(
+            zerocopied_string_buf_addr_[i]);
+#else
+        auto input_string_buf =
+            reinterpret_cast<ArrowStringTensorBuffer*>(input_tensors[i].data());
+#endif
+        for (int j = 0; j < input_tensors[i].NumElements(); ++j) {
+          int string_size;
+          auto string_data = input_string_buf->GetValue(j, &string_size);
+          output_tensor_ptr(j).assign(
+              reinterpret_cast<const char*>(string_data), string_size);
+        }
+      }
+    }
+    return Status::OK();
+  };
+
+  const int64 cost_per_unit = 200;
+  takers_->ParallelFor(input_tensors.size(), cost_per_unit, work);
+
+  return Status::OK();
+}
+
+Status RebatchBuffer::TakeDense(
+    Allocator* alloc, std::vector<Tensor>* output_tensors,
+    std::vector<Tensor>* residual_tensors,
+#if HYBRIDBACKEND_TENSORFLOW_DISTRO == 1015
+    std::vector<uint64>* residual_zerocopied_string_buf_addr,
+#endif
+    const int64 num_rows, const int64 remained_rows, const int64 rank,
+    const int64 col) {
   // Create output
   PartialTensorShape output_pshape(output_shapes_[col]);
   output_pshape.set_dim(0, num_rows);
@@ -269,47 +417,98 @@ Status RebatchBuffer::TakeDense(Allocator* alloc,
 
   // Populate output
   for (int64 idx = 0, row = 0; idx < items_.size(); ++idx) {
-    auto& item = items_[idx].components[col];
-    if (row + items_[idx].batch_size > num_rows) {
+    auto& item = items_[idx]->components[col];
+    if (row + items_[idx]->batch_size > num_rows) {
       if (remained_rows == 0) {
         break;
       }
-      auto sliced_input = item.Slice(0, remained_rows);
-      TF_RETURN_IF_ERROR(CopyToSlicesFromTensor(&(output_tensors->at(col)), row,
-                                                std::move(sliced_input), true));
-      (*residual_tensors)[col] =
-          item.Slice(remained_rows, items_[idx].batch_size);
+
+      if (!has_zerocopied_string_[col]) {
+        auto sliced_input = item.Slice(0, remained_rows);
+        TF_RETURN_IF_ERROR(CopyToSlicesFromTensor(
+            &(output_tensors->at(col)), row, std::move(sliced_input), true));
+        (*residual_tensors)[col] =
+            item.Slice(remained_rows, items_[idx]->batch_size);
+        items_[idx]->start[col] = remained_rows;
+      } else {
+        int64 start = items_[idx]->start[col];
+        int64 limit = start + remained_rows;
+        auto output_tensor_ptr = output_tensors->at(col).vec<std::string>();
+#if HYBRIDBACKEND_TENSORFLOW_DISTRO == 1015
+        auto item_string_buf_ptr = reinterpret_cast<ArrowStringTensorBuffer*>(
+            items_[idx]->zerocopied_string_buf_addr[col]);
+#else
+        auto item_string_buf_ptr =
+            reinterpret_cast<ArrowStringTensorBuffer*>(item.data());
+#endif
+        for (int i = start; i < limit; ++i) {
+          int64 output_idx = row + i - start;
+          int string_size;
+          auto string_data = item_string_buf_ptr->GetValue(i, &string_size);
+          output_tensor_ptr(output_idx)
+              .assign(reinterpret_cast<const char*>(string_data), string_size);
+        }
+        (*residual_tensors)[col] = item;
+#if HYBRIDBACKEND_TENSORFLOW_DISTRO == 1015
+        (*residual_zerocopied_string_buf_addr)[col] =
+            items_[idx]->zerocopied_string_buf_addr[col];
+#endif
+        items_[idx]->start[col] = limit;
+      }
       break;
     }
-    TF_RETURN_IF_ERROR(
-        CopyToSlicesFromTensor(&(output_tensors->at(col)), row, item, true));
-    row += items_[idx].batch_size;
+    if (!has_zerocopied_string_[col]) {
+      TF_RETURN_IF_ERROR(
+          CopyToSlicesFromTensor(&(output_tensors->at(col)), row, item, true));
+    } else {
+      // populating string type of output tensors
+      int64 item_start_pos = items_[idx]->start[col];
+      int64 item_limit_pos = items_[idx]->limit[col];
+      auto output_tensor_ptr = output_tensors->at(col).vec<std::string>();
+#if HYBRIDBACKEND_TENSORFLOW_DISTRO == 1015
+      auto item_string_buf_ptr = reinterpret_cast<ArrowStringTensorBuffer*>(
+          items_[idx]->zerocopied_string_buf_addr[col]);
+#else
+      auto item_string_buf_ptr =
+          reinterpret_cast<ArrowStringTensorBuffer*>(item.data());
+#endif
+      for (int i = item_start_pos; i < item_limit_pos; ++i) {
+        int64 output_idx = row + i - item_start_pos;
+        int string_size;
+        auto string_data = item_string_buf_ptr->GetValue(i, &string_size);
+        output_tensor_ptr(output_idx)
+            .assign(reinterpret_cast<const char*>(string_data), string_size);
+      }
+    }
+    row += items_[idx]->batch_size;
   }
 
   return Status::OK();
 }
 
-Status RebatchBuffer::TakeSparse(Allocator* alloc,
-                                 std::vector<Tensor>* output_tensors,
-                                 std::vector<Tensor>* residual_tensors,
-                                 const int64 num_rows,
-                                 const int64 remained_rows, const int64 rank,
-                                 const int64 col) {
+Status RebatchBuffer::TakeSparse(
+    Allocator* alloc, std::vector<Tensor>* output_tensors,
+    std::vector<Tensor>* residual_tensors,
+#if HYBRIDBACKEND_TENSORFLOW_DISTRO == 1015
+    std::vector<uint64>* residual_zerocopied_string_buf_addr,
+#endif
+    const int64 num_rows, const int64 remained_rows, const int64 rank,
+    const int64 col) {
   // Create and populate output splits
   int64 remained_dim0_size = 1 + remained_rows;
   for (size_t split_idx = 1; split_idx < rank + 1; ++split_idx) {
     int64 next_remained_dim0_size = 0;
     int64 dim0_size = 0;
     for (int64 idx = 0, row = 0; idx < items_.size(); ++idx) {
-      if (row + items_[idx].batch_size > num_rows) {
+      if (row + items_[idx]->batch_size > num_rows) {
         next_remained_dim0_size =
-            items_[idx].components[col + split_idx].unaligned_flat<int32>()(
+            items_[idx]->components[col + split_idx].unaligned_flat<int32>()(
                 remained_dim0_size - 1);
         dim0_size += (remained_dim0_size - 1);
         break;
       }
-      dim0_size += (items_[idx].components[col + split_idx].dim_size(0) - 1);
-      row += items_[idx].batch_size;
+      dim0_size += (items_[idx]->components[col + split_idx].dim_size(0) - 1);
+      row += items_[idx]->batch_size;
     }
 
     PartialTensorShape split_pshape(output_shapes_[col + split_idx]);
@@ -326,11 +525,11 @@ Status RebatchBuffer::TakeSparse(Allocator* alloc,
     (*output_tensors)[col + split_idx].unaligned_flat<int32>()(0) = 0;
     int64 dim0_index = 0;
     for (int64 idx = 0, row = 0; idx < items_.size(); ++idx) {
-      auto& split = items_[idx].components[col + split_idx];
+      auto& split = items_[idx]->components[col + split_idx];
       int32 output_last = output_tensors->at(col + split_idx)
                               .unaligned_flat<int32>()(dim0_index);
       int32 input_first = split.unaligned_flat<int32>()(0);
-      if (row + items_[idx].batch_size > num_rows) {
+      if (row + items_[idx]->batch_size > num_rows) {
         if (remained_rows == 0) {
           break;
         }
@@ -360,7 +559,7 @@ Status RebatchBuffer::TakeSparse(Allocator* alloc,
           sliced_output_split.unaligned_flat<int32>().constant(output_last -
                                                                input_first);
       dim0_index += sliced_input_split.dim_size(0);
-      row += items_[idx].batch_size;
+      row += items_[idx]->batch_size;
     }
 
     remained_dim0_size = next_remained_dim0_size;
@@ -369,11 +568,17 @@ Status RebatchBuffer::TakeSparse(Allocator* alloc,
   // Create and populate ouput values
   int64 values_dim0_size = 0;
   for (int64 idx = 0, row = 0; idx < items_.size(); ++idx) {
-    if (row + items_[idx].batch_size > num_rows) {
+    int64 item_start_pos = items_[idx]->start[col];
+    int64 item_limit_pos = items_[idx]->limit[col];
+    if (row + items_[idx]->batch_size > num_rows) {
       break;
     }
-    values_dim0_size += items_[idx].components[col].dim_size(0);
-    row += items_[idx].batch_size;
+    if (!has_zerocopied_string_[col]) {
+      values_dim0_size += items_[idx]->components[col].dim_size(0);
+    } else {
+      values_dim0_size += (item_limit_pos - item_start_pos);
+    }
+    row += items_[idx]->batch_size;
   }
   PartialTensorShape base_pshape(output_shapes_[col]);
   base_pshape.set_dim(0, 1);
@@ -392,8 +597,11 @@ Status RebatchBuffer::TakeSparse(Allocator* alloc,
 
   int64 dim0_index = 0;
   for (int64 idx = 0, row = 0; idx < items_.size(); ++idx) {
-    auto& values = items_[idx].components[col];
-    if (row + items_[idx].batch_size > num_rows) {
+    auto& values = items_[idx]->components[col];
+    int64 item_start_pos = items_[idx]->start[col];
+    int64 item_limit_pos = items_[idx]->limit[col];
+
+    if (row + items_[idx]->batch_size > num_rows) {
       if (remained_rows == 0) {
         break;
       }
@@ -403,20 +611,69 @@ Status RebatchBuffer::TakeSparse(Allocator* alloc,
         values_base_elems =
             values_shape.num_elements() / values_shape.dim_size(0);
       }
-      auto sliced_values =
-          values.Slice(0, remained_dim0_size / values_base_elems);
-      TF_RETURN_IF_ERROR(
-          CopyToSlicesFromTensor(&(output_tensors->at(col)), dim0_index,
-                                 std::move(sliced_values), true));
-      (*residual_tensors)[col] = values.Slice(
-          remained_dim0_size / values_base_elems, values.dim_size(0));
+      if (!has_zerocopied_string_[col]) {
+        auto sliced_values =
+            values.Slice(0, remained_dim0_size / values_base_elems);
+        TF_RETURN_IF_ERROR(
+            CopyToSlicesFromTensor(&(output_tensors->at(col)), dim0_index,
+                                   std::move(sliced_values), true));
+        (*residual_tensors)[col] = values.Slice(
+            remained_dim0_size / values_base_elems, values.dim_size(0));
+      } else {
+        int64 start = items_[idx]->start[col];
+        int64 limit = start + remained_dim0_size;
+        auto output_tensor_ptr = output_tensors->at(col).vec<std::string>();
+#if HYBRIDBACKEND_TENSORFLOW_DISTRO == 1015
+        auto item_string_buf_ptr = reinterpret_cast<ArrowStringTensorBuffer*>(
+            items_[idx]->zerocopied_string_buf_addr[col]);
+#else
+        auto item_string_buf_ptr =
+            reinterpret_cast<ArrowStringTensorBuffer*>(values.data());
+#endif
+        for (int i = start; i < limit; ++i) {
+          int64 output_idx = dim0_index + i - start;
+          int string_size;
+          auto string_data = item_string_buf_ptr->GetValue(i, &string_size);
+          output_tensor_ptr(output_idx)
+              .assign(reinterpret_cast<const char*>(string_data), string_size);
+        }
+        (*residual_tensors)[col] = values;
+#if HYBRIDBACKEND_TENSORFLOW_DISTRO == 1015
+        (*residual_zerocopied_string_buf_addr)[col] =
+            items_[idx]->zerocopied_string_buf_addr[col];
+#endif
+        items_[idx]->start[col] = limit;
+      }
       break;
     }
 
-    TF_RETURN_IF_ERROR(CopyToSlicesFromTensor(&(output_tensors->at(col)),
-                                              dim0_index, values, true));
-    dim0_index += values.dim_size(0);
-    row += items_[idx].batch_size;
+    if (!has_zerocopied_string_[col]) {
+      TF_RETURN_IF_ERROR(CopyToSlicesFromTensor(&(output_tensors->at(col)),
+                                                dim0_index, values, true));
+    } else {
+      auto output_tensor_ptr = output_tensors->at(col).vec<std::string>();
+#if HYBRIDBACKEND_TENSORFLOW_DISTRO == 1015
+      auto item_string_buf_ptr = reinterpret_cast<ArrowStringTensorBuffer*>(
+          items_[idx]->zerocopied_string_buf_addr[col]);
+#else
+      auto item_string_buf_ptr =
+          reinterpret_cast<ArrowStringTensorBuffer*>(values.data());
+#endif
+      for (int i = item_start_pos; i < item_limit_pos; ++i) {
+        int64 output_idx = dim0_index + i - item_start_pos;
+        int string_size;
+        auto string_data = item_string_buf_ptr->GetValue(i, &string_size);
+        output_tensor_ptr(output_idx)
+            .assign(reinterpret_cast<const char*>(string_data), string_size);
+      }
+    }
+
+    if (!has_zerocopied_string_[col]) {
+      dim0_index += values.dim_size(0);
+    } else {
+      dim0_index += (item_limit_pos - item_start_pos);
+    }
+    row += items_[idx]->batch_size;
   }
 
   return Status::OK();
