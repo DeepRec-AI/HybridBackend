@@ -76,11 +76,12 @@ class ParquetDatasetDeduplicationTest(unittest.TestCase):
 
   def test_apply_to_tensor(self):
     with tf.Graph().as_default() as graph:
-      ds = hb.data.ParquetDataset(
+      srcds = hb.data.ParquetDataset(
         [self._filename],
         batch_size=2)
-      ds = ds.apply(hb.data.deduplicate(['user_feat_idx'], [['user_feat']]))
+      ds = srcds.apply(hb.data.deduplicate(['user_feat_idx'], [['user_feat']]))
       ds = ds.apply(hb.data.parse(pad=True))
+      ds = ds.apply(hb.data.populate_defaults(srcds.all_fields, 2))
       batch = tf.data.make_one_shot_iterator(ds).get_next()
       baseline = tf.ragged.constant(
         self._data_user_feat_duplicated.to_pylist()).to_tensor()

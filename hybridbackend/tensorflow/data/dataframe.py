@@ -155,7 +155,8 @@ class DataFrame(object):  # pylint: disable=useless-object-inheritance
           [ops.Tensor for i in xrange(self._field.ragged_rank)])
 
     def __init__(
-        self, name, dtype=None, ragged_rank=None, shape=None):
+        self, name, dtype=None, ragged_rank=None, shape=None,
+        default_value=None):
       self._name = name
       if dtype is None:
         self._dtype = dtype
@@ -181,6 +182,7 @@ class DataFrame(object):  # pylint: disable=useless-object-inheritance
       else:
         shape = tensor_shape.TensorShape([])
       self._shape = shape
+      self._default_value = default_value
       self._restore_idx_field = None
 
     @property
@@ -204,6 +206,10 @@ class DataFrame(object):  # pylint: disable=useless-object-inheritance
       return self._shape
 
     @property
+    def default_value(self):
+      return self._default_value
+
+    @property
     def restore_idx_field(self):
       return self._restore_idx_field
 
@@ -223,7 +229,12 @@ class DataFrame(object):  # pylint: disable=useless-object-inheritance
           elif self._ragged_rank > 0:
             dtypestr = f'list<{dtypestr}>'
       shapestr = str(self._shape)
-      return f'{self._name} (dtype={dtypestr}, shape={shapestr})'
+      defaultstr = str(self._default_value)
+      return (
+        f'{self._name} ('
+        f'dtype={dtypestr}, '
+        f'shape={shapestr}, '
+        f'default_value={defaultstr})')
 
     def map(self, func, rank=None):
       if rank is None:
@@ -445,6 +456,51 @@ class DataFrame(object):  # pylint: disable=useless-object-inheritance
     raise ValueError(f'{features} not supported')
 
   @classmethod
+  def populate_defaults(cls, features, all_fields, batch_size):
+    r'''Populate default values.
+    '''
+    if not isinstance(features, dict):
+      raise ValueError('Inputs should be a dict')
+    populated = dict(features)
+    for f in all_fields:
+      if f.name not in features and f.default_value is not None:
+        if batch_size is None:
+          populated[f.name] = array_ops.expand_dims(
+            ops.convert_to_tensor(f.default_value, dtype=f.dtype),
+            axis=0)
+        else:
+          if isinstance(f.default_value, sparse_tensor.SparseTensor):
+            indices_dtype = f.default_value.indices.dtype
+            indices_car = math_ops.cast(
+              array_ops.reshape(
+                array_ops.tile(
+                  math_ops.range(batch_size),
+                  [f.default_value.indices.shape[0]]),
+                [-1, 1]),
+              indices_dtype)
+            indices_cdr = array_ops.tile(
+              f.default_value.indices, [batch_size, 1])
+            batched_indices = array_ops.concat(
+              [indices_car, indices_cdr], axis=1)
+            batched_values = array_ops.tile(
+              f.default_value.values, [batch_size])
+            batched_dense_shape = array_ops.concat(
+              [ops.convert_to_tensor([batch_size], indices_dtype),
+               f.default_value.dense_shape],
+              axis=0)
+            populated[f.name] = sparse_tensor.SparseTensor(
+              indices=batched_indices,
+              values=batched_values,
+              dense_shape=batched_dense_shape)
+          else:
+            value = ops.convert_to_tensor(f.default_value, dtype=f.dtype)
+            populated[f.name] = array_ops.tile(
+              array_ops.expand_dims(value, axis=0),
+              tensor_shape.TensorShape([batch_size]).concatenate(
+                value.shape))
+    return populated
+
+  @classmethod
   def to_sparse(cls, features):
     r'''Convert DataFrame values to tensors or sparse tensors.
     '''
@@ -509,6 +565,16 @@ def parse(num_parallel_calls=None, pad=False):
   return _apply_fn
 
 
+def populate_defaults(all_fields, batch_size, num_parallel_calls=None):
+  r'''Populate default values.
+  '''
+  def _apply_fn(dataset):
+    return dataset.map(
+      lambda t: DataFrame.populate_defaults(t, all_fields, batch_size),
+      num_parallel_calls=num_parallel_calls)
+  return _apply_fn
+
+
 def unbatch_and_to_sparse(num_parallel_calls=None):
   r'''Unbatch and convert a row to tensors or sparse tensors from input dataset.
   '''
@@ -554,9 +620,6 @@ def build_fields(filename, fn, fields=None, lower=False):
   '''
   logging.info(f'Reading fields from {filename} ...')
   all_field_tuples = fn(filename)  # pylint: disable=c-extension-no-member
-  if not all_field_tuples:
-    raise ValueError(
-      f'No supported fields found in file {filename}')
   all_fields = {
     f[0]: {'dtype': f[1], 'ragged_rank': f[2]}
     for f in all_field_tuples}
@@ -573,28 +636,66 @@ def build_fields(filename, fn, fields=None, lower=False):
           shape=f.shape,
           ragged_rank=f.ragged_rank)
       if f.name not in all_fields:
-        raise ValueError(
-          f'Field {f.name} is not found in the file {filename}')
+        if f.default_value is None:
+          raise ValueError(
+            f'Field {f.name} not found in file {filename}')
       dtype = f.dtype
-      actual_dtype = np.dtype(all_fields[f.name]['dtype'])
-      if dtype is None:
-        dtype = actual_dtype
-      elif dtype != actual_dtype:
-        raise ValueError(
-          f'Field {f.name} should has dtype {actual_dtype} not {dtype}')
-      ragged_rank = f.ragged_rank
-      actual_ragged_rank = all_fields[f.name]['ragged_rank']
-      if ragged_rank is None:
-        ragged_rank = actual_ragged_rank
-      elif ragged_rank != actual_ragged_rank:
-        raise ValueError(
-          f'Field {f.name} should has ragged_rank {actual_ragged_rank} '
-          f'not {ragged_rank}')
+
+      if f.name in all_fields:
+        actual_dtype = np.dtype(all_fields[f.name]['dtype'])
+        if dtype is None:
+          dtype = actual_dtype
+        elif dtype != actual_dtype:
+          raise ValueError(
+            f'Field {f.name} dtype should be {actual_dtype} not {dtype}')
+        ragged_rank = f.ragged_rank
+        actual_ragged_rank = all_fields[f.name]['ragged_rank']
+        if ragged_rank is None:
+          ragged_rank = actual_ragged_rank
+        elif ragged_rank != actual_ragged_rank:
+          raise ValueError(
+            f'Field {f.name} ragged_rank should be {actual_ragged_rank} '
+            f'not {ragged_rank}')
+      else:
+        if f.default_value is None:
+          raise ValueError(
+            f'Field {f.name} not found in file {filename}')
+        if isinstance(f.default_value, sparse_tensor.SparseTensor):
+          actual_dtype = np.dtype(f.default_value.dtype)
+          if dtype is None:
+            dtype = actual_dtype
+          elif dtype != actual_dtype:
+            raise ValueError(
+              f'Field {f.name} dtype should be {actual_dtype} not {dtype}')
+        elif isinstance(f.default_value, ops.Tensor):
+          actual_dtype = np.dtype(f.default_value.dtype)
+          if dtype is None:
+            dtype = actual_dtype
+          elif dtype != actual_dtype:
+            raise ValueError(
+              f'Field {f.name} dtype should be {actual_dtype} not {dtype}')
+          actual_ragged_rank = 0
+          if ragged_rank is None:
+            ragged_rank = actual_ragged_rank
+          elif ragged_rank != actual_ragged_rank:
+            raise ValueError(
+              f'Field {f.name} ragged_rank should be {actual_ragged_rank} '
+              f'not {ragged_rank}')
+        else:
+          try:
+            with ops.name_scope('default_values/'):
+              _ = ops.convert_to_tensor(
+                f.default_value, dtype=dtype)
+          except (TypeError, ValueError) as ex:
+            raise ValueError(
+              f'Field {f.name} default_value {f.default_value} '
+              f'should be a SparseTensor or Tensor: {ex}') from ex
       f = DataFrame.Field(
         f.name,
         dtype=dtype,
         ragged_rank=ragged_rank,
-        shape=f.shape)
+        shape=f.shape,
+        default_value=None if f.name in all_fields else f.default_value)
       new_fields.append(f)
       continue
     if not isinstance(f, string):
