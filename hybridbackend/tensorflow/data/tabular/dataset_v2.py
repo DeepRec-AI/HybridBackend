@@ -177,6 +177,10 @@ class TabularDatasetV2(dataset_ops.DatasetV2):  # pylint: disable=abstract-metho
   def creator(self):
     return self._creator
 
+  @property
+  def fields(self):
+    return self.creator.fields
+
   def batch(self, batch_size, drop_remainder=False):
     r'''Combines consecutive elements of this dataset into batches.
 
@@ -236,7 +240,7 @@ class TabularDatasetV2(dataset_ops.DatasetV2):  # pylint: disable=abstract-metho
       reshuffle_each_iteration=reshuffle_each_iteration)
 
   @abc.abstractmethod
-  def _create_dataset(self, filename, batch_size):
+  def _create_dataset(self, filename, fields, batch_size):
     r'''Internal method to create a `TabularDataset`.
     '''
 
@@ -282,7 +286,6 @@ class ParquetRecordDatasetV2(TabularDatasetV2):
     '''
     filenames, fields = build_filenames_and_fields(
       filenames, parquet_file_get_fields, fields, lower=field_ignore_case)
-    self._fields = fields
     super().__init__(
       filenames,
       fields=fields,
@@ -296,16 +299,12 @@ class ParquetRecordDatasetV2(TabularDatasetV2):
       field_map_fn=field_map_fn,
       **kwargs)
 
-  @property
-  def fields(self):
-    return self._fields
-
-  def _create_dataset(self, filename, batch_size):
+  def _create_dataset(self, filename, fields, batch_size):
     r'''Internal method to create a `TabularDataset`.
     '''
     return _TabularDatasetV2(  # pylint: disable=abstract-class-instantiated
       TableFormats.PARQUET, filename, batch_size,
-      fields=self.creator.fields,
+      fields=fields,
       partition_count=self.creator.partition_count,
       partition_index=self.creator.partition_index,
       skip_corrupted_data=self.creator.skip_corrupted_data,
@@ -353,7 +352,6 @@ class OrcRecordDatasetV2(TabularDatasetV2):
     '''
     filenames, fields = build_filenames_and_fields(
       filenames, orc_file_get_fields, fields, lower=field_ignore_case)
-    self._fields = fields
     super().__init__(
       filenames,
       fields=fields,
@@ -367,16 +365,12 @@ class OrcRecordDatasetV2(TabularDatasetV2):
       field_map_fn=field_map_fn,
       **kwargs)
 
-  @property
-  def fields(self):
-    return self._fields
-
-  def _create_dataset(self, filename, batch_size):
+  def _create_dataset(self, filename, fields, batch_size):
     r'''Internal method to create a `TabularDataset`.
     '''
     return _TabularDatasetV2(  # pylint: disable=abstract-class-instantiated
       TableFormats.ORC, filename, batch_size,
-      fields=self.creator.fields,
+      fields=fields,
       partition_count=self.creator.partition_count,
       partition_index=self.creator.partition_index,
       skip_corrupted_data=self.creator.skip_corrupted_data,
@@ -438,8 +432,9 @@ class ParquetDatasetV2(dataset_ops.DatasetV2):  # pylint: disable=abstract-metho
         can only be set once. if `tf.data.experimental.AUTOTUNE` is used, the
         number of parsers would be set for best performance.
     '''
-    filenames, self._fields = build_filenames_and_fields(
+    filenames, self._all_fields = build_filenames_and_fields(
       filenames, parquet_file_get_fields, fields)
+    self._fields = [f for f in self._all_fields if f.default_value is None]
     self._partition_count = partition_count
     self._partition_index = partition_index
     self._skip_corrupted_data = skip_corrupted_data
@@ -480,6 +475,10 @@ class ParquetDatasetV2(dataset_ops.DatasetV2):  # pylint: disable=abstract-metho
       num_parallel_reads=num_parallel_reads,
       num_sequential_reads=num_sequential_reads)
     super().__init__(self._impl._variant_tensor)  # pylint: disable=protected-access
+
+  @property
+  def all_fields(self):
+    return self._all_fields
 
   @property
   def fields(self):

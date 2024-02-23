@@ -23,6 +23,7 @@ from __future__ import print_function
 
 from hybridbackend.tensorflow.data.dataframe import DataFrame
 from hybridbackend.tensorflow.data.dataframe import parse
+from hybridbackend.tensorflow.data.dataframe import populate_defaults
 from hybridbackend.tensorflow.data.dataframe import unbatch_and_to_sparse
 from hybridbackend.tensorflow.data.deduplicate.dataset import deduplicate
 from hybridbackend.tensorflow.data.prefetch.iterator import Iterator

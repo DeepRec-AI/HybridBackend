@@ -74,6 +74,32 @@ class ParquetDatasetTest(unittest.TestCase):
         np.testing.assert_equal(result['A'], a[start_row:end_row].to_numpy())
         np.testing.assert_equal(result['C'], c[start_row:end_row].to_numpy())
 
+  def test_read_with_defaults(self):
+    batch_size = 32
+    default_value = 42
+    with tf.Graph().as_default() as graph:
+      ds = hb.data.Dataset.from_parquet(
+        self._filename,
+        fields=[hb.data.DataFrame.Field('A', tf.int64),
+                hb.data.DataFrame.Field('X', tf.int64,
+                                        default_value=default_value),
+                hb.data.DataFrame.Field('C', tf.int64)])
+      ds = ds.batch(batch_size)
+      ds = ds.prefetch(4)
+      batch = tf.data.make_one_shot_iterator(ds).get_next()
+
+    a = self._df['A']
+    c = self._df['C']
+    with tf.Session(graph=graph) as sess:
+      for i in xrange(3):
+        result = sess.run(batch)
+        start_row = i * batch_size
+        end_row = (i + 1) * batch_size
+        np.testing.assert_equal(result['A'], a[start_row:end_row].to_numpy())
+        np.testing.assert_equal(
+          result['X'], [default_value for _ in range(batch_size)])
+        np.testing.assert_equal(result['C'], c[start_row:end_row].to_numpy())
+
   def test_schema_auto_detection_read(self):
     batch_size = 32
     with tf.Graph().as_default() as graph:

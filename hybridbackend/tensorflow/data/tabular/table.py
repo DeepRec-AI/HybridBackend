@@ -29,6 +29,7 @@ from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 
 from hybridbackend.tensorflow.data.dataframe import parse
+from hybridbackend.tensorflow.data.dataframe import populate_defaults
 from hybridbackend.tensorflow.data.deduplicate.dataset import deduplicate
 from hybridbackend.tensorflow.data.rebatch.dataset import RebatchDataset
 
@@ -80,6 +81,7 @@ class TabularDatasetCreator(object):  # pylint: disable=useless-object-inheritan
     self._fn = fn
     self._filenames = filenames
     self._fields = fields if field_map_fn is None else field_map_fn(fields)
+    self._valid_fields = [f for f in self._fields if f.default_value is None]
     self._partition_count = partition_count
     self._partition_index = partition_index
     self._skip_corrupted_data = skip_corrupted_data
@@ -95,9 +97,9 @@ class TabularDatasetCreator(object):  # pylint: disable=useless-object-inheritan
       else:
         num_parallel_reads = 1
     if num_parallel_parser_calls is None:
-      num_parallel_parser_calls = len(self._fields)
+      num_parallel_parser_calls = len(self._valid_fields)
     if num_parallel_parser_calls == dataset_ops.AUTOTUNE:
-      num_parallel_parser_calls = len(self._fields)
+      num_parallel_parser_calls = len(self._valid_fields)
     if num_parallel_reads is not None and num_parallel_parser_calls is not None:
       arrow_num_threads = os.getenv('ARROW_NUM_THREADS', None)
       if arrow_num_threads is None:
@@ -159,7 +161,7 @@ class TabularDatasetCreator(object):  # pylint: disable=useless-object-inheritan
     '''
     def _creator(filename):
       filename = ops.convert_to_tensor(filename, dtypes.string, name='filename')
-      return self._fn(filename, batch_size)
+      return self._fn(filename, self._valid_fields, batch_size)
 
     if self._num_parallel_reads == 1:
       return self._filenames.flat_map(_creator)
@@ -184,8 +186,9 @@ class TabularDatasetCreator(object):  # pylint: disable=useless-object-inheritan
       ds = ds.apply(
         deduplicate(
           self._key_idx_field_names,
-          self._value_field_names, fields=self._fields))
+          self._value_field_names, fields=self._valid_fields))
     ds = ds.apply(parse(pad=self._to_dense))
+    ds = ds.apply(populate_defaults(self._fields, None))
     return ds.unbatch()
 
   def batch(self, batch_size, drop_remainder=False):
@@ -217,11 +220,12 @@ class TabularDatasetCreator(object):  # pylint: disable=useless-object-inheritan
       ds = ds.apply(
         deduplicate(
           self._key_idx_field_names,
-          self._value_field_names, fields=self._fields))
+          self._value_field_names, fields=self._valid_fields))
     ds = RebatchDataset(
-      ds, self._fields, batch_size,
+      ds, self._valid_fields, batch_size,
       drop_remainder=drop_remainder)
-    return ds.apply(parse(pad=self._to_dense))
+    ds = ds.apply(parse(pad=self._to_dense))
+    return ds.apply(populate_defaults(self._fields, batch_size))
 
   def shuffle_batch(
       self, batch_size,
@@ -260,11 +264,12 @@ class TabularDatasetCreator(object):  # pylint: disable=useless-object-inheritan
       ds = ds.apply(
         deduplicate(
           self._key_idx_field_names,
-          self._value_field_names, fields=self._fields))
+          self._value_field_names, fields=self._valid_fields))
     ds = RebatchDataset(
-      ds, self._fields, batch_size,
+      ds, self._valid_fields, batch_size,
       drop_remainder=drop_remainder,
       shuffle_buffer_size=buffer_size,
       shuffle_seed=seed,
       reshuffle_each_iteration=reshuffle_each_iteration)
-    return ds.apply(parse(pad=self._to_dense))
+    ds = ds.apply(parse(pad=self._to_dense))
+    return ds.apply(populate_defaults(self._fields, batch_size))

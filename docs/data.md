@@ -152,6 +152,7 @@ import hybridbackend.tensorflow as hb
 # Define data frame fields.
 fields = [
     hb.data.DataFrame.Field('A', tf.int64),  # scalar
+    hb.data.DataFrame.Field('AA', tf.int64, default_value=42),  # field not exists
     hb.data.DataFrame.Field('B', tf.int64, shape=[32]),  # fixed-length list
     hb.data.DataFrame.Field('C', tf.int64, ragged_rank=1),  # variable-length list
     hb.data.DataFrame.Field('D', tf.int64, ragged_rank=1)]  # variable-length list
@@ -164,7 +165,7 @@ ds = ds.batch(1024)
 ds = ds.prefetch(4)
 it = tf.data.make_one_shot_iterator(ds)
 batch = it.get_next()
-# {'A': scalar_tensor, 'B': list_tensor, 'C': sparse_tensor, 'D': padded_list_tensor}
+# {'A': scalar_tensor, 'AA': [42] * 1024, 'B': list_tensor, 'C': sparse_tensor, 'D': padded_list_tensor}
 ...
 ```
 
