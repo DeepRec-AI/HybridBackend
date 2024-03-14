@@ -63,7 +63,8 @@ def _clip_clicks(row, behavior_log_cols, duration):
       elif ts >= max_ts:
         end_idx -= 1
     for col in cols:
-      row[col] = row[col][begin_idx: end_idx]
+      tmp = row[col][begin_idx: end_idx]
+      row[col] = tmp.tolist() if isinstance(tmp, np.ndarray) else tmp
   return row
 
 
